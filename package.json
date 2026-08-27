@@ -32,7 +32,7 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "ShishaWG",
+      "owner": "BazZTee",
       "repo": "shishawg-mod-setup-tool"
     },
     "win": {

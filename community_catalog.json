@@ -11,6 +11,8 @@
     "Aeon Edition 4"
   ],
   "bowls": [
+    { "name": "XKAH Lite", "isElectric": true },
+    { "name": "XKAH Pro", "isElectric": true },
     "Cosmo Bowl",
     "Hookain LitBowl",
     "Vandenberg V1",
@@ -65,7 +67,7 @@
   ],
   "promos": [
     "!kohle (Magic Cubes Zauberwürfel)",
-    "!xk (Sichert euch den neuen XK Kopf)",
+    "!xkah (Sichert euch den neuen XKAH)",
     "!tasting (No Aroma Tasting im Stream)"
   ]
 }

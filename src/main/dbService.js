@@ -22,6 +22,8 @@ class DatabaseService {
         'Aeon Edition 4'
       ],
       bowls: [
+        { name: 'XKAH Lite', isElectric: true },
+        { name: 'XKAH Pro', isElectric: true },
         'Cosmo Bowl',
         'Hookain LitBowl',
         'Vandenberg V1',
@@ -117,14 +119,21 @@ class DatabaseService {
   }
 
   addItem(category, item) {
-    if (!item || typeof item !== 'string') return false;
+    if (!item) return false;
     const catalog = this.getCatalog();
     if (!catalog[category]) catalog[category] = [];
     
-    const trimmed = item.trim();
-    if (trimmed && !catalog[category].includes(trimmed)) {
-      catalog[category].push(trimmed);
-      catalog[category].sort((a, b) => a.localeCompare(b, 'de'));
+    let itemName = typeof item === 'string' ? item.trim() : item.name.trim();
+    if (!itemName) return false;
+
+    const exists = catalog[category].some(i => (typeof i === 'string' ? i : i.name) === itemName);
+    if (!exists) {
+      catalog[category].push(item);
+      catalog[category].sort((a, b) => {
+        const nameA = typeof a === 'string' ? a : a.name;
+        const nameB = typeof b === 'string' ? b : b.name;
+        return nameA.localeCompare(nameB, 'de');
+      });
       this.saveCatalog(catalog);
       return true;
     }
@@ -134,7 +143,8 @@ class DatabaseService {
   removeItem(category, item) {
     const catalog = this.getCatalog();
     if (catalog[category]) {
-      catalog[category] = catalog[category].filter(i => i !== item);
+      const targetName = typeof item === 'string' ? item : (item.name || item);
+      catalog[category] = catalog[category].filter(i => (typeof i === 'string' ? i : i.name) !== targetName);
       this.saveCatalog(catalog);
       return true;
     }
@@ -142,18 +152,20 @@ class DatabaseService {
   }
 
   editItem(category, oldItem, newItem) {
-    if (!oldItem || !newItem || typeof newItem !== 'string') return false;
+    if (!oldItem || !newItem) return false;
     const catalog = this.getCatalog();
     if (catalog[category]) {
-      const idx = catalog[category].indexOf(oldItem);
+      const oldName = typeof oldItem === 'string' ? oldItem : oldItem.name;
+      const idx = catalog[category].findIndex(i => (typeof i === 'string' ? i : i.name) === oldName);
       if (idx !== -1) {
-        const trimmed = newItem.trim();
-        if (trimmed) {
-          catalog[category][idx] = trimmed;
-          catalog[category].sort((a, b) => a.localeCompare(b, 'de'));
-          this.saveCatalog(catalog);
-          return true;
-        }
+        catalog[category][idx] = newItem;
+        catalog[category].sort((a, b) => {
+          const nameA = typeof a === 'string' ? a : a.name;
+          const nameB = typeof b === 'string' ? b : b.name;
+          return nameA.localeCompare(nameB, 'de');
+        });
+        this.saveCatalog(catalog);
+        return true;
       }
     }
     return false;
@@ -232,9 +244,17 @@ class DatabaseService {
             for (const cat of categories) {
               if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
                 const cleanedList = remoteCatalog[cat]
-                  .map(item => (typeof item === 'string' ? item : (item.name || item)).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
+                  .map(item => {
+                    if (typeof item === 'object' && item !== null) return item;
+                    const str = (typeof item === 'string' ? item : (item.name || item)).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+                    return str;
+                  })
                   .filter(Boolean);
-                cleanedList.sort((a, b) => a.localeCompare(b, 'de'));
+                cleanedList.sort((a, b) => {
+                  const nameA = typeof a === 'string' ? a : a.name;
+                  const nameB = typeof b === 'string' ? b : b.name;
+                  return nameA.localeCompare(nameB, 'de');
+                });
                 localCatalog[cat] = cleanedList;
               }
             }

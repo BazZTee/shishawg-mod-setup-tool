@@ -132,7 +132,10 @@ function updateDatalists() {
 function populateDatalist(elementId, items) {
   const datalist = document.getElementById(elementId);
   if (!datalist) return;
-  datalist.innerHTML = items.map(item => `<option value="${escapeHtml(item)}"></option>`).join('');
+  datalist.innerHTML = items.map(item => {
+    const val = typeof item === 'string' ? item : item.name;
+    return `<option value="${escapeHtml(val)}"></option>`;
+  }).join('');
 }
 
 // Check Twitch Authentication
@@ -216,11 +219,17 @@ function renderPersonsGrid() {
       </div>
     `).join('');
 
+    const isElectric = !!p.isElectric;
+
     card.innerHTML = `
       <div class="person-card-header">
         <div class="person-title">
           <span class="person-number-badge">Person ${i + 1}</span>
           <span class="person-name-display">${escapeHtml(p.name || `Person ${i + 1}`)}</span>
+          <label class="checkbox-label" style="font-size: 0.78rem; margin-left: 8px; color: var(--accent-cyan);" title="Kennzeichnet diese Person als E-Gerät Nutzer (z. B. XKAH Lite / Pro)">
+            <input type="checkbox" class="chk-p-electric" data-index="${i}" ${isElectric ? 'checked' : ''}>
+            <span>⚡ E-Gerät</span>
+          </label>
         </div>
         <button class="btn-icon btn-clear-person" data-index="${i}" title="Person entfernen">✕</button>
       </div>
@@ -250,14 +259,16 @@ function renderPersonsGrid() {
       </div>
 
       <div class="input-row">
-        <div class="input-group">
-          <label>Kopf:</label>
-          <input type="text" class="input-p-bowl" data-index="${i}" list="list-bowls" value="${escapeHtml(p.bowl)}" placeholder="z. B. Cosmo Bowl">
+        <div class="input-group" style="${isElectric ? 'grid-column: 1 / -1;' : ''}">
+          <label>${isElectric ? '⚡ E-Gerät:' : 'Kopf:'}</label>
+          <input type="text" class="input-p-bowl" data-index="${i}" list="list-bowls" value="${escapeHtml(p.bowl)}" placeholder="${isElectric ? 'z. B. XKAH Lite oder Pro' : 'z. B. Cosmo Bowl'}">
         </div>
+        ${!isElectric ? `
         <div class="input-group">
           <label>HMD:</label>
           <input type="text" class="input-p-hmd" data-index="${i}" list="list-hmds" value="${escapeHtml(p.hmd)}" placeholder="z. B. ONMO HMD">
         </div>
+        ` : ''}
       </div>
 
       <div class="input-group full-width tobacco-mix-wrapper">
@@ -350,7 +361,22 @@ function attachCardInputListeners() {
           personCountSelect.value = String(state.personCount);
         } else {
           // If only 1 person, clear fields of the remaining card
-          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
+          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
+        }
+        renderPersonsGrid();
+        generateCommandString();
+      }
+    });
+  });
+
+  // Electric E-Gerät Checkbox Listener
+  document.querySelectorAll('.chk-p-electric').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const idx = parseInt(e.currentTarget.getAttribute('data-index'));
+      if (!isNaN(idx) && state.persons[idx]) {
+        state.persons[idx].isElectric = e.currentTarget.checked;
+        if (state.persons[idx].isElectric && (!state.persons[idx].bowl || !state.persons[idx].bowl.toLowerCase().includes('xkah'))) {
+          state.persons[idx].bowl = 'XKAH Lite';
         }
         renderPersonsGrid();
         generateCommandString();
@@ -407,16 +433,17 @@ function generateCommandString() {
 
     let bowlVal = (p.bowl || '').trim();
     let hmdVal = (p.hmd || '').trim();
+    const isElec = !!p.isElectric || bowlVal.toLowerCase().includes('xkah') || bowlVal.toLowerCase().includes('elektr');
 
     if (promoText) {
       if (promoTarget === 'pipe' && pipeVal) pipeVal = `${pipeVal} ${promoText}`;
       if (promoTarget === 'bowl' && bowlVal) bowlVal = `${bowlVal} ${promoText}`;
-      if (promoTarget === 'hmd' && hmdVal) hmdVal = `${hmdVal} ${promoText}`;
+      if (promoTarget === 'hmd' && hmdVal && !isElec) hmdVal = `${hmdVal} ${promoText}`;
     }
 
     if (pipeVal) personSegments.push(pipeVal);
     if (bowlVal) personSegments.push(bowlVal);
-    if (hmdVal) personSegments.push(hmdVal);
+    if (hmdVal && !isElec) personSegments.push(hmdVal);
 
     const tobaccos = (p.tobaccos || [])
       .map(t => (t || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
@@ -448,7 +475,13 @@ function generateCommandString() {
 
   let fullCommand = `!editsetup ${parts.join(' // ')}`;
 
-  let kohle = (inputGlobalKohle ? inputGlobalKohle.value : '').trim();
+  const hasNonElectricPerson = state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return !p.isElectric && !bName.includes('xkah') && !bName.includes('elektr');
+  });
+
+  let kohle = hasNonElectricPerson ? (inputGlobalKohle ? inputGlobalKohle.value : '').trim() : '';
   let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
 
   if (promoText) {
@@ -976,19 +1009,27 @@ function matchNotesToForm(text) {
     updated = true;
   }
 
-  // 4. Kopf Scanner ("von <head>" or known bowls like voskurymsia, mumia, cosmo, litbowl)
+  // 4. Kopf Scanner ("von <head>" or known bowls like voskurymsia, mumia, cosmo, litbowl, xkah)
   let matchedBowl = '';
-  const headMatch = origText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
-  if (headMatch && headMatch[1]) {
-    matchedBowl = capitalize(headMatch[1].trim());
-  } else if (catalog.bowls) {
-    for (const bowl of catalog.bowls) {
-      const bName = (typeof bowl === 'string' ? bowl : bowl.name).trim();
-      const bLower = bName.toLowerCase();
-      const tokens = bLower.split(/\s+/).filter(w => w.length > 2);
-      if (lowerText.includes(bLower) || tokens.some(t => lowerText.includes(t))) {
-        matchedBowl = bName;
-        break;
+  if (lowerText.includes('xkah') || lowerText.includes('xk-ah') || lowerText.includes('xk ah')) {
+    matchedBowl = lowerText.includes('pro') ? 'XKAH Pro' : 'XKAH Lite';
+    if (!p.isElectric) {
+      p.isElectric = true;
+      updated = true;
+    }
+  } else {
+    const headMatch = origText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
+    if (headMatch && headMatch[1]) {
+      matchedBowl = capitalize(headMatch[1].trim());
+    } else if (catalog.bowls) {
+      for (const bowl of catalog.bowls) {
+        const bName = (typeof bowl === 'string' ? bowl : bowl.name).trim();
+        const bLower = bName.toLowerCase();
+        const tokens = bLower.split(/\s+/).filter(w => w.length > 2);
+        if (lowerText.includes(bLower) || tokens.some(t => lowerText.includes(t))) {
+          matchedBowl = bName;
+          break;
+        }
       }
     }
   }
@@ -1185,14 +1226,25 @@ function matchNotesToForm(text) {
     dbModal.classList.add('hidden');
   });
 
+  const lblIsElectric = document.getElementById('lbl-is-electric');
+  const chkIsElectric = document.getElementById('chk-is-electric');
+
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
       state.currentDbTab = e.target.getAttribute('data-tab');
 
+      if (lblIsElectric) {
+        if (state.currentDbTab === 'tab-bowls') {
+          lblIsElectric.classList.remove('hidden');
+        } else {
+          lblIsElectric.classList.add('hidden');
+        }
+      }
+
       if (state.currentDbTab === 'tab-promos') {
-        if (newItemInput) newItemInput.placeholder = 'Promo-Command (z. B. !xk)...';
+        if (newItemInput) newItemInput.placeholder = 'Promo-Command (z. B. !xkah)...';
         if (newItemDescInput) newItemDescInput.classList.remove('hidden');
       } else {
         if (newItemInput) newItemInput.placeholder = 'Neues Element hinzufügen...';
@@ -1207,7 +1259,9 @@ function matchNotesToForm(text) {
     if (!code) return;
 
     let itemVal = code;
-    if (state.currentDbTab === 'tab-promos') {
+    if (state.currentDbTab === 'tab-bowls' && chkIsElectric && chkIsElectric.checked) {
+      itemVal = { name: code, isElectric: true };
+    } else if (state.currentDbTab === 'tab-promos') {
       const desc = newItemDescInput ? newItemDescInput.value.trim() : '';
       if (desc) {
         itemVal = `${code} (${desc})`;
@@ -1221,8 +1275,10 @@ function matchNotesToForm(text) {
       updateDatalists();
       newItemInput.value = '';
       if (newItemDescInput) newItemDescInput.value = '';
+      if (chkIsElectric) chkIsElectric.checked = false;
       renderCatalogList();
-      showToast(`"${itemVal}" zur Datenbank hinzugefügt`, 'success');
+      const addedName = typeof itemVal === 'string' ? itemVal : itemVal.name;
+      showToast(`"${addedName}" zur Datenbank hinzugefügt`, 'success');
     }
   });
 
@@ -1341,7 +1397,10 @@ function renderCatalogList() {
   const dbSearchInput = document.getElementById('db-search-input');
   const searchVal = dbSearchInput ? dbSearchInput.value.trim().toLowerCase() : '';
   if (searchVal) {
-    items = items.filter(item => item.toLowerCase().includes(searchVal));
+    items = items.filter(item => {
+      const nameStr = typeof item === 'string' ? item : item.name;
+      return nameStr.toLowerCase().includes(searchVal);
+    });
   }
 
   if (items.length === 0) {
@@ -1350,22 +1409,25 @@ function renderCatalogList() {
   }
 
   catalogListItems.innerHTML = items.map((item, idx) => {
-    let displayHtml = `<span>${escapeHtml(item)}</span>`;
+    const itemName = typeof item === 'string' ? item : item.name;
+    const isElectricItem = typeof item === 'object' && item.isElectric;
+    let displayHtml = `<span>${escapeHtml(itemName)}${isElectricItem ? ' <span class="char-badge" style="color:var(--accent-cyan); margin-left:6px;">⚡ Elektro</span>' : ''}</span>`;
     if (catKey === 'promos') {
-      const match = item.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
+      const match = itemName.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
       if (match) {
         const code = match[1].trim();
         const desc = match[2] ? match[2].trim() : '';
         displayHtml = `<span><strong class="promo-code">${escapeHtml(code)}</strong>${desc ? `<span class="promo-desc">(${escapeHtml(desc)})</span>` : ''}</span>`;
       }
     }
+    const itemAttr = escapeHtml(typeof item === 'string' ? item : JSON.stringify(item));
     return `
       <div class="catalog-item catalog-item-fade" id="catalog-item-${idx}">
         <div class="item-view" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
           ${displayHtml}
           <div class="catalog-actions">
-            <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${escapeHtml(item)}" title="Bearbeiten">✏️</button>
-            <button class="btn-icon btn-delete-item" data-item="${escapeHtml(item)}" title="Löschen">🗑️</button>
+            <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${itemAttr}" title="Bearbeiten">✏️</button>
+            <button class="btn-icon btn-delete-item" data-item="${itemAttr}" title="Löschen">🗑️</button>
           </div>
         </div>
       </div>
@@ -1445,7 +1507,11 @@ function renderCatalogList() {
 
   catalogListItems.querySelectorAll('.btn-delete-item').forEach(btn => {
     btn.addEventListener('click', async (e) => {
-      const itemToDelete = e.currentTarget.getAttribute('data-item');
+      const rawItem = e.currentTarget.getAttribute('data-item');
+      let itemToDelete = rawItem;
+      try {
+        if (rawItem.startsWith('{')) itemToDelete = JSON.parse(rawItem);
+      } catch (err) {}
       const res = await ipcRenderer.invoke('db:remove-item', { category: catKey, item: itemToDelete });
       if (res.success) {
         state.catalog = res.catalog;

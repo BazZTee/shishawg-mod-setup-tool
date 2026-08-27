@@ -173,7 +173,7 @@ function renderPersonsGrid() {
           <span class="person-number-badge">Person ${i + 1}</span>
           <span class="person-name-display">${escapeHtml(p.name || `Person ${i + 1}`)}</span>
         </div>
-        <button class="btn-icon btn-clear-person" data-index="${i}" title="Person leeren">✕</button>
+        <button class="btn-icon btn-clear-person" data-index="${i}" title="Person entfernen">✕</button>
       </div>
 
       <div class="input-row">
@@ -273,12 +273,19 @@ function attachCardInputListeners() {
     });
   });
 
-  // Clear Person Button
+  // Remove Person Card Button
   document.querySelectorAll('.btn-clear-person').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.currentTarget.getAttribute('data-index'));
       if (!isNaN(idx) && state.persons[idx]) {
-        state.persons[idx] = { name: '', pipe: '', bowl: '', hmd: '', tobaccos: [''] };
+        if (state.personCount > 1) {
+          state.persons.splice(idx, 1);
+          state.personCount--;
+          personCountSelect.value = String(state.personCount);
+        } else {
+          // If only 1 person, clear fields of the remaining card
+          state.persons[0] = { name: '', pipe: '', bowl: '', hmd: '', tobaccos: [''] };
+        }
         renderPersonsGrid();
         generateCommandString();
       }

@@ -31,6 +31,14 @@ class DatabaseService {
         'Vosun Phunnel',
         'Moon Phunnel'
       ],
+      vases: [
+        'Caesar Crystal Rock',
+        'Caesar Crystal Cone',
+        'Ocean Steckglas',
+        'Egermann Glas',
+        'Moze Breeze Steckglas',
+        'Crystal Drop Vase'
+      ],
       hmds: [
         'ONMO HMD',
         'Na Grani',
@@ -214,7 +222,7 @@ class DatabaseService {
             const localCatalog = this.getCatalog();
             let addedCount = 0;
 
-            const categories = ['pipes', 'bowls', 'hmds', 'tobacco', 'charcoal', 'promos'];
+            const categories = ['pipes', 'bowls', 'vases', 'hmds', 'tobacco', 'charcoal', 'promos'];
             for (const cat of categories) {
               if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
                 const cleanedList = remoteCatalog[cat]

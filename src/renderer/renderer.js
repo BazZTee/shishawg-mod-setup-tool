@@ -120,6 +120,7 @@ async function loadCatalog() {
 function updateDatalists() {
   populateDatalist('list-pipes', state.catalog.pipes || []);
   populateDatalist('list-bowls', state.catalog.bowls || []);
+  populateDatalist('list-vases', state.catalog.vases || []);
   populateDatalist('list-hmds', state.catalog.hmds || []);
   populateDatalist('list-tobacco', state.catalog.tobacco || []);
   populateDatalist('list-charcoal', state.catalog.charcoal || []);
@@ -235,6 +236,17 @@ function renderPersonsGrid() {
 
       <div class="input-row">
         <div class="input-group">
+          <label>Bowl / Glas (optional):</label>
+          <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
+        </div>
+        <div class="input-group">
+          <label>Bowl-Farbe (optional):</label>
+          <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+        </div>
+      </div>
+
+      <div class="input-row">
+        <div class="input-group">
           <label>Kopf:</label>
           <input type="text" class="input-p-bowl" data-index="${i}" list="list-bowls" value="${escapeHtml(p.bowl)}" placeholder="z. B. Cosmo Bowl">
         </div>
@@ -292,6 +304,10 @@ function attachCardInputListeners() {
           }
         } else if (e.target.classList.contains('input-p-pipe')) {
           p.pipe = e.target.value;
+        } else if (e.target.classList.contains('input-p-vessel')) {
+          p.vessel = e.target.value;
+        } else if (e.target.classList.contains('input-p-vessel-color')) {
+          p.vesselColor = e.target.value;
         } else if (e.target.classList.contains('input-p-bowl')) {
           p.bowl = e.target.value;
         } else if (e.target.classList.contains('input-p-hmd')) {
@@ -330,7 +346,7 @@ function attachCardInputListeners() {
           personCountSelect.value = String(state.personCount);
         } else {
           // If only 1 person, clear fields of the remaining card
-          state.persons[0] = { name: '', pipe: '', bowl: '', hmd: '', tobaccos: [''] };
+          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
         }
         renderPersonsGrid();
         generateCommandString();
@@ -372,6 +388,19 @@ function generateCommandString() {
     const pName = (p.name || '').trim();
 
     let pipeVal = (p.pipe || '').trim();
+    const vesselVal = (p.vessel || '').trim();
+    const vesselColorVal = (p.vesselColor || '').trim();
+
+    if (pipeVal) {
+      if (vesselVal && vesselColorVal) {
+        pipeVal = `${pipeVal} auf einer ${vesselVal} in ${vesselColorVal}`;
+      } else if (vesselVal) {
+        pipeVal = `${pipeVal} auf einer ${vesselVal}`;
+      } else if (vesselColorVal) {
+        pipeVal = `${pipeVal} in ${vesselColorVal}`;
+      }
+    }
+
     let bowlVal = (p.bowl || '').trim();
     let hmdVal = (p.hmd || '').trim();
 
@@ -1141,6 +1170,7 @@ function getCategoryKeyForTab(tabId) {
   switch (tabId) {
     case 'tab-pipes': return 'pipes';
     case 'tab-bowls': return 'bowls';
+    case 'tab-vases': return 'vases';
     case 'tab-hmds': return 'hmds';
     case 'tab-charcoal': return 'charcoal';
     case 'tab-promos': return 'promos';

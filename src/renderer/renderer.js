@@ -469,12 +469,12 @@ function generateCommandString() {
 
   const len = fullCommand.length;
   if (commandLengthBadge) {
-    if (len > 480) {
+    if (len > 500) {
       commandLengthBadge.classList.add('warning');
-      commandLengthBadge.textContent = `⚠️ ${len} / 480 (Zu lang!)`;
+      commandLengthBadge.textContent = `⚠️ ${len} / 500 (Zu lang!)`;
     } else {
       commandLengthBadge.classList.remove('warning');
-      commandLengthBadge.textContent = `${len} / 480`;
+      commandLengthBadge.textContent = `${len} / 500`;
     }
   }
 }
@@ -827,8 +827,8 @@ function setupEventListeners() {
       return;
     }
 
-    if (message.length > 480) {
-      showToast(`⚠️ Befehl ist zu lang (${message.length} / 480 Zeichen)! Er muss unter 480 Zeichen gekürzt werden.`, 'error');
+    if (message.length > 500) {
+      showToast(`⚠️ Befehl ist zu lang (${message.length} / 500 Zeichen)! Er muss unter 500 Zeichen gekürzt werden.`, 'error');
       return;
     }
 

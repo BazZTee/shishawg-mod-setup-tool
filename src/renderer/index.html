@@ -86,7 +86,7 @@
           <div class="dropdown-wrapper">
             <button id="btn-import-menu" class="btn btn-secondary">
               <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-              Setup Importieren / Einfügen ▼
+              Setup Importieren ▼
             </button>
             <div id="import-dropdown-menu" class="dropdown-menu hidden">
               <button id="btn-fetch-chat-setup" class="dropdown-item" title="Schreibt !setup in den Twitch-Chat des eingestellten Kanals und liest die Antwort des Bots live aus">
@@ -98,18 +98,36 @@
             </div>
           </div>
 
-          <button id="btn-open-db" class="btn btn-secondary">
-            <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
-            Datenbank / Verzeichnis
-          </button>
           <button id="btn-toggle-notes" class="btn btn-secondary" title="Öffnet ein Notizfeld zum schnellen Mitschreiben während des Streams">
             📝 Notizen
           </button>
           <button id="btn-reset-all" class="btn btn-danger-outline">
-            Formular leeren
+            🗑️ Leeren
           </button>
+
+          <!-- Hamburger Secondary Menu -->
+          <div class="dropdown-wrapper">
+            <button id="btn-hamburger-menu" class="btn btn-secondary btn-icon-only" title="Weitere Optionen">
+              <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            </button>
+            <div id="hamburger-dropdown-menu" class="dropdown-menu dropdown-menu-right hidden">
+              <button id="btn-open-db" class="dropdown-item">
+                <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
+                🗄️ Datenbank / Verzeichnis
+              </button>
+              <button id="btn-check-updates" class="dropdown-item" title="Klicken, um auf Updates von GitHub zu prüfen">
+                🔄 Auf Updates prüfen <span id="app-version-tag" class="version-tag-inline"></span>
+              </button>
+            </div>
+          </div>
         </div>
       </section>
+
+      <!-- One-Time Onboarding Hint -->
+      <div id="onboarding-hint" class="onboarding-hint hidden">
+        <span>👋 <strong>Neu hier?</strong> Einfach Schritt 1 ausfüllen → Schritt 2 (optional) → <kbd>Ctrl+Enter</kbd> zum Senden. Fertig!</span>
+        <button id="btn-dismiss-onboarding" class="btn-icon" title="Schließen">✕</button>
+      </div>
 
       <!-- Collapsible Quick Notes Card -->
       <section id="notes-card" class="notes-card hidden">
@@ -133,7 +151,7 @@
       <!-- Global Extra & Kohle Section -->
       <section class="global-extras-card">
         <div class="card-header">
-          <h2>💨 Schritt 2: Stream Extras, Promo-Commands & Kohle</h2>
+          <h2>💨 Schritt 2: Kohle & Extras</h2>
         </div>
         <div class="extras-grid-v2">
           <div class="input-group">
@@ -150,49 +168,62 @@
               <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
             </div>
           </div>
-          <div class="input-group full-row-promo">
-            <label for="input-global-promo">Zusatz-Command / Promo-Text & Zuordnung:</label>
-            <div class="promo-input-row">
-              <div class="clearable-input-wrapper" style="flex:1;">
-                <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xkah">
-                <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+
+          <!-- Collapsible Promo Block -->
+          <div class="promo-toggle-row">
+            <button id="btn-toggle-promo" class="btn-expand-toggle" aria-expanded="false">
+              <svg class="toggle-chevron" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+              Promo-Command hinzufügen
+            </button>
+          </div>
+          <div id="promo-block" class="promo-block-collapsible collapsed full-row-promo">
+            <div class="input-group full-row-promo">
+              <label for="input-global-promo">Zusatz-Command / Promo-Text &amp; Zuordnung:</label>
+              <div class="promo-input-row">
+                <div class="clearable-input-wrapper" style="flex:1;">
+                  <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xkah">
+                  <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+                </div>
+                <select id="select-promo-target" class="promo-target-select">
+                  <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
+                  <option value="pipe">➔ Hinter Pfeife anfügen</option>
+                  <option value="bowl">➔ Hinter Kopf anfügen</option>
+                  <option value="hmd">➔ Hinter HMD anfügen</option>
+                  <option value="extra">➔ Als eigenes Extra anfügen</option>
+                </select>
+                <label class="checkbox-label" title="Schreibt die Beschreibung des Promo-Commands mit in den Chat-Befehl">
+                  <input type="checkbox" id="chk-include-promo-desc" checked>
+                  <span>Beschreibung mit übernehmen</span>
+                </label>
               </div>
-              <select id="select-promo-target" class="promo-target-select">
-                <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
-                <option value="pipe">➔ Hinter Pfeife anfügen</option>
-                <option value="bowl">➔ Hinter Kopf anfügen</option>
-                <option value="hmd">➔ Hinter HMD anfügen</option>
-                <option value="extra">➔ Als eigenes Extra anfügen</option>
-              </select>
-              <label class="checkbox-label" title="Schreibt die Beschreibung des Promo-Commands mit in den Chat-Befehl">
-                <input type="checkbox" id="chk-include-promo-desc" checked>
-                <span>Beschreibung mit übernehmen</span>
-              </label>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Command Generator & Live Output Card -->
-      <section class="generator-card">
+      <!-- Command Generator & Live Output Card (Sticky) -->
+      <section class="generator-card generator-card-sticky">
         <div class="generator-header">
-          <h2>💬 Schritt 3: Generierter Befehl (Twitch Chat) <span id="command-length-badge" class="char-badge">0 / 500</span></h2>
+          <h2>💬 Schritt 3: Generierter Befehl <span id="command-length-badge" class="char-badge">0 / 500</span></h2>
           <span class="schema-hint">Schema: <code>!editsetup Name: Pfeife // Kopf // HMD // Tabak...</code></span>
         </div>
 
-        <div class="output-wrapper">
-          <textarea id="command-output" readonly placeholder="Command wird hier automatisch generiert..."></textarea>
-          <button id="btn-copy" class="btn btn-copy" title="In Zwischenablage kopieren">
-            <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/></svg>
-            Kopieren
-          </button>
-        </div>
+        <div class="generator-sticky-body">
+          <div class="output-wrapper">
+            <textarea id="command-output" readonly rows="2" placeholder="Command wird hier automatisch generiert..."></textarea>
+            <button id="btn-copy" class="btn btn-copy" title="In Zwischenablage kopieren">
+              <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/></svg>
+              Kopieren
+            </button>
+          </div>
 
-        <div class="generator-actions">
-          <button id="btn-send-chat" class="btn btn-primary btn-large">
-            <svg class="icon-lg" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-            In Twitch-Chat Senden (!editsetup)
-          </button>
+          <div class="generator-actions">
+            <span class="send-hint">Ctrl+Enter</span>
+            <button id="btn-send-chat" class="btn btn-primary btn-large">
+              <svg class="icon-lg" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              In Twitch-Chat Senden (!editsetup)
+            </button>
+          </div>
         </div>
       </section>
 

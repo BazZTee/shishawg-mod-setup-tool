@@ -14,7 +14,8 @@ let state = {
   twitchUser: null,
   targetChannel: 'marved', // Default channel: marved
   currentDbTab: 'tab-tobacco',
-  clientId: ''
+  clientId: '',
+  expandedOptionalCards: new Set() // track which person cards have optional fields open
 };
 
 // DOM Elements
@@ -269,20 +270,26 @@ function renderPersonsGrid() {
         </div>
       </div>
 
-      <div class="optional-fields-box">
-        <div class="input-row">
-          <div class="input-group">
-            <label class="label-optional">Bowl / Glas (optional):</label>
-            <div class="clearable-input-wrapper">
-              <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
-              <button class="btn-clear-field ${p.vessel ? '' : 'hidden'}" title="Feld leeren">✕</button>
+      <button class="optional-fields-toggle" aria-expanded="${state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor) ? 'true' : 'false'}" data-card-index="${i}">
+        <svg class="toggle-chevron" viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+        Glas / Bowl ${(p.vessel || p.vesselColor) ? '✓' : '(optional)'}
+      </button>
+      <div class="optional-fields-collapsible ${state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor) ? '' : 'collapsed'}">
+        <div class="optional-fields-box">
+          <div class="input-row">
+            <div class="input-group">
+              <label class="label-optional">Bowl / Glas (optional):</label>
+              <div class="clearable-input-wrapper">
+                <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
+                <button class="btn-clear-field ${p.vessel ? '' : 'hidden'}" title="Feld leeren">✕</button>
+              </div>
             </div>
-          </div>
-          <div class="input-group">
-            <label class="label-optional">Bowl-Farbe (optional):</label>
-            <div class="clearable-input-wrapper">
-              <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
-              <button class="btn-clear-field ${p.vesselColor ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            <div class="input-group">
+              <label class="label-optional">Bowl-Farbe (optional):</label>
+              <div class="clearable-input-wrapper">
+                <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+                <button class="btn-clear-field ${p.vesselColor ? '' : 'hidden'}" title="Feld leeren">✕</button>
+              </div>
             </div>
           </div>
         </div>
@@ -413,6 +420,24 @@ function attachCardInputListeners() {
         state.persons[idx].isElectric = e.currentTarget.checked;
         renderPersonsGrid();
         generateCommandString();
+      }
+    });
+  });
+
+  // Optional Fields Toggle Listener
+  document.querySelectorAll('.optional-fields-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const cardIdx = parseInt(e.currentTarget.getAttribute('data-card-index'));
+      const collapsible = e.currentTarget.nextElementSibling;
+      const isExpanded = e.currentTarget.getAttribute('aria-expanded') === 'true';
+      if (isExpanded) {
+        e.currentTarget.setAttribute('aria-expanded', 'false');
+        collapsible.classList.add('collapsed');
+        state.expandedOptionalCards.delete(cardIdx);
+      } else {
+        e.currentTarget.setAttribute('aria-expanded', 'true');
+        collapsible.classList.remove('collapsed');
+        state.expandedOptionalCards.add(cardIdx);
       }
     });
   });
@@ -1191,7 +1216,65 @@ function matchNotesToForm(text) {
     }
   });
 
+  // Hamburger Secondary Menu Toggle
+  const btnHamburgerMenu = document.getElementById('btn-hamburger-menu');
+  const hamburgerDropdownMenu = document.getElementById('hamburger-dropdown-menu');
+  if (btnHamburgerMenu && hamburgerDropdownMenu) {
+    btnHamburgerMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hamburgerDropdownMenu.classList.toggle('hidden');
+      importDropdownMenu.classList.add('hidden');
+    });
+  }
+
+  // Promo Block Toggle
+  const btnTogglePromo = document.getElementById('btn-toggle-promo');
+  const promoBlock = document.getElementById('promo-block');
+  if (btnTogglePromo && promoBlock) {
+    btnTogglePromo.addEventListener('click', () => {
+      const isExpanded = btnTogglePromo.getAttribute('aria-expanded') === 'true';
+      btnTogglePromo.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+      promoBlock.classList.toggle('collapsed', isExpanded);
+    });
+  }
+
+  // Ctrl+Enter keyboard shortcut to send
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      btnSendChat.click();
+    }
+  });
+
+  // Onboarding Hint — show once on first ever launch
+  const onboardingHint = document.getElementById('onboarding-hint');
+  const btnDismissOnboarding = document.getElementById('btn-dismiss-onboarding');
+  if (onboardingHint && !localStorage.getItem('swg_onboarding_done')) {
+    onboardingHint.classList.remove('hidden');
+    // Auto-dismiss after 8 seconds
+    const onboardingTimer = setTimeout(() => {
+      onboardingHint.classList.add('hidden');
+      localStorage.setItem('swg_onboarding_done', '1');
+    }, 8000);
+    if (btnDismissOnboarding) {
+      btnDismissOnboarding.addEventListener('click', () => {
+        clearTimeout(onboardingTimer);
+        onboardingHint.classList.add('hidden');
+        localStorage.setItem('swg_onboarding_done', '1');
+      });
+    }
+  }
+
+  // Close all dropdowns when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.dropdown-wrapper')) {
+      if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');
+      if (importDropdownMenu) importDropdownMenu.classList.add('hidden');
+    }
+  });
+
   // Reset Form
+
   btnResetAll.addEventListener('click', () => {
     state.personCount = 1;
     personCountSelect.value = "1";

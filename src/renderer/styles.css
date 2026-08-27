@@ -602,6 +602,203 @@ input[type="text"]:focus, input[type="password"]:focus {
   grid-column: 1 / -1;
 }
 
+/* Hamburger / ≡ Right-aligned dropdown */
+.dropdown-menu-right {
+  left: auto;
+  right: 0;
+}
+
+.btn-icon-only {
+  padding: 7px 10px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* Version tag inline (inside hamburger menu) */
+.version-tag-inline {
+  font-size: 0.75rem;
+  color: var(--accent-cyan);
+  background: var(--bg-input);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+  margin-left: 4px;
+}
+
+/* Onboarding Hint Banner */
+.onboarding-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(135deg, rgba(0, 153, 255, 0.12), rgba(56, 189, 248, 0.08));
+  border: 1px solid rgba(0, 153, 255, 0.35);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  animation: fadeSlideIn 0.4s ease;
+}
+
+.onboarding-hint kbd {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: var(--accent-cyan);
+}
+
+.onboarding-hint.hidden {
+  display: none !important;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Collapsible Optional Fields Box */
+.optional-fields-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  margin: 1px 0;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.optional-fields-toggle:hover {
+  color: var(--accent-cyan);
+}
+
+.optional-fields-toggle .toggle-chevron {
+  transition: transform 0.2s ease;
+}
+
+.optional-fields-toggle[aria-expanded="true"] .toggle-chevron {
+  transform: rotate(90deg);
+}
+
+.optional-fields-collapsible {
+  overflow: hidden;
+  max-height: 200px;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  opacity: 1;
+}
+
+.optional-fields-collapsible.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
+/* Collapsible Promo Block */
+.promo-toggle-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+}
+
+.btn-expand-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 5px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-expand-toggle:hover {
+  color: var(--accent-cyan);
+  background: rgba(0, 153, 255, 0.08);
+}
+
+.btn-expand-toggle .toggle-chevron {
+  transition: transform 0.2s ease;
+}
+
+.btn-expand-toggle[aria-expanded="true"] .toggle-chevron {
+  transform: rotate(90deg);
+}
+
+.promo-block-collapsible {
+  overflow: hidden;
+  max-height: 120px;
+  transition: max-height 0.28s ease, opacity 0.22s ease;
+  opacity: 1;
+}
+
+.promo-block-collapsible.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Sticky Generator Card */
+.generator-card-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, var(--bg-card) 0%, #0c1221 100%) !important;
+  border-top: 1px solid rgba(0, 153, 255, 0.4) !important;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4), 0 -1px 0 rgba(0, 153, 255, 0.15) !important;
+  margin-top: 2px;
+}
+
+.generator-sticky-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.generator-sticky-body .output-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+textarea#command-output {
+  height: 52px;
+}
+
+/* Send Hint (Ctrl+Enter) */
+.send-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-family: inherit;
+}
+
+/* Generator actions row */
+.generator-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+
+
 .promo-input-row {
   display: flex;
   gap: 10px;

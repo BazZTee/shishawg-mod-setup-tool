@@ -226,12 +226,14 @@ function renderPersonsGrid() {
         <div class="person-title">
           <span class="person-number-badge">Person ${i + 1}</span>
           <span class="person-name-display">${escapeHtml(p.name || `Person ${i + 1}`)}</span>
-          <label class="checkbox-label" style="font-size: 0.78rem; margin-left: 8px; color: var(--accent-cyan);" title="Kennzeichnet diese Person als E-Gerät Nutzer (z. B. XKAH Lite / Pro)">
+        </div>
+        <div class="person-header-actions" style="display:flex; align-items:center; gap:12px;">
+          <label class="checkbox-label" style="font-size: 0.78rem; color: var(--accent-cyan);" title="Kennzeichnet diese Person als E-Gerät Nutzer (z. B. XKAH Lite / Pro)">
             <input type="checkbox" class="chk-p-electric" data-index="${i}" ${isElectric ? 'checked' : ''}>
             <span>⚡ E-Gerät</span>
           </label>
+          <button class="btn-icon btn-clear-person" data-index="${i}" title="Person entfernen">✕</button>
         </div>
-        <button class="btn-icon btn-clear-person" data-index="${i}" title="Person entfernen">✕</button>
       </div>
 
       <div class="input-row">
@@ -375,9 +377,6 @@ function attachCardInputListeners() {
       const idx = parseInt(e.currentTarget.getAttribute('data-index'));
       if (!isNaN(idx) && state.persons[idx]) {
         state.persons[idx].isElectric = e.currentTarget.checked;
-        if (state.persons[idx].isElectric && (!state.persons[idx].bowl || !state.persons[idx].bowl.toLowerCase().includes('xkah'))) {
-          state.persons[idx].bowl = 'XKAH Lite';
-        }
         renderPersonsGrid();
         generateCommandString();
       }
@@ -1438,14 +1437,22 @@ function renderCatalogList() {
   catalogListItems.querySelectorAll('.btn-edit-item').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = e.currentTarget.getAttribute('data-idx');
-      const oldItem = e.currentTarget.getAttribute('data-item');
+      const oldItemStr = e.currentTarget.getAttribute('data-item');
       const itemContainer = document.getElementById(`catalog-item-${idx}`);
       if (!itemContainer) return;
 
+      let oldObj = oldItemStr;
+      try {
+        if (oldItemStr.startsWith('{')) oldObj = JSON.parse(oldItemStr);
+      } catch (err) {}
+
+      const oldName = typeof oldObj === 'string' ? oldObj : oldObj.name;
+      const oldIsElec = typeof oldObj === 'object' && oldObj.isElectric;
+
       if (catKey === 'promos') {
-        let codeVal = oldItem;
+        let codeVal = oldName;
         let descVal = '';
-        const match = oldItem.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
+        const match = oldName.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
         if (match) {
           codeVal = match[1].trim();
           descVal = match[2] ? match[2].trim() : '';
@@ -1462,7 +1469,10 @@ function renderCatalogList() {
       } else {
         itemContainer.innerHTML = `
           <div class="inline-edit-box">
-            <input type="text" id="inline-input-${idx}" value="${escapeHtml(oldItem)}" maxlength="60">
+            <input type="text" id="inline-input-${idx}" value="${escapeHtml(oldName)}" maxlength="60" style="flex:1;">
+            ${catKey === 'bowls' ? `
+            <label class="checkbox-label" title="Als Elektro-Gerät kennzeichnen"><input type="checkbox" id="inline-elec-${idx}" ${oldIsElec ? 'checked' : ''}> <span>⚡ Elektro</span></label>
+            ` : ''}
             <button class="btn btn-primary btn-sm btn-save-inline">✓ Speichern</button>
             <button class="btn btn-secondary btn-sm btn-cancel-inline">✕ Abbrechen</button>
           </div>
@@ -1487,11 +1497,17 @@ function renderCatalogList() {
           if (!c) return renderCatalogList();
           newItem = d ? `${c} (${d})` : c;
         } else {
-          newItem = document.getElementById(`inline-input-${idx}`).value.trim();
+          const val = document.getElementById(`inline-input-${idx}`).value.trim();
+          const isElecChecked = document.getElementById(`inline-elec-${idx}`) ? document.getElementById(`inline-elec-${idx}`).checked : false;
+          if (catKey === 'bowls' && isElecChecked) {
+            newItem = { name: val, isElectric: true };
+          } else {
+            newItem = val;
+          }
         }
 
-        if (newItem && newItem !== oldItem) {
-          const res = await ipcRenderer.invoke('db:edit-item', { category: catKey, oldItem, newItem });
+        if (newItem) {
+          const res = await ipcRenderer.invoke('db:edit-item', { category: catKey, oldItem: oldObj, newItem });
           if (res.success) {
             state.catalog = res.catalog;
             updateDatalists();

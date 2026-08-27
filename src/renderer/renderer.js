@@ -125,6 +125,7 @@ function updateDatalists() {
   populateDatalist('list-hmds', state.catalog.hmds || []);
   populateDatalist('list-tobacco', state.catalog.tobacco || []);
   populateDatalist('list-charcoal', state.catalog.charcoal || []);
+  populateDatalist('list-tastings', state.catalog.tastings || []);
   populateDatalist('list-promos', state.catalog.promos || []);
 }
 
@@ -1313,6 +1314,7 @@ function getCategoryKeyForTab(tabId) {
     case 'tab-vases': return 'vases';
     case 'tab-hmds': return 'hmds';
     case 'tab-charcoal': return 'charcoal';
+    case 'tab-tastings': return 'tastings';
     case 'tab-promos': return 'promos';
     default: return 'tobacco';
   }

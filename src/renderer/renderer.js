@@ -44,6 +44,7 @@ const btnToggleNotes = document.getElementById('btn-toggle-notes');
 const notesCard = document.getElementById('notes-card');
 const btnClearNotes = document.getElementById('btn-clear-notes');
 const notesTextarea = document.getElementById('notes-textarea');
+const commandLengthBadge = document.getElementById('command-length-badge');
 const toastBanner = document.getElementById('toast-banner');
 const toastMessage = document.getElementById('toast-message');
 
@@ -465,6 +466,17 @@ function generateCommandString() {
   }
 
   commandOutput.value = fullCommand;
+
+  const len = fullCommand.length;
+  if (commandLengthBadge) {
+    if (len > 480) {
+      commandLengthBadge.classList.add('warning');
+      commandLengthBadge.textContent = `⚠️ ${len} / 480 (Zu lang!)`;
+    } else {
+      commandLengthBadge.classList.remove('warning');
+      commandLengthBadge.textContent = `${len} / 480`;
+    }
+  }
 }
 
 // Clean & Robust Parser for Chat Setup Messages
@@ -815,6 +827,11 @@ function setupEventListeners() {
       return;
     }
 
+    if (message.length > 480) {
+      showToast(`⚠️ Befehl ist zu lang (${message.length} / 480 Zeichen)! Er muss unter 480 Zeichen gekürzt werden.`, 'error');
+      return;
+    }
+
     if (!state.twitchUser) {
       showToast('Bitte verbinde dich zuerst mit Twitch', 'error');
       return;
@@ -1072,9 +1089,14 @@ function matchNotesToForm(text) {
     personCountSelect.value = "1";
     state.persons = [];
     if (notesTextarea) notesTextarea.value = '';
+    if (inputGlobalKohle) inputGlobalKohle.value = '';
+    if (inputGlobalExtra) inputGlobalExtra.value = '';
+    if (inputGlobalPromo) inputGlobalPromo.value = '';
+    if (selectPromoTarget) selectPromoTarget.value = 'kohle';
+    if (chkIncludePromoDesc) chkIncludePromoDesc.checked = true;
     renderPersonsGrid();
     generateCommandString();
-    showToast('Formular zurückgesetzt', 'info');
+    showToast('Gesamtes Formular & Extras vollständig geleert', 'info');
   });
 
   // Notes Listeners

@@ -666,6 +666,27 @@ input[type="text"]:focus, input[type="password"]:focus {
 .generator-header h2 {
   font-size: 1.15rem;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+}
+
+.char-badge {
+  font-size: 0.8rem;
+  padding: 3px 10px;
+  border-radius: 8px;
+  margin-left: 10px;
+  font-weight: 600;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.char-badge.warning {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
 }
 
 .schema-hint code {

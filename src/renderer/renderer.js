@@ -341,8 +341,15 @@ function generateCommandString() {
   const promoTarget = (selectPromoTarget ? selectPromoTarget.value : 'kohle');
   const includeDesc = chkIncludePromoDesc ? chkIncludePromoDesc.checked : true;
 
-  if (promoText && !includeDesc) {
-    promoText = promoText.replace(/\s*\([^)]*\)/g, '').trim();
+  if (promoText) {
+    if (!includeDesc) {
+      promoText = promoText.replace(/\s*\([^)]*\)/g, '').trim();
+    } else {
+      const match = promoText.match(/^([^\s(]+)(?:\s+(?!\()(.+))?$/);
+      if (match && match[2] && !match[2].startsWith('(')) {
+        promoText = `${match[1]} (${match[2]})`;
+      }
+    }
   }
 
   const parts = [];
@@ -1046,18 +1053,37 @@ function renderCatalogList() {
       const itemContainer = document.getElementById(`catalog-item-${idx}`);
       if (!itemContainer) return;
 
-      itemContainer.innerHTML = `
-        <div class="inline-edit-box">
-          <input type="text" id="inline-input-${idx}" value="${escapeHtml(oldItem)}" maxlength="60">
-          <button class="btn btn-primary btn-sm btn-save-inline" data-idx="${idx}">✓ Speichern</button>
-          <button class="btn btn-secondary btn-sm btn-cancel-inline">✕ Abbrechen</button>
-        </div>
-      `;
+      if (catKey === 'promos') {
+        let codeVal = oldItem;
+        let descVal = '';
+        const match = oldItem.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
+        if (match) {
+          codeVal = match[1].trim();
+          descVal = match[2] ? match[2].trim() : '';
+        }
 
-      const inputEl = document.getElementById(`inline-input-${idx}`);
-      if (inputEl) {
-        inputEl.focus();
-        inputEl.select();
+        itemContainer.innerHTML = `
+          <div class="inline-edit-box">
+            <input type="text" id="inline-code-${idx}" value="${escapeHtml(codeVal)}" placeholder="Command (max 30)" maxlength="30" style="flex:1;">
+            <input type="text" id="inline-desc-${idx}" value="${escapeHtml(descVal)}" placeholder="Beschreibung (max 30)" maxlength="30" style="flex:1;">
+            <button class="btn btn-primary btn-sm btn-save-inline">✓ Speichern</button>
+            <button class="btn btn-secondary btn-sm btn-cancel-inline">✕ Abbrechen</button>
+          </div>
+        `;
+      } else {
+        itemContainer.innerHTML = `
+          <div class="inline-edit-box">
+            <input type="text" id="inline-input-${idx}" value="${escapeHtml(oldItem)}" maxlength="60">
+            <button class="btn btn-primary btn-sm btn-save-inline">✓ Speichern</button>
+            <button class="btn btn-secondary btn-sm btn-cancel-inline">✕ Abbrechen</button>
+          </div>
+        `;
+      }
+
+      const firstInput = itemContainer.querySelector('input');
+      if (firstInput) {
+        firstInput.focus();
+        firstInput.select();
       }
 
       itemContainer.querySelector('.btn-cancel-inline').addEventListener('click', () => {
@@ -1065,7 +1091,16 @@ function renderCatalogList() {
       });
 
       itemContainer.querySelector('.btn-save-inline').addEventListener('click', async () => {
-        const newItem = inputEl.value.trim();
+        let newItem = '';
+        if (catKey === 'promos') {
+          const c = document.getElementById(`inline-code-${idx}`).value.trim();
+          const d = document.getElementById(`inline-desc-${idx}`).value.trim();
+          if (!c) return renderCatalogList();
+          newItem = d ? `${c} (${d})` : c;
+        } else {
+          newItem = document.getElementById(`inline-input-${idx}`).value.trim();
+        }
+
         if (newItem && newItem !== oldItem) {
           const res = await ipcRenderer.invoke('db:edit-item', { category: catKey, oldItem, newItem });
           if (res.success) {

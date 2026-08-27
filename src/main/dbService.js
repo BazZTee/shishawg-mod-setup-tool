@@ -63,8 +63,7 @@ class DatabaseService {
         '!kohle (Magic Cubes Zauberwürfel)',
         '!xk (Sichert euch den neuen XK Kopf)',
         '!tasting (No Aroma Tasting im Stream)'
-      ],
-      presets: []
+      ]
     };
     this.init();
   }

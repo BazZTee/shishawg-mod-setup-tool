@@ -22,10 +22,18 @@
       <div class="header-actions">
         <!-- Target Channel Selector -->
         <div class="channel-selector">
-          <label for="target-channel-input">Twitch-Kanal:</label>
+          <label for="target-channel-input">Ziel-Kanal:</label>
           <div class="channel-input-wrapper">
             <span class="prefix">#</span>
-            <input type="text" id="target-channel-input" value="marved" placeholder="marved">
+            <input type="text" id="target-channel-input" value="marved" placeholder="marved" title="Twitch-Kanal in den gesendet/gelesen wird">
+          </div>
+        </div>
+
+        <div class="channel-selector">
+          <label for="target-bot-input">Bot-Name:</label>
+          <div class="channel-input-wrapper">
+            <span class="prefix">🤖</span>
+            <input type="text" id="target-bot-input" value="marvedbot" placeholder="marvedbot" title="Twitch-Bot Username zum Auslesen">
           </div>
         </div>
 
@@ -130,6 +138,10 @@
                 <option value="hmd">➔ Hinter HMD anfügen</option>
                 <option value="extra">➔ Als eigenes Extra anfügen</option>
               </select>
+              <label class="checkbox-label" title="Schreibt die Beschreibung des Promo-Commands mit in den Chat-Befehl">
+                <input type="checkbox" id="chk-include-promo-desc" checked>
+                <span>Beschreibung mit übernehmen</span>
+              </label>
             </div>
           </div>
         </div>
@@ -279,8 +291,9 @@
           </div>
 
           <div class="tab-content" id="tab-content-area">
-            <div class="add-item-row">
-              <input type="text" id="new-item-input" placeholder="Neues Element hinzufügen...">
+            <div class="add-item-row" id="add-item-row">
+              <input type="text" id="new-item-input" placeholder="Neues Element hinzufügen..." maxlength="30">
+              <input type="text" id="new-item-desc-input" class="hidden" placeholder="Beschreibung (optional, max 30 Zeichen)..." maxlength="30">
               <button id="btn-add-db-item" class="btn btn-primary">Hinzufügen</button>
             </div>
             <div class="catalog-list" id="catalog-list-items">

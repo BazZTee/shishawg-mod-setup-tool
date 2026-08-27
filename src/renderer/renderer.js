@@ -32,10 +32,13 @@ const twitchUserBadge = document.getElementById('twitch-user-badge');
 const userAvatar = document.getElementById('user-avatar');
 const userDisplayName = document.getElementById('user-display-name');
 const targetChannelInput = document.getElementById('target-channel-input');
+const targetBotInput = document.getElementById('target-bot-input');
 const inputGlobalKohle = document.getElementById('input-global-kohle');
 const inputGlobalExtra = document.getElementById('input-global-extra');
 const inputGlobalPromo = document.getElementById('input-global-promo');
 const selectPromoTarget = document.getElementById('select-promo-target');
+const chkIncludePromoDesc = document.getElementById('chk-include-promo-desc');
+const newItemDescInput = document.getElementById('new-item-desc-input');
 const btnResetAll = document.getElementById('btn-reset-all');
 const toastBanner = document.getElementById('toast-banner');
 const toastMessage = document.getElementById('toast-message');
@@ -334,8 +337,13 @@ function attachCardInputListeners() {
 
 // Command Generator Logic
 function generateCommandString() {
-  const promoText = (inputGlobalPromo ? inputGlobalPromo.value : '').trim();
+  let promoText = (inputGlobalPromo ? inputGlobalPromo.value : '').trim();
   const promoTarget = (selectPromoTarget ? selectPromoTarget.value : 'kohle');
+  const includeDesc = chkIncludePromoDesc ? chkIncludePromoDesc.checked : true;
+
+  if (promoText && !includeDesc) {
+    promoText = promoText.replace(/\s*\([^)]*\)/g, '').trim();
+  }
 
   const parts = [];
 
@@ -421,7 +429,10 @@ function parseChatSetupMessage(rawText) {
   let text = rawText.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
   text = text.replace(/^ACTION\s+/i, '').trim();
 
-  // Strip bot user prefix e.g. "marvedbot: Marvin: ..." or "bazzteedj: Marvin: ..."
+  // Strip bot user prefix e.g. "marvedbot: Marvin: ..." or custom bot prefix
+  const botName = (state.targetBot || 'marvedbot').trim().toLowerCase();
+  const botReg = new RegExp(`^${botName}:\\s*`, 'i');
+  text = text.replace(botReg, '');
   text = text.replace(/^([a-zA-Z0-9_]+):\s*(?=[a-zA-Z0-9_]+\s*:)/, '');
   text = text.replace(/^!editsetup\s+/i, '').replace(/^!setup\s+/i, '').trim();
 
@@ -807,6 +818,19 @@ async function triggerAutoLearn() {
     showToast('Formular zurückgesetzt', 'info');
   });
 
+  // Target Bot Listener
+  if (targetBotInput) {
+    targetBotInput.addEventListener('change', () => {
+      state.targetBot = targetBotInput.value.trim().toLowerCase() || 'marvedbot';
+      showToast(`Bot-Name zum Auslesen auf @${state.targetBot} gesetzt`, 'success');
+    });
+  }
+
+  // Promo Checkbox Listener
+  if (chkIncludePromoDesc) {
+    chkIncludePromoDesc.addEventListener('change', generateCommandString);
+  }
+
   // Database Modal Listeners
   btnOpenDb.addEventListener('click', () => {
     dbModal.classList.remove('hidden');
@@ -820,7 +844,7 @@ async function triggerAutoLearn() {
       btnSyncGithubDb.textContent = '🔄 Abgleich läuft...';
       const res = await ipcRenderer.invoke('db:sync-github');
       btnSyncGithubDb.disabled = false;
-      btnSyncGithubDb.textContent = '🔄 Community-Katalog von GitHub abgleichen';
+      btnSyncGithubDb.textContent = '🔄 GitHub Sync';
       if (res && res.success) {
         state.catalog = res.catalog;
         updateDatalists();
@@ -845,22 +869,39 @@ async function triggerAutoLearn() {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
       state.currentDbTab = e.target.getAttribute('data-tab');
+
+      if (state.currentDbTab === 'tab-promos') {
+        if (newItemInput) newItemInput.placeholder = 'Promo-Command (z. B. !xk)...';
+        if (newItemDescInput) newItemDescInput.classList.remove('hidden');
+      } else {
+        if (newItemInput) newItemInput.placeholder = 'Neues Element hinzufügen...';
+        if (newItemDescInput) newItemDescInput.classList.add('hidden');
+      }
       renderCatalogList();
     });
   });
 
   btnAddDbItem.addEventListener('click', async () => {
-    const val = newItemInput.value.trim();
-    if (!val) return;
+    const code = newItemInput.value.trim();
+    if (!code) return;
+
+    let itemVal = code;
+    if (state.currentDbTab === 'tab-promos') {
+      const desc = newItemDescInput ? newItemDescInput.value.trim() : '';
+      if (desc) {
+        itemVal = `${code} (${desc})`;
+      }
+    }
 
     const catKey = getCategoryKeyForTab(state.currentDbTab);
-    const res = await ipcRenderer.invoke('db:add-item', { category: catKey, item: val });
+    const res = await ipcRenderer.invoke('db:add-item', { category: catKey, item: itemVal });
     if (res.success) {
       state.catalog = res.catalog;
       updateDatalists();
       newItemInput.value = '';
+      if (newItemDescInput) newItemDescInput.value = '';
       renderCatalogList();
-      showToast(`"${val}" zur Datenbank hinzugefügt`, 'success');
+      showToast(`"${itemVal}" zur Datenbank hinzugefügt`, 'success');
     }
   });
 }
@@ -974,37 +1015,75 @@ function renderCatalogList() {
     return;
   }
 
-  catalogListItems.innerHTML = items.map(item => `
-    <div class="catalog-item">
-      <span>${escapeHtml(item)}</span>
-      <div class="catalog-actions">
-        <button class="btn-icon btn-edit-item" data-item="${escapeHtml(item)}" title="Bearbeiten / Umbenennen">✏️</button>
-        <button class="btn-icon btn-delete-item" data-item="${escapeHtml(item)}" title="Löschen">🗑️</button>
-      </div>
-    </div>
-  `).join('');
-
-  catalogListItems.querySelectorAll('.btn-edit-item').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const oldItem = e.currentTarget.getAttribute('data-item');
-      const catKey = getCategoryKeyForTab(state.currentDbTab);
-      const newItem = prompt(`Eintrag umbenennen:`, oldItem);
-      if (newItem && newItem.trim() && newItem.trim() !== oldItem) {
-        const res = await ipcRenderer.invoke('db:edit-item', { category: catKey, oldItem, newItem: newItem.trim() });
-        if (res.success) {
-          state.catalog = res.catalog;
-          updateDatalists();
-          renderCatalogList();
-          showToast(`Eintrag umbenannt in "${newItem.trim()}"`, 'success');
-        }
+  catalogListItems.innerHTML = items.map((item, idx) => {
+    let displayHtml = `<span>${escapeHtml(item)}</span>`;
+    if (catKey === 'promos') {
+      const match = item.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
+      if (match) {
+        const code = match[1].trim();
+        const desc = match[2] ? match[2].trim() : '';
+        displayHtml = `<span><strong class="promo-code">${escapeHtml(code)}</strong>${desc ? `<span class="promo-desc">(${escapeHtml(desc)})</span>` : ''}</span>`;
       }
+    }
+    return `
+      <div class="catalog-item" id="catalog-item-${idx}">
+        <div class="item-view" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+          ${displayHtml}
+          <div class="catalog-actions">
+            <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${escapeHtml(item)}" title="Bearbeiten">✏️</button>
+            <button class="btn-icon btn-delete-item" data-item="${escapeHtml(item)}" title="Löschen">🗑️</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Attach Inline Edit Listener for ✏️
+  catalogListItems.querySelectorAll('.btn-edit-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = e.currentTarget.getAttribute('data-idx');
+      const oldItem = e.currentTarget.getAttribute('data-item');
+      const itemContainer = document.getElementById(`catalog-item-${idx}`);
+      if (!itemContainer) return;
+
+      itemContainer.innerHTML = `
+        <div class="inline-edit-box">
+          <input type="text" id="inline-input-${idx}" value="${escapeHtml(oldItem)}" maxlength="60">
+          <button class="btn btn-primary btn-sm btn-save-inline" data-idx="${idx}">✓ Speichern</button>
+          <button class="btn btn-secondary btn-sm btn-cancel-inline">✕ Abbrechen</button>
+        </div>
+      `;
+
+      const inputEl = document.getElementById(`inline-input-${idx}`);
+      if (inputEl) {
+        inputEl.focus();
+        inputEl.select();
+      }
+
+      itemContainer.querySelector('.btn-cancel-inline').addEventListener('click', () => {
+        renderCatalogList();
+      });
+
+      itemContainer.querySelector('.btn-save-inline').addEventListener('click', async () => {
+        const newItem = inputEl.value.trim();
+        if (newItem && newItem !== oldItem) {
+          const res = await ipcRenderer.invoke('db:edit-item', { category: catKey, oldItem, newItem });
+          if (res.success) {
+            state.catalog = res.catalog;
+            updateDatalists();
+            renderCatalogList();
+            showToast(`Eintrag aktualisiert`, 'success');
+          }
+        } else {
+          renderCatalogList();
+        }
+      });
     });
   });
 
   catalogListItems.querySelectorAll('.btn-delete-item').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const itemToDelete = e.currentTarget.getAttribute('data-item');
-      const catKey = getCategoryKeyForTab(state.currentDbTab);
       const res = await ipcRenderer.invoke('db:remove-item', { category: catKey, item: itemToDelete });
       if (res.success) {
         state.catalog = res.catalog;

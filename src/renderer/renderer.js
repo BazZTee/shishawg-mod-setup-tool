@@ -342,13 +342,19 @@ function generateCommandString() {
   const includeDesc = chkIncludePromoDesc ? chkIncludePromoDesc.checked : true;
 
   if (promoText) {
-    if (!includeDesc) {
-      promoText = promoText.replace(/\s*\([^)]*\)/g, '').trim();
-    } else {
-      const match = promoText.match(/^([^\s(]+)(?:\s+(?!\()(.+))?$/);
-      if (match && match[2] && !match[2].startsWith('(')) {
-        promoText = `${match[1]} (${match[2]})`;
+    const match = promoText.match(/^([^\s(]+)(?:\s*\((.+)\))?$/);
+    if (match) {
+      let code = match[1].trim();
+      if (!code.startsWith('!')) code = `!${code}`;
+      const desc = match[2] ? match[2].trim() : '';
+
+      if (desc && includeDesc) {
+        promoText = `(${code} - ${desc})`;
+      } else {
+        promoText = code;
       }
+    } else {
+      if (!promoText.startsWith('!')) promoText = `!${promoText}`;
     }
   }
 

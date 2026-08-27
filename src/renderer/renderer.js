@@ -34,6 +34,8 @@ const userDisplayName = document.getElementById('user-display-name');
 const targetChannelInput = document.getElementById('target-channel-input');
 const inputGlobalKohle = document.getElementById('input-global-kohle');
 const inputGlobalExtra = document.getElementById('input-global-extra');
+const inputGlobalPromo = document.getElementById('input-global-promo');
+const selectPromoTarget = document.getElementById('select-promo-target');
 const btnResetAll = document.getElementById('btn-reset-all');
 const toastBanner = document.getElementById('toast-banner');
 const toastMessage = document.getElementById('toast-message');
@@ -331,6 +333,9 @@ function attachCardInputListeners() {
 
 // Command Generator Logic
 function generateCommandString() {
+  const promoText = (inputGlobalPromo ? inputGlobalPromo.value : '').trim();
+  const promoTarget = (selectPromoTarget ? selectPromoTarget.value : 'kohle');
+
   const parts = [];
 
   for (let i = 0; i < state.personCount; i++) {
@@ -340,9 +345,19 @@ function generateCommandString() {
     const personSegments = [];
     const pName = (p.name || '').trim();
 
-    if (p.pipe) personSegments.push(p.pipe.trim());
-    if (p.bowl) personSegments.push(p.bowl.trim());
-    if (p.hmd) personSegments.push(p.hmd.trim());
+    let pipeVal = (p.pipe || '').trim();
+    let bowlVal = (p.bowl || '').trim();
+    let hmdVal = (p.hmd || '').trim();
+
+    if (promoText) {
+      if (promoTarget === 'pipe' && pipeVal) pipeVal = `${pipeVal} ${promoText}`;
+      if (promoTarget === 'bowl' && bowlVal) bowlVal = `${bowlVal} ${promoText}`;
+      if (promoTarget === 'hmd' && hmdVal) hmdVal = `${hmdVal} ${promoText}`;
+    }
+
+    if (pipeVal) personSegments.push(pipeVal);
+    if (bowlVal) personSegments.push(bowlVal);
+    if (hmdVal) personSegments.push(hmdVal);
 
     const tobaccos = (p.tobaccos || [])
       .map(t => (t || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
@@ -374,8 +389,16 @@ function generateCommandString() {
 
   let fullCommand = `!editsetup ${parts.join(' // ')}`;
 
-  const kohle = (inputGlobalKohle.value || '').trim();
-  const extra = (inputGlobalExtra.value || '').trim();
+  let kohle = (inputGlobalKohle ? inputGlobalKohle.value : '').trim();
+  let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
+
+  if (promoText) {
+    if (promoTarget === 'kohle') {
+      kohle = kohle ? `${kohle} ${promoText}` : promoText;
+    } else if (promoTarget === 'extra') {
+      extra = extra ? `${extra} ${promoText}` : promoText;
+    }
+  }
 
   if (kohle || extra) {
     const globalParts = [];
@@ -608,9 +631,11 @@ function setupEventListeners() {
     });
   }
 
-  // Extras input listeners
-  inputGlobalKohle.addEventListener('input', generateCommandString);
-  inputGlobalExtra.addEventListener('input', generateCommandString);
+  // Extras & Promo input listeners
+  if (inputGlobalKohle) inputGlobalKohle.addEventListener('input', generateCommandString);
+  if (inputGlobalExtra) inputGlobalExtra.addEventListener('input', generateCommandString);
+  if (inputGlobalPromo) inputGlobalPromo.addEventListener('input', generateCommandString);
+  if (selectPromoTarget) selectPromoTarget.addEventListener('change', generateCommandString);
 
   // Target Channel Listener
   targetChannelInput.addEventListener('change', async () => {
@@ -950,9 +975,29 @@ function renderCatalogList() {
   catalogListItems.innerHTML = items.map(item => `
     <div class="catalog-item">
       <span>${escapeHtml(item)}</span>
-      <button class="btn-icon btn-delete-item" data-item="${escapeHtml(item)}" title="Löschen">🗑️</button>
+      <div class="catalog-actions">
+        <button class="btn-icon btn-edit-item" data-item="${escapeHtml(item)}" title="Bearbeiten / Umbenennen">✏️</button>
+        <button class="btn-icon btn-delete-item" data-item="${escapeHtml(item)}" title="Löschen">🗑️</button>
+      </div>
     </div>
   `).join('');
+
+  catalogListItems.querySelectorAll('.btn-edit-item').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const oldItem = e.currentTarget.getAttribute('data-item');
+      const catKey = getCategoryKeyForTab(state.currentDbTab);
+      const newItem = prompt(`Eintrag umbenennen:`, oldItem);
+      if (newItem && newItem.trim() && newItem.trim() !== oldItem) {
+        const res = await ipcRenderer.invoke('db:edit-item', { category: catKey, oldItem, newItem: newItem.trim() });
+        if (res.success) {
+          state.catalog = res.catalog;
+          updateDatalists();
+          renderCatalogList();
+          showToast(`Eintrag umbenannt in "${newItem.trim()}"`, 'success');
+        }
+      }
+    });
+  });
 
   catalogListItems.querySelectorAll('.btn-delete-item').forEach(btn => {
     btn.addEventListener('click', async (e) => {

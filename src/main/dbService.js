@@ -123,6 +123,24 @@ class DatabaseService {
     return false;
   }
 
+  editItem(category, oldItem, newItem) {
+    if (!oldItem || !newItem || typeof newItem !== 'string') return false;
+    const catalog = this.getCatalog();
+    if (catalog[category]) {
+      const idx = catalog[category].indexOf(oldItem);
+      if (idx !== -1) {
+        const trimmed = newItem.trim();
+        if (trimmed) {
+          catalog[category][idx] = trimmed;
+          catalog[category].sort((a, b) => a.localeCompare(b, 'de'));
+          this.saveCatalog(catalog);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   autoLearnSetup(setupData) {
     if (!setupData) return { addedCount: 0, catalog: this.getCatalog() };
     let addedCount = 0;

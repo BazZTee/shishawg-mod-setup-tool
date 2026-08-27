@@ -57,8 +57,8 @@ function createWindow() {
   const iconExists = fs.existsSync(iconPath);
 
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 880,
+    width: 1260,
+    height: 940,
     minWidth: 980,
     minHeight: 720,
     title: 'ShishaWG Mod Setup Tool',
@@ -212,6 +212,11 @@ ipcMain.handle('db:add-item', async (event, { category, item }) => {
 
 ipcMain.handle('db:remove-item', async (event, { category, item }) => {
   const res = dbService.removeItem(category, item);
+  return { success: res, catalog: dbService.getCatalog() };
+});
+
+ipcMain.handle('db:edit-item', async (event, { category, oldItem, newItem }) => {
+  const res = dbService.editItem(category, oldItem, newItem);
   return { success: res, catalog: dbService.getCatalog() };
 });
 

@@ -511,6 +511,48 @@ input[type="text"]:focus, input[type="password"]:focus {
   gap: 14px;
 }
 
+.extras-grid-v2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.full-row-promo {
+  grid-column: 1 / -1;
+}
+
+.promo-input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.promo-input-row input {
+  flex: 1;
+}
+
+.promo-target-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--accent-cyan);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+
+.promo-target-select option {
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.catalog-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 /* Generator Card */
 .generator-card {
   background: linear-gradient(180deg, var(--bg-card) 0%, #101726 100%);

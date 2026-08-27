@@ -109,15 +109,28 @@
 
       <!-- Global Extra & Kohle Section -->
       <section class="global-extras-card">
-        <h3>Stream Extras & Kohle</h3>
-        <div class="extras-grid">
+        <h3>Stream Extras, Promo-Commands & Kohle</h3>
+        <div class="extras-grid-v2">
           <div class="input-group">
             <label for="input-global-kohle">Kohlesorte:</label>
-            <input type="text" id="input-global-kohle" list="list-charcoal" placeholder="z. B. Magic Cubes (Zauberwürfel) !kohle" value="">
+            <input type="text" id="input-global-kohle" list="list-charcoal" placeholder="z. B. Magic Cubes (Zauberwürfel)" value="">
           </div>
           <div class="input-group">
             <label for="input-global-extra">Zusatz-Info / Tasting:</label>
             <input type="text" id="input-global-extra" list="list-tobacco" placeholder="z. B. Trofimoffs No Aroma Tasting">
+          </div>
+          <div class="input-group full-row-promo">
+            <label for="input-global-promo">Zusatz-Command / Promo-Text & Zuordnung:</label>
+            <div class="promo-input-row">
+              <input type="text" id="input-global-promo" placeholder="z. B. !kohle oder !xk">
+              <select id="select-promo-target" class="promo-target-select">
+                <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
+                <option value="pipe">➔ Hinter Pfeife anfügen</option>
+                <option value="bowl">➔ Hinter Kopf anfügen</option>
+                <option value="hmd">➔ Hinter HMD anfügen</option>
+                <option value="extra">➔ Als eigenes Extra anfügen</option>
+              </select>
+            </div>
           </div>
         </div>
       </section>

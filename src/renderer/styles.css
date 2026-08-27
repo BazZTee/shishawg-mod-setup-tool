@@ -909,26 +909,39 @@ textarea#command-output {
 
 .modal-tabs {
   display: flex;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
   margin-bottom: 14px;
 }
 
 .tab-btn {
+  flex: 1;
+  text-align: center;
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  padding: 6px 12px;
-  border-radius: 6px;
+  padding: 8px 6px;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
 }
 
 .tab-btn.active {
   background: var(--bg-input);
   color: var(--accent-cyan);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 153, 255, 0.15);
 }
 
 .add-item-row {

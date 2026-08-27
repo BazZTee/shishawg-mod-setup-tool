@@ -884,7 +884,7 @@ function matchNotesToForm(text) {
   }
 
   // 2. Signal Extract: Bowl / Glas ("auf einer <glass>" or "auf <glass>")
-  const vesselMatch = workText.match(/\bauf\s+(?:einer\s+)?([a-zäöüß0-9\s-]+?)(?=\s+(?:von|mit|im|in|und|magic|musth|\!|$))/i);
+  const vesselMatch = workText.match(/\bauf\s+(?:einer\s+)?([a-zäöüß0-9-]+(?:\s+[a-zäöüß0-9-]+){0,2})/i);
   if (vesselMatch && vesselMatch[1]) {
     let extractedVessel = capitalize(vesselMatch[1].trim());
     if (extractedVessel) {
@@ -899,19 +899,26 @@ function matchNotesToForm(text) {
     }
   }
 
-  // 3. Signal Extract: Kopf ("von <head>")
+  // 3. Signal Extract: Kopf ("von <head>" or brand words like voskurymsia, mumia, cosmo)
+  let extractedHead = '';
   const headMatch = workText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
   if (headMatch && headMatch[1]) {
-    let extractedHead = capitalize(headMatch[1].trim());
-    if (extractedHead) {
-      if (catalog.bowls) {
-        const known = catalog.bowls.find(k => k.toLowerCase().includes(headMatch[1].toLowerCase()) || headMatch[1].toLowerCase().includes(k.toLowerCase()));
-        if (known) extractedHead = known;
-      }
-      if (p.bowl !== extractedHead) {
-        p.bowl = extractedHead;
-        updated = true;
-      }
+    extractedHead = capitalize(headMatch[1].trim());
+  } else {
+    const fallbackHead = workText.match(/\b(voskurymsia\s+mumia|cosmo\s+bowl|litbowl|v1|kalifa|oblako|solaris|vosun|moon)/i);
+    if (fallbackHead && fallbackHead[1]) {
+      extractedHead = capitalize(fallbackHead[1].trim());
+    }
+  }
+
+  if (extractedHead) {
+    if (catalog.bowls) {
+      const known = catalog.bowls.find(k => k.toLowerCase().includes(extractedHead.toLowerCase()) || extractedHead.toLowerCase().includes(k.toLowerCase()));
+      if (known) extractedHead = known;
+    }
+    if (p.bowl !== extractedHead) {
+      p.bowl = extractedHead;
+      updated = true;
     }
   }
 
@@ -989,9 +996,12 @@ function matchNotesToForm(text) {
       }
     }
 
-    if (matchedTobaccos.length > 0 && JSON.stringify(p.tobaccos) !== JSON.stringify(matchedTobaccos)) {
-      p.tobaccos = matchedTobaccos;
-      updated = true;
+    if (matchedTobaccos.length > 0) {
+      const formattedTobaccos = [...matchedTobaccos, ''];
+      if (JSON.stringify(p.tobaccos) !== JSON.stringify(formattedTobaccos)) {
+        p.tobaccos = formattedTobaccos;
+        updated = true;
+      }
     }
   }
 

@@ -818,7 +818,13 @@ function setupEventListeners() {
     const text = commandOutput.value;
     if (text) {
       await ipcRenderer.invoke('app:copy-clipboard', text);
+      btnCopy.classList.add('copied');
+      btnCopy.innerHTML = `✓ Kopiert!`;
       showToast('Befehl in Zwischenablage kopiert!', 'success');
+      setTimeout(() => {
+        btnCopy.classList.remove('copied');
+        btnCopy.innerHTML = `<svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/></svg> Kopieren`;
+      }, 1500);
     }
   });
 
@@ -1106,6 +1112,7 @@ function matchNotesToForm(text) {
   if (btnToggleNotes && notesCard) {
     btnToggleNotes.addEventListener('click', () => {
       notesCard.classList.toggle('hidden');
+      btnToggleNotes.classList.toggle('active', !notesCard.classList.contains('hidden'));
       if (!notesCard.classList.contains('hidden') && notesTextarea) {
         notesTextarea.focus();
       }
@@ -1218,6 +1225,11 @@ function matchNotesToForm(text) {
       showToast(`"${itemVal}" zur Datenbank hinzugefügt`, 'success');
     }
   });
+
+  const dbSearchInput = document.getElementById('db-search-input');
+  if (dbSearchInput) {
+    dbSearchInput.addEventListener('input', renderCatalogList);
+  }
 }
 
 // Auto-Updater Event Handlers
@@ -1324,10 +1336,16 @@ function getCategoryKeyForTab(tabId) {
 
 function renderCatalogList() {
   const catKey = getCategoryKeyForTab(state.currentDbTab);
-  const items = state.catalog[catKey] || [];
+  let items = state.catalog[catKey] || [];
+
+  const dbSearchInput = document.getElementById('db-search-input');
+  const searchVal = dbSearchInput ? dbSearchInput.value.trim().toLowerCase() : '';
+  if (searchVal) {
+    items = items.filter(item => item.toLowerCase().includes(searchVal));
+  }
 
   if (items.length === 0) {
-    catalogListItems.innerHTML = '<p class="subtitle" style="text-align:center; padding: 12px;">Keine Einträge vorhanden</p>';
+    catalogListItems.innerHTML = `<p class="subtitle" style="text-align:center; padding: 12px;">${searchVal ? 'Keine Treffer gefunden' : 'Keine Einträge vorhanden'}</p>`;
     return;
   }
 
@@ -1342,7 +1360,7 @@ function renderCatalogList() {
       }
     }
     return `
-      <div class="catalog-item" id="catalog-item-${idx}">
+      <div class="catalog-item catalog-item-fade" id="catalog-item-${idx}">
         <div class="item-view" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
           ${displayHtml}
           <div class="catalog-actions">

@@ -341,6 +341,18 @@ body {
   cursor: pointer;
 }
 
+/* Active Green Glow for Notes Button */
+#btn-toggle-notes {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#btn-toggle-notes.active {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #34d399 !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
 /* Persons Section */
 .persons-section {
   flex: 1;
@@ -748,6 +760,13 @@ textarea#command-output {
 
 .btn-copy:hover {
   background: var(--border-color);
+}
+
+.btn-copy.copied {
+  background: rgba(16, 185, 129, 0.2) !important;
+  color: #34d399 !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
 }
 
 .generator-actions {

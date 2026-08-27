@@ -122,6 +122,7 @@
 
       <!-- Dynamic Persons Container -->
       <section class="persons-section">
+        <h3 class="section-title">👤 Schritt 1: Personen-Setups</h3>
         <div id="persons-container" class="persons-grid">
           <!-- Dynamically populated via JS -->
         </div>
@@ -306,8 +307,9 @@
 
           <div class="tab-content" id="tab-content-area">
             <div class="add-item-row" id="add-item-row">
+              <input type="text" id="db-search-input" placeholder="🔍 Suchen..." style="max-width: 140px;">
               <input type="text" id="new-item-input" placeholder="Neues Element hinzufügen..." maxlength="30">
-              <input type="text" id="new-item-desc-input" class="hidden" placeholder="Beschreibung (optional, max 30 Zeichen)..." maxlength="30">
+              <input type="text" id="new-item-desc-input" class="hidden" placeholder="Beschreibung (optional)..." maxlength="30">
               <button id="btn-add-db-item" class="btn btn-primary">Hinzufügen</button>
             </div>
             <div class="catalog-list" id="catalog-list-items">

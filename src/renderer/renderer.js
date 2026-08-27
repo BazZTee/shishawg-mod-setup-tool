@@ -881,25 +881,40 @@ function matchNotesToForm(text) {
     return str.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
-  // 1. Pipe Scanner (Scan catalog pipes + synonyms like "futr", "emotion", "amotion", "breeze", "varity", "vyro")
+  // 1. Pipe Scanner with Token Scoring (Model > Brand)
   let matchedPipe = '';
   if (catalog.pipes) {
+    let maxScore = 0;
     for (const pipe of catalog.pipes) {
       const pName = (typeof pipe === 'string' ? pipe : pipe.name).trim();
       const pLower = pName.toLowerCase();
-      const tokens = pLower.split(/\s+/).filter(w => w.length > 2);
-      if (lowerText.includes(pLower) || tokens.some(t => lowerText.includes(t))) {
+      let score = 0;
+
+      if (lowerText.includes(pLower)) {
+        score += 100;
+      } else {
+        const tokens = pLower.split(/\s+/).filter(w => w.length > 1);
+        for (const t of tokens) {
+          if (['amotion', 'moze', 'vyro', 'ocean', 'aeon', 'almani', 'hookah', 'edition'].includes(t)) {
+            if (lowerText.includes(t)) score += 10;
+          } else {
+            if (lowerText.includes(t)) score += 50;
+          }
+        }
+      }
+
+      if (score > maxScore && score >= 25) {
+        maxScore = score;
         matchedPipe = pName;
-        break;
       }
     }
   }
   if (!matchedPipe) {
-    if (lowerText.includes('futr') || lowerText.includes('emotion') || lowerText.includes('amotion')) matchedPipe = 'Amotion Futr';
+    if (lowerText.includes('futr') || lowerText.includes('emotion')) matchedPipe = 'Amotion Futr';
     else if (lowerText.includes('breeze')) matchedPipe = 'Moze Breeze Two';
     else if (lowerText.includes('varity')) matchedPipe = 'Moze Varity';
     else if (lowerText.includes('flash bang')) matchedPipe = 'Amotion Flash Bang';
-    else if (lowerText.includes('specter') || lowerText.includes('vyro')) matchedPipe = 'Vyro Specter';
+    else if (lowerText.includes('specter')) matchedPipe = 'Vyro Specter';
   }
   if (p.pipe !== matchedPipe) {
     p.pipe = matchedPipe;

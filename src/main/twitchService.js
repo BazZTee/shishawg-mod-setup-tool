@@ -290,7 +290,8 @@ class TwitchService {
           const match = raw.match(/:([^!]+)![^@]+@[^\s]+\s+PRIVMSG\s+#\w+\s+:(.+)/);
           if (match) {
             const author = match[1].toLowerCase();
-            const text = match[2].trim();
+            let text = match[2].replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+            text = text.replace(/^ACTION\s+/i, '').trim();
 
             // Ignore our own !setup request
             if (text === '!setup' && author === this.user.login.toLowerCase()) {

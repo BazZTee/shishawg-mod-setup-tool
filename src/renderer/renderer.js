@@ -352,13 +352,15 @@ function generateCommandString() {
 function parseChatSetupMessage(rawText) {
   if (!rawText) return false;
 
-  let text = rawText.trim();
+  // Clean non-printable CTCP control characters and ACTION prefix
+  let text = rawText.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+  text = text.replace(/^ACTION\s+/i, '').trim();
 
   // Strip bot user prefix e.g. "marvedbot: Marvin: ..." or "bazzteedj: Marvin: ..."
   text = text.replace(/^([a-zA-Z0-9_]+):\s*(?=[a-zA-Z0-9_]+\s*:)/, '');
   text = text.replace(/^!editsetup\s+/i, '').replace(/^!setup\s+/i, '').trim();
 
-  const segments = text.split('//').map(s => s.trim()).filter(Boolean);
+  const segments = text.split('//').map(s => s.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim()).filter(Boolean);
   if (segments.length === 0) return false;
 
   const parsedPersons = [];
@@ -371,17 +373,17 @@ function parseChatSetupMessage(rawText) {
     // Check if segment contains person name pattern "Name: ..."
     if (seg.includes(':')) {
       const colonIdx = seg.indexOf(':');
-      let pName = seg.substring(0, colonIdx).trim();
-      let pSetup = seg.substring(colonIdx + 1).trim();
+      let pName = seg.substring(0, colonIdx).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      let pSetup = seg.substring(colonIdx + 1).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
 
       // Clean bot prefixes or ACTION from name
-      pName = pName.replace(/^(action|marvedbot|marved|bot)\s+/i, '').trim();
+      pName = pName.replace(/^(action|marvedbot|marved|bot)\s*/i, '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
 
       let pipe = '';
       let tobaccos = [];
 
       if (pSetup.includes('&')) {
-        const parts = pSetup.split('&').map(x => x.trim());
+        const parts = pSetup.split('&').map(x => x.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim());
         pipe = parts[0];
         if (parts[1]) tobaccos.push(parts[1]);
       } else {

@@ -855,7 +855,16 @@ async function triggerAutoLearn() {
 }
 
 function matchNotesToForm(text) {
-  if (!text || text.length < 2) return;
+  if (!text || text.trim().length < 2) {
+    if (state.persons[0]) {
+      const pName = state.persons[0].name || 'Marvin';
+      state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
+    }
+    if (inputGlobalKohle) inputGlobalKohle.value = '';
+    renderPersonsGrid();
+    generateCommandString();
+    return;
+  }
   const catalog = state.catalog || {};
   let updated = false;
 
@@ -1057,7 +1066,14 @@ function matchNotesToForm(text) {
   if (btnClearNotes && notesTextarea) {
     btnClearNotes.addEventListener('click', () => {
       notesTextarea.value = '';
-      showToast('Notizen geleert', 'info');
+      if (state.persons[0]) {
+        const pName = state.persons[0].name || 'Marvin';
+        state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
+      }
+      if (inputGlobalKohle) inputGlobalKohle.value = '';
+      renderPersonsGrid();
+      generateCommandString();
+      showToast('Notizen & Formular geleert', 'info');
     });
   }
 

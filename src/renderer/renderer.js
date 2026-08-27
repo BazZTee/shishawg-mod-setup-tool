@@ -40,6 +40,10 @@ const selectPromoTarget = document.getElementById('select-promo-target');
 const chkIncludePromoDesc = document.getElementById('chk-include-promo-desc');
 const newItemDescInput = document.getElementById('new-item-desc-input');
 const btnResetAll = document.getElementById('btn-reset-all');
+const btnToggleNotes = document.getElementById('btn-toggle-notes');
+const notesCard = document.getElementById('notes-card');
+const btnClearNotes = document.getElementById('btn-clear-notes');
+const notesTextarea = document.getElementById('notes-textarea');
 const toastBanner = document.getElementById('toast-banner');
 const toastMessage = document.getElementById('toast-message');
 
@@ -826,10 +830,28 @@ async function triggerAutoLearn() {
     state.personCount = 1;
     personCountSelect.value = "1";
     state.persons = [];
+    if (notesTextarea) notesTextarea.value = '';
     renderPersonsGrid();
     generateCommandString();
     showToast('Formular zurückgesetzt', 'info');
   });
+
+  // Notes Listeners
+  if (btnToggleNotes && notesCard) {
+    btnToggleNotes.addEventListener('click', () => {
+      notesCard.classList.toggle('hidden');
+      if (!notesCard.classList.contains('hidden') && notesTextarea) {
+        notesTextarea.focus();
+      }
+    });
+  }
+
+  if (btnClearNotes && notesTextarea) {
+    btnClearNotes.addEventListener('click', () => {
+      notesTextarea.value = '';
+      showToast('Notizen geleert', 'info');
+    });
+  }
 
   // Target Bot Listener
   if (targetBotInput) {

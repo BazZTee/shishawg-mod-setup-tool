@@ -1,6 +1,6 @@
 {
   "name": "shishawg-mod-setup-tool",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Moderator Tool für ShishaWG zum Erstellen und Senden des Stream-Setups im Twitch-Chat",
   "main": "src/main/main.js",
   "author": "ShishaWG Mod Team",
@@ -43,8 +43,10 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
+      "guid": "de-shishawg-modsetuptool-nsis-guid",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "ShishaWG Mod Setup Tool"

@@ -12,7 +12,7 @@ let state = {
   },
   persons: [],
   twitchUser: null,
-  targetChannel: 'marft',
+  targetChannel: 'marved', // Default channel: marved
   currentDbTab: 'tab-tobacco',
   clientId: ''
 };
@@ -199,10 +199,7 @@ function renderPersonsGrid() {
       </div>
 
       <div class="input-group full-width tobacco-mix-wrapper">
-        <div class="tobacco-header">
-          <label>Tabaksorte(n):</label>
-          <button class="btn-add-tobacco-slot" data-pindex="${i}">+ Weitere Sorte</button>
-        </div>
+        <label>Tabaksorte(n):</label>
         <div class="tobacco-mix-inputs">
           ${tobaccoSlotsHtml}
         </div>
@@ -227,11 +224,10 @@ function attachCardInputListeners() {
         if (!isNaN(personIdx) && state.persons[personIdx]) {
           state.persons[personIdx].tobaccos[tobIdx] = e.target.value;
 
-          // Auto-expand: if typing in the last tobacco slot and it's not empty, add a new empty slot!
+          // Seamless Auto-expand: typing into the last slot automatically appends a new empty slot!
           if (tobIdx === state.persons[personIdx].tobaccos.length - 1 && e.target.value.trim() !== '') {
             state.persons[personIdx].tobaccos.push('');
             renderPersonsGrid();
-            // Restore focus to the input
             const newInputs = document.querySelectorAll(`.input-p-tob[data-pindex="${personIdx}"]`);
             if (newInputs[tobIdx]) {
               newInputs[tobIdx].focus();
@@ -258,18 +254,6 @@ function attachCardInputListeners() {
       }
 
       generateCommandString();
-    });
-  });
-
-  // Add Tobacco Slot Button
-  document.querySelectorAll('.btn-add-tobacco-slot').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
-      if (!isNaN(pIdx) && state.persons[pIdx]) {
-        state.persons[pIdx].tobaccos.push('');
-        renderPersonsGrid();
-        generateCommandString();
-      }
     });
   });
 
@@ -414,7 +398,9 @@ function parseChatSetupMessage(rawText) {
       if (seg.includes('und') && (seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('darkside'))) {
         const parts = seg.split('und').map(x => x.trim());
         if (parsedPersons.length > 0) {
-          if (!parsedPersons[0].tobaccos[1] && parts[0]) {
+          if (!parsedPersons[0].tobaccos[0] || parsedPersons[0].tobaccos[0] === '') {
+            parsedPersons[0].tobaccos[0] = parts[0];
+          } else {
             parsedPersons[0].tobaccos.push(parts[0]);
           }
           if (parts[1]) sharedBowl = parts[1];
@@ -489,7 +475,7 @@ function setupEventListeners() {
 
   // Target Channel Listener
   targetChannelInput.addEventListener('change', async () => {
-    state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marft';
+    state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marved';
     await ipcRenderer.invoke('twitch:set-channel', state.targetChannel);
     showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
   });

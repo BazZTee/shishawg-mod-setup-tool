@@ -19,7 +19,7 @@ class TwitchService {
     }
     this.accessToken = store.get('twitch_access_token', '');
     this.user = store.get('twitch_user', null);
-    this.targetChannel = store.get('target_channel', 'marft');
+    this.targetChannel = store.get('target_channel', 'marved');
   }
 
   setClientId(clientId) {

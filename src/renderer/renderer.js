@@ -825,6 +825,107 @@ async function triggerAutoLearn() {
   } catch(e) {}
 }
 
+function matchNotesToForm(text) {
+  if (!text || text.length < 3) return;
+  const catalog = state.catalog;
+  if (!catalog) return;
+
+  const lowerText = text.toLowerCase();
+  let updated = false;
+
+  if (!state.persons[0]) {
+    state.persons[0] = { name: 'Marvin', pipe: '', bowl: '', hmd: '', tobaccos: [''] };
+  }
+  const p = state.persons[0];
+
+  // Match Pipe
+  if (catalog.pipes) {
+    for (const pipe of catalog.pipes) {
+      const pName = (typeof pipe === 'string' ? pipe : pipe.name).trim();
+      const pLower = pName.toLowerCase();
+      const keywords = pLower.split(/\s+/).filter(w => w.length > 3);
+      if (lowerText.includes(pLower) || keywords.some(kw => lowerText.includes(kw))) {
+        if (p.pipe !== pName) {
+          p.pipe = pName;
+          updated = true;
+        }
+        break;
+      }
+    }
+  }
+
+  // Match Bowl
+  if (catalog.bowls) {
+    for (const bowl of catalog.bowls) {
+      const bName = (typeof bowl === 'string' ? bowl : bowl.name).trim();
+      const bLower = bName.toLowerCase();
+      const keywords = bLower.split(/\s+/).filter(w => w.length > 3);
+      if (lowerText.includes(bLower) || keywords.some(kw => lowerText.includes(kw))) {
+        if (p.bowl !== bName) {
+          p.bowl = bName;
+          updated = true;
+        }
+        break;
+      }
+    }
+  }
+
+  // Match HMD
+  if (catalog.hmds) {
+    for (const hmd of catalog.hmds) {
+      const hName = (typeof hmd === 'string' ? hmd : hmd.name).trim();
+      const hLower = hName.toLowerCase();
+      const keywords = hLower.split(/\s+/).filter(w => w.length > 2);
+      if (lowerText.includes(hLower) || keywords.some(kw => lowerText.includes(kw))) {
+        if (p.hmd !== hName) {
+          p.hmd = hName;
+          updated = true;
+        }
+        break;
+      }
+    }
+  }
+
+  // Match Tobacco
+  if (catalog.tobacco) {
+    const matchedTobaccos = [];
+    for (const tob of catalog.tobacco) {
+      const tName = (typeof tob === 'string' ? tob : tob.name).trim();
+      const tLower = tName.toLowerCase();
+      const keywords = tLower.split(/\s+/).filter(w => w.length > 3 && w !== 'tobacco');
+      if (lowerText.includes(tLower) || keywords.some(kw => lowerText.includes(kw))) {
+        if (!matchedTobaccos.includes(tName)) {
+          matchedTobaccos.push(tName);
+        }
+      }
+    }
+    if (matchedTobaccos.length > 0) {
+      p.tobaccos = matchedTobaccos;
+      updated = true;
+    }
+  }
+
+  // Match Charcoal
+  if (catalog.charcoal) {
+    for (const c of catalog.charcoal) {
+      const cName = (typeof c === 'string' ? c : c.name).trim();
+      const cLower = cName.toLowerCase();
+      if (lowerText.includes('cubes') || lowerText.includes('zauberwürfel') || lowerText.includes(cLower)) {
+        if (inputGlobalKohle && inputGlobalKohle.value !== cName) {
+          inputGlobalKohle.value = cName;
+          updated = true;
+        }
+        break;
+      }
+    }
+  }
+
+  if (updated) {
+    renderPersonsGrid();
+    generateCommandString();
+  }
+}
+
   // Reset Form
   btnResetAll.addEventListener('click', () => {
     state.personCount = 1;
@@ -850,6 +951,12 @@ async function triggerAutoLearn() {
     btnClearNotes.addEventListener('click', () => {
       notesTextarea.value = '';
       showToast('Notizen geleert', 'info');
+    });
+  }
+
+  if (notesTextarea) {
+    notesTextarea.addEventListener('input', () => {
+      matchNotesToForm(notesTextarea.value);
     });
   }
 

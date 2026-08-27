@@ -9,8 +9,8 @@ class TwitchService {
     this.store = store;
     this.authServer = null;
     this.ws = null;
-    // Twitch CLI Official Client ID designed for local desktop apps (localhost redirect)
-    this.clientId = store.get('twitch_client_id', 'q6batx0wpep6bch5sy1qxyygxj2tv1'); 
+    // Official ShishaWG Mod Setup Tool Twitch Client ID
+    this.clientId = store.get('twitch_client_id', '440sjk1dkut7ltxkf7b3p267dekbpu'); 
     this.accessToken = store.get('twitch_access_token', '');
     this.user = store.get('twitch_user', null);
     this.targetChannel = store.get('target_channel', 'marft');

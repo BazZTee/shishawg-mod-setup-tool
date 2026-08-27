@@ -10,7 +10,13 @@ class TwitchService {
     this.authServer = null;
     this.ws = null;
     // Official ShishaWG Mod Setup Tool Twitch Client ID
-    this.clientId = store.get('twitch_client_id', '440sjk1dkut7ltxkf7b3p267dekbpu'); 
+    this.clientId = '440sjk1dkut7ltxkf7b3p267dekbpu'; 
+    const savedCid = store.get('twitch_client_id', '');
+    if (savedCid && savedCid.length > 5) {
+      this.clientId = savedCid;
+    } else {
+      store.set('twitch_client_id', this.clientId);
+    }
     this.accessToken = store.get('twitch_access_token', '');
     this.user = store.get('twitch_user', null);
     this.targetChannel = store.get('target_channel', 'marft');

@@ -1,6 +1,6 @@
 {
   "name": "shishawg-mod-setup-tool",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "Moderator Tool für ShishaWG zum Erstellen und Senden des Stream-Setups im Twitch-Chat",
   "main": "src/main/main.js",
   "author": "ShishaWG Mod Team",

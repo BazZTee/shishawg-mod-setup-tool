@@ -122,7 +122,7 @@
           <div class="input-group full-row-promo">
             <label for="input-global-promo">Zusatz-Command / Promo-Text & Zuordnung:</label>
             <div class="promo-input-row">
-              <input type="text" id="input-global-promo" placeholder="z. B. !kohle oder !xk">
+              <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xk">
               <select id="select-promo-target" class="promo-target-select">
                 <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
                 <option value="pipe">➔ Hinter Pfeife anfügen</option>
@@ -275,6 +275,7 @@
             <button class="tab-btn" data-tab="tab-bowls">Köpfe</button>
             <button class="tab-btn" data-tab="tab-hmds">HMDs</button>
             <button class="tab-btn" data-tab="tab-charcoal">Kohle</button>
+            <button class="tab-btn" data-tab="tab-promos">Promos & Commands</button>
           </div>
 
           <div class="tab-content" id="tab-content-area">
@@ -296,6 +297,7 @@
     <datalist id="list-hmds"></datalist>
     <datalist id="list-tobacco"></datalist>
     <datalist id="list-charcoal"></datalist>
+    <datalist id="list-promos"></datalist>
 
   </div>
 

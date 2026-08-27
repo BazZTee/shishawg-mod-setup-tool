@@ -59,6 +59,11 @@ class DatabaseService {
         'One Nation 26mm',
         'Cocodice 27mm'
       ],
+      promos: [
+        '!kohle (Magic Cubes Zauberwürfel)',
+        '!xk (Sichert euch den neuen XK Kopf)',
+        '!tasting (No Aroma Tasting im Stream)'
+      ],
       presets: []
     };
     this.init();
@@ -210,7 +215,7 @@ class DatabaseService {
             const localCatalog = this.getCatalog();
             let addedCount = 0;
 
-            const categories = ['pipes', 'bowls', 'hmds', 'tobacco', 'charcoal'];
+            const categories = ['pipes', 'bowls', 'hmds', 'tobacco', 'charcoal', 'promos'];
             for (const cat of categories) {
               if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
                 const cleanedList = remoteCatalog[cat]

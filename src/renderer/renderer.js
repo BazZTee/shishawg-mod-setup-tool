@@ -437,6 +437,8 @@ function parseChatSetupMessage(rawText) {
             parsedPersons[0].tobaccos.push(parts[0]);
           }
           if (parts[1]) sharedBowl = parts[1];
+        } else {
+          sharedBowl = seg;
         }
       } else {
         sharedBowl = seg;
@@ -449,9 +451,27 @@ function parseChatSetupMessage(rawText) {
           parsedPersons[0].tobaccos.push(seg);
         }
       } else {
-        globalExtra = globalExtra ? `${globalExtra} // ${seg}` : seg;
+        // Fallback: create default Person 1 if no colon was present
+        parsedPersons.push({
+          name: 'Person 1',
+          pipe: seg,
+          bowl: '',
+          hmd: '',
+          tobaccos: ['']
+        });
       }
     }
+  }
+
+  // Fallback: if segments were found but no person matched, create default Person 1
+  if (parsedPersons.length === 0 && segments.length > 0) {
+    parsedPersons.push({
+      name: 'Person 1',
+      pipe: segments[0] || '',
+      bowl: sharedBowl,
+      hmd: sharedHmd,
+      tobaccos: segments.length > 1 ? [segments[1]] : ['']
+    });
   }
 
   if (parsedPersons.length > 0) {

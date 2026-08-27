@@ -215,6 +215,11 @@ ipcMain.handle('db:remove-item', async (event, { category, item }) => {
   return { success: res, catalog: dbService.getCatalog() };
 });
 
+ipcMain.handle('db:auto-learn', async (event, setupData) => {
+  const res = dbService.autoLearnSetup(setupData);
+  return { success: true, ...res };
+});
+
 // IPC Handlers for Auto-Updater
 ipcMain.handle('updater:check', async () => {
   try {

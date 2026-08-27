@@ -494,6 +494,7 @@ function parseChatSetupMessage(rawText) {
 
     renderPersonsGrid();
     generateCommandString();
+    triggerAutoLearn();
     return true;
   }
 
@@ -737,10 +738,26 @@ function setupEventListeners() {
 
     if (res.success) {
       showToast(`!editsetup Befehl in #${state.targetChannel} gesendet!`, 'success');
+      triggerAutoLearn();
     } else {
       showToast(`Fehler beim Senden: ${res.error}`, 'error');
     }
   });
+
+async function triggerAutoLearn() {
+  try {
+    const res = await ipcRenderer.invoke('db:auto-learn', {
+      persons: state.persons,
+      kohle: inputGlobalKohle ? inputGlobalKohle.value : '',
+      extra: inputGlobalExtra ? inputGlobalExtra.value : ''
+    });
+    if (res && res.addedCount > 0) {
+      state.catalog = res.catalog;
+      updateDatalists();
+      showToast(`${res.addedCount} neue(s) Element(e) automatisch in die Datenbank aufgenommen!`, 'success');
+    }
+  } catch(e) {}
+}
 
   // Reset Form
   btnResetAll.addEventListener('click', () => {

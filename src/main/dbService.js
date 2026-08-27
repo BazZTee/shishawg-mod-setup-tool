@@ -129,14 +129,42 @@ class DatabaseService {
     return false;
   }
 
-  removeItem(category, item) {
+  autoLearnSetup(setupData) {
+    if (!setupData) return { addedCount: 0, catalog: this.getCatalog() };
+    let addedCount = 0;
     const catalog = this.getCatalog();
-    if (catalog[category]) {
-      catalog[category] = catalog[category].filter(i => i !== item);
-      this.saveCatalog(catalog);
-      return true;
+
+    const addIfNew = (category, val) => {
+      if (!val || typeof val !== 'string') return;
+      const trimmed = val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (!catalog[category]) catalog[category] = [];
+      if (trimmed.length > 1 && !catalog[category].includes(trimmed)) {
+        catalog[category].push(trimmed);
+        catalog[category].sort((a, b) => a.localeCompare(b, 'de'));
+        addedCount++;
+      }
+    };
+
+    if (setupData.persons && Array.isArray(setupData.persons)) {
+      for (const p of setupData.persons) {
+        addIfNew('pipes', p.pipe);
+        addIfNew('bowls', p.bowl);
+        addIfNew('hmds', p.hmd);
+        if (p.tobaccos && Array.isArray(p.tobaccos)) {
+          for (const t of p.tobaccos) {
+            addIfNew('tobacco', t);
+          }
+        }
+      }
     }
-    return false;
+
+    if (setupData.kohle) addIfNew('charcoal', setupData.kohle);
+    if (setupData.extra) addIfNew('tobacco', setupData.extra);
+
+    if (addedCount > 0) {
+      this.saveCatalog(catalog);
+    }
+    return { addedCount, catalog };
   }
 }
 

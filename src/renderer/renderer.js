@@ -88,6 +88,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupUpdaterEvents();
   generateCommandString();
+
+  // Auto-sync community catalog from GitHub on startup
+  setTimeout(async () => {
+    try {
+      const res = await ipcRenderer.invoke('db:sync-github');
+      if (res && res.addedCount > 0) {
+        state.catalog = res.catalog;
+        updateDatalists();
+        showToast(`${res.addedCount} neue Katalog-Einträge von GitHub geladen!`, 'success');
+      }
+    } catch(e) {}
+  }, 2000);
 });
 
 // Load Database Catalog
@@ -774,6 +786,29 @@ async function triggerAutoLearn() {
     dbModal.classList.remove('hidden');
     renderCatalogList();
   });
+
+  const btnSyncGithubDb = document.getElementById('btn-sync-github-db');
+  if (btnSyncGithubDb) {
+    btnSyncGithubDb.addEventListener('click', async () => {
+      btnSyncGithubDb.disabled = true;
+      btnSyncGithubDb.textContent = '🔄 Abgleich läuft...';
+      const res = await ipcRenderer.invoke('db:sync-github');
+      btnSyncGithubDb.disabled = false;
+      btnSyncGithubDb.textContent = '🔄 Community-Katalog von GitHub abgleichen';
+      if (res && res.success) {
+        state.catalog = res.catalog;
+        updateDatalists();
+        renderCatalogList();
+        if (res.addedCount > 0) {
+          showToast(`${res.addedCount} neue Katalog-Einträge geladen!`, 'success');
+        } else {
+          showToast('Katalog ist bereits auf dem neuesten Stand!', 'info');
+        }
+      } else {
+        showToast('Konnte Community-Katalog nicht abgleichen', 'error');
+      }
+    });
+  }
 
   btnCloseDbModal.addEventListener('click', () => {
     dbModal.classList.add('hidden');

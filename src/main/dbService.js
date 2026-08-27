@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const { app } = require('electron');
 
 class DatabaseService {
@@ -55,29 +56,7 @@ class DatabaseService {
         'One Nation 26mm',
         'Cocodice 27mm'
       ],
-      presets: [
-        {
-          name: "Standard Stream Setup",
-          persons: [
-            {
-              name: "Marvin",
-              pipe: "Amotion Futr",
-              bowl: "Cosmo Bowl",
-              hmd: "ONMO HMD",
-              tobacco: ["Trofimoff Like Zaghoul"]
-            },
-            {
-              name: "Yannick",
-              pipe: "Amotion Pedal",
-              bowl: "Hookain LitBowl",
-              hmd: "Na Grani",
-              tobacco: ["Trofimoff Anejo", "Darkside Shot"]
-            }
-          ],
-          charcoal: "Magic Cubes (Zauberwürfel) !kohle",
-          extra: "Trofimoffs No Aroma Tasting"
-        }
-      ]
+      presets: []
     };
     this.init();
   }
@@ -129,6 +108,16 @@ class DatabaseService {
     return false;
   }
 
+  removeItem(category, item) {
+    const catalog = this.getCatalog();
+    if (catalog[category]) {
+      catalog[category] = catalog[category].filter(i => i !== item);
+      this.saveCatalog(catalog);
+      return true;
+    }
+    return false;
+  }
+
   autoLearnSetup(setupData) {
     if (!setupData) return { addedCount: 0, catalog: this.getCatalog() };
     let addedCount = 0;
@@ -165,6 +154,51 @@ class DatabaseService {
       this.saveCatalog(catalog);
     }
     return { addedCount, catalog };
+  }
+
+  async syncWithGitHubCommunityCatalog() {
+    return new Promise((resolve) => {
+      const url = 'https://raw.githubusercontent.com/BazZTee/shishawg-mod-setup-tool/main/community_catalog.json';
+      https.get(url, (res) => {
+        if (res.statusCode !== 200) {
+          return resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
+        }
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            const remoteCatalog = JSON.parse(body);
+            const localCatalog = this.getCatalog();
+            let addedCount = 0;
+
+            const categories = ['pipes', 'bowls', 'hmds', 'tobacco', 'charcoal'];
+            for (const cat of categories) {
+              if (!localCatalog[cat]) localCatalog[cat] = [];
+              if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
+                for (const item of remoteCatalog[cat]) {
+                  const itemName = typeof item === 'string' ? item : (item.name || item);
+                  const trimmed = itemName.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+                  if (trimmed && !localCatalog[cat].includes(trimmed)) {
+                    localCatalog[cat].push(trimmed);
+                    addedCount++;
+                  }
+                }
+                localCatalog[cat].sort((a, b) => (typeof a === 'string' ? a : a.name).localeCompare(typeof b === 'string' ? b : b.name, 'de'));
+              }
+            }
+
+            if (addedCount > 0) {
+              this.saveCatalog(localCatalog);
+            }
+            resolve({ success: true, addedCount, catalog: localCatalog });
+          } catch(e) {
+            resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
+          }
+        });
+      }).on('error', () => {
+        resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
+      });
+    });
   }
 }
 

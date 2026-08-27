@@ -220,6 +220,11 @@ ipcMain.handle('db:auto-learn', async (event, setupData) => {
   return { success: true, ...res };
 });
 
+ipcMain.handle('db:sync-github', async () => {
+  const res = await dbService.syncWithGitHubCommunityCatalog();
+  return res;
+});
+
 // IPC Handlers for Auto-Updater
 ipcMain.handle('updater:check', async () => {
   try {

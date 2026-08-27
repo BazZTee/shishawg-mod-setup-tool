@@ -341,7 +341,7 @@ body {
   font-weight: 600;
 }
 
-input[type="text"] {
+input[type="text"], input[type="password"] {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
@@ -352,7 +352,7 @@ input[type="text"] {
   transition: border-color 0.2s;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus, input[type="password"]:focus {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 2px rgba(0, 153, 255, 0.2);
 }
@@ -594,9 +594,9 @@ textarea#command-output {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  width: 550px;
-  max-width: 90vw;
-  max-height: 80vh;
+  width: 580px;
+  max-width: 92vw;
+  max-height: 85vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -617,6 +617,19 @@ textarea#command-output {
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+}
+
+.login-option-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.login-option-box h4 {
+  font-size: 0.95rem;
+  color: var(--accent-cyan);
+  margin-bottom: 6px;
 }
 
 .modal-tabs {

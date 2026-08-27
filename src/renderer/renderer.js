@@ -13,7 +13,8 @@ let state = {
   persons: [],
   twitchUser: null,
   targetChannel: 'marft',
-  currentDbTab: 'tab-tobacco'
+  currentDbTab: 'tab-tobacco',
+  clientId: ''
 };
 
 // DOM Elements
@@ -26,6 +27,7 @@ const btnCopy = document.getElementById('btn-copy');
 const btnSendChat = document.getElementById('btn-send-chat');
 const btnTwitchLogin = document.getElementById('btn-twitch-login');
 const btnTwitchLogout = document.getElementById('btn-twitch-logout');
+const btnTwitchSettings = document.getElementById('btn-twitch-settings');
 const twitchUserBadge = document.getElementById('twitch-user-badge');
 const userAvatar = document.getElementById('user-avatar');
 const userDisplayName = document.getElementById('user-display-name');
@@ -36,7 +38,17 @@ const btnResetAll = document.getElementById('btn-reset-all');
 const toastBanner = document.getElementById('toast-banner');
 const toastMessage = document.getElementById('toast-message');
 
-// Modal Elements
+// Twitch Modal Elements
+const twitchModal = document.getElementById('twitch-modal');
+const btnCloseTwitchModal = document.getElementById('btn-close-twitch-modal');
+const btnGetTmiToken = document.getElementById('btn-get-tmi-token');
+const inputOauthToken = document.getElementById('input-oauth-token');
+const btnSaveToken = document.getElementById('btn-save-token');
+const inputClientId = document.getElementById('input-client-id');
+const btnStartBrowserOauth = document.getElementById('btn-start-browser-oauth');
+const linkTwitchDev = document.getElementById('link-twitch-dev');
+
+// Database Modal Elements
 const btnOpenDb = document.getElementById('btn-open-db');
 const dbModal = document.getElementById('db-modal');
 const btnCloseDbModal = document.getElementById('btn-close-db-modal');
@@ -83,7 +95,17 @@ async function checkTwitchAuth() {
       state.targetChannel = authData.targetChannel;
       targetChannelInput.value = state.targetChannel;
     }
+    if (authData.clientId) {
+      state.clientId = authData.clientId;
+      inputClientId.value = state.clientId;
+    }
     updateTwitchUI();
+  } else {
+    const cfg = await ipcRenderer.invoke('twitch:get-config');
+    if (cfg && cfg.clientId) {
+      state.clientId = cfg.clientId;
+      inputClientId.value = state.clientId;
+    }
   }
 }
 
@@ -254,7 +276,7 @@ function generateCommandString() {
     if (p.bowl) personSegments.push(p.bowl.trim());
     if (p.hmd) personSegments.push(p.hmd.trim());
 
-    // Tobacco Mix Concatenation (Grammatically joined: Tabak1, Tabak2 und Tabak3)
+    // Tobacco Mix Concatenation
     const tobaccos = [p.tobacco1, p.tobacco2, p.tobacco3]
       .map(t => (t || '').trim())
       .filter(Boolean);
@@ -335,9 +357,63 @@ function setupEventListeners() {
   });
 
   // Twitch Auth Listeners
-  btnTwitchLogin.addEventListener('click', async () => {
+  btnTwitchLogin.addEventListener('click', () => {
+    twitchModal.classList.remove('hidden');
+  });
+
+  if (btnTwitchSettings) {
+    btnTwitchSettings.addEventListener('click', () => {
+      twitchModal.classList.remove('hidden');
+    });
+  }
+
+  btnCloseTwitchModal.addEventListener('click', () => {
+    twitchModal.classList.add('hidden');
+  });
+
+  // Direct Token link
+  btnGetTmiToken.addEventListener('click', () => {
+    ipcRenderer.invoke('app:open-external', 'https://twitchapps.com/tmi/');
+  });
+
+  if (linkTwitchDev) {
+    linkTwitchDev.addEventListener('click', (e) => {
+      e.preventDefault();
+      ipcRenderer.invoke('app:open-external', 'https://dev.twitch.tv/console/apps');
+    });
+  }
+
+  // Save Direct Token
+  btnSaveToken.addEventListener('click', async () => {
+    const rawToken = inputOauthToken.value.trim();
+    if (!rawToken) {
+      showToast('Bitte gib einen Token ein', 'error');
+      return;
+    }
+
+    btnSaveToken.disabled = true;
+    btnSaveToken.textContent = 'Prüfe...';
+
+    const res = await ipcRenderer.invoke('twitch:save-token', rawToken);
+    btnSaveToken.disabled = false;
+    btnSaveToken.textContent = 'Verbinden';
+
+    if (res.success) {
+      state.twitchUser = res.user;
+      updateTwitchUI();
+      twitchModal.classList.add('hidden');
+      inputOauthToken.value = '';
+      showToast(`Erfolgreich eingeloggt als ${res.user.display_name || res.user.login}!`, 'success');
+    } else {
+      showToast(res.error || 'Ungültiger Twitch Token', 'error');
+    }
+  });
+
+  // Browser OAuth with Client ID
+  btnStartBrowserOauth.addEventListener('click', async () => {
+    const customCid = inputClientId.value.trim();
     showToast('Öffne Twitch Login im Browser...', 'info');
-    await ipcRenderer.invoke('twitch:login');
+    await ipcRenderer.invoke('twitch:login', customCid);
   });
 
   btnTwitchLogout.addEventListener('click', async () => {
@@ -350,6 +426,7 @@ function setupEventListeners() {
   ipcRenderer.on('twitch:authenticated', (event, { user }) => {
     state.twitchUser = user;
     updateTwitchUI();
+    twitchModal.classList.add('hidden');
     showToast(`Erfolgreich eingeloggt als ${user.display_name || user.login}!`, 'success');
   });
 
@@ -371,6 +448,7 @@ function setupEventListeners() {
     }
 
     if (!state.twitchUser) {
+      twitchModal.classList.remove('hidden');
       showToast('Bitte verbinde dich zuerst mit Twitch', 'error');
       return;
     }

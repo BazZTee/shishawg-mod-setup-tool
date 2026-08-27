@@ -9,11 +9,18 @@ class TwitchService {
     this.store = store;
     this.authServer = null;
     this.ws = null;
-    this.clientId = store.get('twitch_client_id', 'kimne78kx3ncx6brogo4mv6wki5h1ko'); // Standard Twitch Web Client ID fallback
+    // Default to Twitch CLI / Standard Public Chat Client ID or user-configured Client ID
+    this.clientId = store.get('twitch_client_id', 'gp762nuuoqcoxypju8c569th9wz7q5'); 
     this.accessToken = store.get('twitch_access_token', '');
     this.user = store.get('twitch_user', null);
     this.targetChannel = store.get('target_channel', 'marft');
-    this.isConnectedToChat = false;
+  }
+
+  setClientId(clientId) {
+    if (clientId) {
+      this.clientId = clientId.trim();
+      this.store.set('twitch_client_id', this.clientId);
+    }
   }
 
   setTargetChannel(channel) {
@@ -22,42 +29,50 @@ class TwitchService {
     this.store.set('target_channel', this.targetChannel);
   }
 
-  async validateToken(token = this.accessToken) {
-    if (!token) return null;
+  async validateToken(tokenInput = this.accessToken) {
+    if (!tokenInput) return null;
+
+    // Clean token (remove 'oauth:' prefix if user pasted it)
+    const cleanToken = tokenInput.replace(/^oauth:/i, '').trim();
+
     try {
-      const response = await fetch('https://api.twitch.tv/helix/users', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Client-Id': this.clientId
-        }
+      // 1. Try id.twitch.tv/oauth2/validate (Works for any Twitch OAuth token without needing client_id)
+      const valResp = await fetch('https://id.twitch.tv/oauth2/validate', {
+        headers: { 'Authorization': `OAuth ${cleanToken}` }
       });
 
-      if (!response.ok) {
-        // Try fallback with id.twitch.tv/oauth2/validate
-        const valResp = await fetch('https://id.twitch.tv/oauth2/validate', {
-          headers: { 'Authorization': `OAuth ${token}` }
-        });
-        if (valResp.ok) {
-          const valData = await valResp.json();
-          this.user = {
-            login: valData.login,
-            display_name: valData.login,
-            id: valData.user_id,
-            profile_image_url: ''
-          };
-          this.accessToken = token;
-          this.store.set('twitch_access_token', token);
-          this.store.set('twitch_user', this.user);
-          return this.user;
-        }
-        return null;
-      }
+      if (valResp.ok) {
+        const valData = await valResp.json();
+        
+        // Fetch detailed profile (avatar URL) if possible
+        let profileImage = '';
+        try {
+          const userResp = await fetch(`https://api.twitch.tv/helix/users?id=${valData.user_id}`, {
+            headers: {
+              'Authorization': `Bearer ${cleanToken}`,
+              'Client-Id': valData.client_id || this.clientId
+            }
+          });
+          if (userResp.ok) {
+            const uData = await userResp.json();
+            if (uData.data && uData.data.length > 0) {
+              profileImage = uData.data[0].profile_image_url;
+            }
+          }
+        } catch(e) {}
 
-      const data = await response.json();
-      if (data.data && data.data.length > 0) {
-        this.user = data.data[0];
-        this.accessToken = token;
-        this.store.set('twitch_access_token', token);
+        this.user = {
+          login: valData.login,
+          display_name: valData.login,
+          id: valData.user_id,
+          profile_image_url: profileImage
+        };
+        this.accessToken = cleanToken;
+        if (valData.client_id) {
+          this.clientId = valData.client_id;
+          this.store.set('twitch_client_id', this.clientId);
+        }
+        this.store.set('twitch_access_token', cleanToken);
         this.store.set('twitch_user', this.user);
         return this.user;
       }
@@ -67,7 +82,11 @@ class TwitchService {
     return null;
   }
 
-  startAuthServer() {
+  startAuthServer(customClientId = null) {
+    if (customClientId) {
+      this.setClientId(customClientId);
+    }
+
     return new Promise((resolve, reject) => {
       if (this.authServer) {
         try { this.authServer.close(); } catch(e){}
@@ -80,7 +99,6 @@ class TwitchService {
         const reqUrl = url.parse(req.url, true);
 
         if (reqUrl.pathname === '/auth') {
-          // Serve HTML page that extracts hash fragment and posts to /token
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(`
             <!DOCTYPE html>
@@ -111,7 +129,7 @@ class TwitchService {
                     .then(d => {
                       document.getElementById('msg').innerText = 'Erfolgreich angemeldet! Du kannst dieses Fenster jetzt schließen.';
                       document.getElementById('loader').style.display = 'none';
-                      setTimeout(() => window.close(), 1500);
+                      setTimeout(() => window.close(), 1200);
                     });
                 } else {
                   document.getElementById('msg').innerText = 'Fehler bei der Anmeldung. Bitte erneut versuchen.';

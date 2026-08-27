@@ -57,7 +57,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     width: 1100,
-    height: 820,
+    height: 850,
     minWidth: 900,
     minHeight: 700,
     title: 'ShishaWG Mod Setup Tool',
@@ -96,16 +96,42 @@ ipcMain.handle('twitch:check-auth', async () => {
   const token = store.get('twitch_access_token', '');
   if (!token) return null;
   const user = await twitchService.validateToken(token);
-  return user ? { user, token, targetChannel: twitchService.targetChannel } : null;
+  return user ? { user, token, targetChannel: twitchService.targetChannel, clientId: twitchService.clientId } : null;
 });
 
-ipcMain.handle('twitch:login', async () => {
+ipcMain.handle('twitch:get-config', async () => {
+  return {
+    clientId: twitchService.clientId,
+    hasToken: !!twitchService.accessToken,
+    targetChannel: twitchService.targetChannel
+  };
+});
+
+ipcMain.handle('twitch:login', async (event, customClientId) => {
   try {
-    await twitchService.startAuthServer();
+    if (customClientId) {
+      twitchService.setClientId(customClientId);
+    }
+    await twitchService.startAuthServer(customClientId);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+ipcMain.handle('twitch:save-token', async (event, rawToken) => {
+  if (!rawToken) return { success: false, error: 'Kein Token eingegeben' };
+  const user = await twitchService.validateToken(rawToken);
+  if (user) {
+    return { success: true, user, token: twitchService.accessToken };
+  } else {
+    return { success: false, error: 'Ungültiger Twitch OAuth-Token' };
+  }
+});
+
+ipcMain.handle('twitch:save-client-id', async (event, clientId) => {
+  twitchService.setClientId(clientId);
+  return { success: true, clientId: twitchService.clientId };
 });
 
 ipcMain.handle('twitch:logout', async () => {

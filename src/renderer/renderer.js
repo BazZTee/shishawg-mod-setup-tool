@@ -56,6 +56,16 @@ const newItemInput = document.getElementById('new-item-input');
 const btnAddDbItem = document.getElementById('btn-add-db-item');
 const catalogListItems = document.getElementById('catalog-list-items');
 
+// Import Menu & Paste Modal Elements
+const btnImportMenu = document.getElementById('btn-import-menu');
+const importDropdownMenu = document.getElementById('import-dropdown-menu');
+const btnOpenPasteModal = document.getElementById('btn-open-paste-modal');
+const pasteModal = document.getElementById('paste-modal');
+const btnClosePasteModal = document.getElementById('btn-close-paste-modal');
+const inputPasteText = document.getElementById('input-paste-text');
+const btnPasteFromClipboard = document.getElementById('btn-paste-from-clipboard');
+const btnApplyPasteSetup = document.getElementById('btn-apply-paste-setup');
+
 // Auto-Updater Modal Elements
 const updaterModal = document.getElementById('updater-modal');
 const btnCloseUpdaterModal = document.getElementById('btn-close-updater-modal');
@@ -492,6 +502,74 @@ function setupEventListeners() {
     }
   });
 
+  // Import Setup Dropdown Menu Toggle
+  if (btnImportMenu && importDropdownMenu) {
+    btnImportMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      importDropdownMenu.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', () => {
+      importDropdownMenu.classList.add('hidden');
+    });
+
+    importDropdownMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  // Open Manual Paste Setup Modal
+  if (btnOpenPasteModal) {
+    btnOpenPasteModal.addEventListener('click', async () => {
+      importDropdownMenu.classList.add('hidden');
+      pasteModal.classList.remove('hidden');
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && (text.includes('//') || text.includes(':'))) {
+          inputPasteText.value = text;
+        }
+      } catch(e) {}
+    });
+  }
+
+  if (btnClosePasteModal) {
+    btnClosePasteModal.addEventListener('click', () => {
+      pasteModal.classList.add('hidden');
+    });
+  }
+
+  if (btnPasteFromClipboard) {
+    btnPasteFromClipboard.addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          inputPasteText.value = text;
+          showToast('Text aus Zwischenablage eingefügt', 'info');
+        }
+      } catch(e) {
+        showToast('Konnte Zwischenablage nicht lesen', 'error');
+      }
+    });
+  }
+
+  if (btnApplyPasteSetup) {
+    btnApplyPasteSetup.addEventListener('click', () => {
+      const raw = inputPasteText.value.trim();
+      if (!raw) {
+        showToast('Bitte gib einen Setup-Text ein', 'error');
+        return;
+      }
+      const success = parseChatSetupMessage(raw);
+      if (success) {
+        pasteModal.classList.add('hidden');
+        inputPasteText.value = '';
+        showToast('Setup erfolgreich übernommen!', 'success');
+      } else {
+        showToast('Konnte den Setup-Text nicht parsen. Bitte Format prüfen.', 'error');
+      }
+    });
+  }
+
   // Extras input listeners
   inputGlobalKohle.addEventListener('input', generateCommandString);
   inputGlobalExtra.addEventListener('input', generateCommandString);
@@ -574,19 +652,18 @@ function setupEventListeners() {
 
   // Fetch Setup from Twitch Chat
   btnFetchChatSetup.addEventListener('click', async () => {
+    importDropdownMenu.classList.add('hidden');
     if (!state.twitchUser) {
       showToast('Bitte verbinde dich zuerst mit Twitch', 'error');
       return;
     }
 
     btnFetchChatSetup.disabled = true;
-    btnFetchChatSetup.innerHTML = '<span class="status-dot green"></span> Schreibe !setup in Chat...';
     showToast('Sende !setup und warte auf Antwort aus dem Chat...', 'info');
 
     const res = await ipcRenderer.invoke('twitch:fetch-setup', state.targetChannel);
 
     btnFetchChatSetup.disabled = false;
-    btnFetchChatSetup.innerHTML = `<svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Setup aus Chat ziehen`;
 
     if (res.success && res.res && res.res.text) {
       const parsed = parseChatSetupMessage(res.res.text);

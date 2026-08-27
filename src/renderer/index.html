@@ -14,7 +14,7 @@
       <div class="brand">
         <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
         <div class="brand-text">
-          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <span class="version-tag" id="app-version-tag">v1.3.2</span></h1>
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <span class="version-tag" id="app-version-tag">v1.5.0</span></h1>
           <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
         </div>
       </div>
@@ -74,10 +74,22 @@
         </div>
 
         <div class="toolbar-group right">
-          <button id="btn-fetch-chat-setup" class="btn btn-secondary" title="Funktioniert im Chat vom Kanal marved (schreibt !setup in den Chat und liest die Antwort)">
-            <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-            Setup aus Chat ziehen
-          </button>
+          <!-- Import Setup Dropdown Menu -->
+          <div class="dropdown-wrapper">
+            <button id="btn-import-menu" class="btn btn-secondary">
+              <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+              Setup Importieren / Einfügen ▼
+            </button>
+            <div id="import-dropdown-menu" class="dropdown-menu hidden">
+              <button id="btn-fetch-chat-setup" class="dropdown-item" title="Schreibt !setup in den Chat von #marved und liest die Antwort live aus">
+                💬 Setup aus Twitch-Chat ziehen
+              </button>
+              <button id="btn-open-paste-modal" class="dropdown-item" title="Setup-Text aus der Zwischenablage oder händisch einfügen">
+                📋 Setup aus Text / Zwischenablage einfügen
+              </button>
+            </div>
+          </div>
+
           <button id="btn-open-db" class="btn btn-secondary">
             <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
             Datenbank / Verzeichnis
@@ -141,6 +153,26 @@
     <!-- Toast Notification Banner -->
     <div id="toast-banner" class="toast hidden">
       <span id="toast-message">Status-Nachricht</span>
+    </div>
+
+    <!-- Manual Paste Setup Modal -->
+    <div id="paste-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>📋 Setup-Text einfügen & parsen</h3>
+          <button id="btn-close-paste-modal" class="btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="subtitle" style="margin-bottom: 10px;">Füge eine Setup-Nachricht (z. B. aus Twitch, Discord oder WhatsApp) ein:</p>
+          <div class="input-group" style="margin-bottom: 15px;">
+            <textarea id="input-paste-text" rows="4" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:10px; border-radius:8px; font-size:0.9rem;" placeholder="z. B. Marvin: Amotion Futr & Trofimoff Anejo // Yannick: Amotion Pedal & Trofimoff Like Zaghoul // Cosmo Bowl // ONMO HMD // Magic Cubes !kohle //"></textarea>
+          </div>
+          <div style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
+            <button id="btn-paste-from-clipboard" class="btn btn-secondary">📋 Aus Zwischenablage einfügen</button>
+            <button id="btn-apply-paste-setup" class="btn btn-primary">Setup übernehmen</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Auto-Updater Modal -->

@@ -2,7 +2,7 @@ const { ipcRenderer } = require('electron');
 
 // App State
 let state = {
-  personCount: 2,
+  personCount: 1, // Default 1 person
   catalog: {
     pipes: [],
     bowls: [],
@@ -25,9 +25,9 @@ const btnDecPersons = document.getElementById('btn-dec-persons');
 const commandOutput = document.getElementById('command-output');
 const btnCopy = document.getElementById('btn-copy');
 const btnSendChat = document.getElementById('btn-send-chat');
+const btnFetchChatSetup = document.getElementById('btn-fetch-chat-setup');
 const btnTwitchLogin = document.getElementById('btn-twitch-login');
 const btnTwitchLogout = document.getElementById('btn-twitch-logout');
-const btnTwitchSettings = document.getElementById('btn-twitch-settings');
 const twitchUserBadge = document.getElementById('twitch-user-badge');
 const userAvatar = document.getElementById('user-avatar');
 const userDisplayName = document.getElementById('user-display-name');
@@ -121,7 +121,7 @@ function updateTwitchUI() {
   }
 }
 
-// Default Initial Persons Setup
+// Default Initial Persons Setup (Default: 1 Person)
 function initDefaultPersons() {
   state.persons = [
     {
@@ -131,15 +131,6 @@ function initDefaultPersons() {
       hmd: 'ONMO HMD',
       tobacco1: 'Trofimoff Like Zaghoul',
       tobacco2: '',
-      tobacco3: ''
-    },
-    {
-      name: 'Yannick',
-      pipe: 'Amotion Pedal',
-      bowl: 'Hookain LitBowl',
-      hmd: 'Na Grani',
-      tobacco1: 'Trofimoff Anejo',
-      tobacco2: 'Darkside Shot',
       tobacco3: ''
     }
   ];
@@ -271,12 +262,10 @@ function generateCommandString() {
     const personSegments = [];
     const pName = (p.name || '').trim();
 
-    // Pfeife & Setup
     if (p.pipe) personSegments.push(p.pipe.trim());
     if (p.bowl) personSegments.push(p.bowl.trim());
     if (p.hmd) personSegments.push(p.hmd.trim());
 
-    // Tobacco Mix Concatenation
     const tobaccos = [p.tobacco1, p.tobacco2, p.tobacco3]
       .map(t => (t || '').trim())
       .filter(Boolean);
@@ -299,10 +288,8 @@ function generateCommandString() {
     }
   }
 
-  // Combine persons
   let fullCommand = `!editsetup ${parts.join(' // ')}`;
 
-  // Append Global Kohle / Extra
   const kohle = (inputGlobalKohle.value || '').trim();
   const extra = (inputGlobalExtra.value || '').trim();
 
@@ -316,6 +303,99 @@ function generateCommandString() {
   }
 
   commandOutput.value = fullCommand;
+}
+
+// Smart Parser for Chat Setup Messages
+function parseChatSetupMessage(rawText) {
+  if (!rawText) return false;
+
+  // Clean prefix if exists (!editsetup / !setup)
+  let text = rawText.replace(/^!editsetup\s+/i, '').replace(/^!setup\s+/i, '').trim();
+
+  const segments = text.split('//').map(s => s.trim()).filter(Boolean);
+  if (segments.length === 0) return false;
+
+  const parsedPersons = [];
+  let globalKohle = '';
+  let globalExtra = '';
+  let sharedBowl = '';
+  let sharedHmd = '';
+
+  for (const seg of segments) {
+    // Check if segment has person name pattern "Name: ..."
+    if (seg.includes(':')) {
+      const colonIdx = seg.indexOf(':');
+      const pName = seg.substring(0, colonIdx).trim();
+      const pSetup = seg.substring(colonIdx + 1).trim();
+
+      let pipe = '';
+      let tobaccos = [];
+
+      if (pSetup.includes('&')) {
+        const parts = pSetup.split('&').map(x => x.trim());
+        pipe = parts[0];
+        tobaccos.push(parts[1]);
+      } else {
+        pipe = pSetup;
+      }
+
+      parsedPersons.push({
+        name: pName,
+        pipe: pipe,
+        bowl: '',
+        hmd: '',
+        tobacco1: tobaccos[0] || '',
+        tobacco2: tobaccos[1] || '',
+        tobacco3: tobaccos[2] || ''
+      });
+    } else if (seg.toLowerCase().includes('!kohle') || seg.toLowerCase().includes('kohle') || seg.toLowerCase().includes('cubes')) {
+      globalKohle = seg;
+    } else if (seg.toLowerCase().includes('tasting') || seg.toLowerCase().includes('no aroma')) {
+      globalExtra = seg;
+    } else if (seg.toLowerCase().includes('hmd') || seg.toLowerCase().includes('grani') || seg.toLowerCase().includes('lotus')) {
+      sharedHmd = seg;
+    } else if (seg.toLowerCase().includes('bowl') || seg.toLowerCase().includes('phunnel') || seg.toLowerCase().includes('shot')) {
+      // Shared bowl or bowl/tobacco combo e.g. "Darkside Shot und Cosmo Bowl"
+      if (seg.includes('und') && (seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('darkside'))) {
+        const parts = seg.split('und').map(x => x.trim());
+        if (parsedPersons.length > 0) {
+          if (!parsedPersons[0].tobacco2 && parts[0]) parsedPersons[0].tobacco2 = parts[0];
+          if (parts[1]) sharedBowl = parts[1];
+        }
+      } else {
+        sharedBowl = seg;
+      }
+    } else {
+      // General item or tobacco
+      if (parsedPersons.length > 0 && !parsedPersons[0].tobacco1) {
+        parsedPersons[0].tobacco1 = seg;
+      } else if (parsedPersons.length > 1 && !parsedPersons[1].tobacco1) {
+        parsedPersons[1].tobacco1 = seg;
+      } else {
+        globalExtra = globalExtra ? `${globalExtra} // ${seg}` : seg;
+      }
+    }
+  }
+
+  if (parsedPersons.length > 0) {
+    state.personCount = parsedPersons.length;
+    personCountSelect.value = state.personCount;
+
+    state.persons = parsedPersons.map(p => ({
+      ...p,
+      bowl: p.bowl || sharedBowl,
+      hmd: p.hmd || sharedHmd
+    }));
+
+    if (globalKohle) inputGlobalKohle.value = globalKohle;
+    if (globalExtra) inputGlobalExtra.value = globalExtra;
+
+    renderPersonsGrid();
+    generateCommandString();
+    return true;
+  }
+
+  return false;
 }
 
 // Global Event Listeners
@@ -361,12 +441,6 @@ function setupEventListeners() {
     showToast('Öffne Twitch-Login im Browser...', 'info');
     await ipcRenderer.invoke('twitch:login');
   });
-
-  if (btnTwitchSettings) {
-    btnTwitchSettings.addEventListener('click', () => {
-      twitchModal.classList.remove('hidden');
-    });
-  }
 
   btnCloseTwitchModal.addEventListener('click', () => {
     twitchModal.classList.add('hidden');
@@ -431,6 +505,34 @@ function setupEventListeners() {
     showToast(`Erfolgreich eingeloggt als ${user.display_name || user.login}!`, 'success');
   });
 
+  // Fetch Setup from Twitch Chat
+  btnFetchChatSetup.addEventListener('click', async () => {
+    if (!state.twitchUser) {
+      showToast('Bitte verbinde dich zuerst mit Twitch', 'error');
+      return;
+    }
+
+    btnFetchChatSetup.disabled = true;
+    btnFetchChatSetup.innerHTML = '<span class="status-dot green"></span> Schreibe !setup in Chat...';
+    showToast('Sende !setup und warte auf Antwort aus dem Chat...', 'info');
+
+    const res = await ipcRenderer.invoke('twitch:fetch-setup', state.targetChannel);
+
+    btnFetchChatSetup.disabled = false;
+    btnFetchChatSetup.innerHTML = `<svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Setup aus Chat ziehen`;
+
+    if (res.success && res.res && res.res.text) {
+      const parsed = parseChatSetupMessage(res.res.text);
+      if (parsed) {
+        showToast(`Setup erfolgreich aus dem Chat geladen (von ${res.res.author})!`, 'success');
+      } else {
+        showToast(`Antwort von ${res.res.author} erhalten, konnte aber nicht geparst werden.`, 'error');
+      }
+    } else {
+      showToast(res.error || 'Fehler beim Laden des Setups aus dem Chat', 'error');
+    }
+  });
+
   // Copy to Clipboard
   btnCopy.addEventListener('click', async () => {
     const text = commandOutput.value;
@@ -449,7 +551,6 @@ function setupEventListeners() {
     }
 
     if (!state.twitchUser) {
-      twitchModal.classList.remove('hidden');
       showToast('Bitte verbinde dich zuerst mit Twitch', 'error');
       return;
     }
@@ -474,6 +575,8 @@ function setupEventListeners() {
 
   // Reset Form
   btnResetAll.addEventListener('click', () => {
+    state.personCount = 1;
+    personCountSelect.value = "1";
     state.persons = [];
     renderPersonsGrid();
     generateCommandString();

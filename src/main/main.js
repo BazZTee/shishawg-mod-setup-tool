@@ -153,6 +153,15 @@ ipcMain.handle('twitch:send-chat', async (event, { message, channel }) => {
   }
 });
 
+ipcMain.handle('twitch:fetch-setup', async (event, channel) => {
+  try {
+    const res = await twitchService.fetchSetupFromChat(channel);
+    return { success: true, res };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle('db:get-catalog', async () => {
   return dbService.getCatalog();
 });

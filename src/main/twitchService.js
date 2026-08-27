@@ -38,11 +38,9 @@ class TwitchService {
   async validateToken(tokenInput = this.accessToken) {
     if (!tokenInput) return null;
 
-    // Clean token (remove 'oauth:' prefix if user pasted it)
     const cleanToken = tokenInput.replace(/^oauth:/i, '').trim();
 
     try {
-      // 1. Try id.twitch.tv/oauth2/validate (Works for any Twitch OAuth token without needing client_id)
       const valResp = await fetch('https://id.twitch.tv/oauth2/validate', {
         headers: { 'Authorization': `OAuth ${cleanToken}` }
       });
@@ -50,7 +48,6 @@ class TwitchService {
       if (valResp.ok) {
         const valData = await valResp.json();
         
-        // Fetch detailed profile (avatar URL) if possible
         let profileImage = '';
         try {
           const userResp = await fetch(`https://api.twitch.tv/helix/users?id=${valData.user_id}`, {
@@ -224,7 +221,6 @@ class TwitchService {
         }
 
         if (msg.includes(`:${this.user.login.toLowerCase()}!`) || msg.includes('376') || msg.includes('JOIN')) {
-          // Send message
           ws.send(`PRIVMSG #${chan} :${message}`);
           setTimeout(() => {
             if (!resolved) {
@@ -234,6 +230,79 @@ class TwitchService {
               resolve({ success: true, channel: chan, message });
             }
           }, 800);
+        }
+      });
+
+      ws.on('error', (err) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          reject(err);
+        }
+      });
+    });
+  }
+
+  async fetchSetupFromChat(channel = this.targetChannel) {
+    if (!this.accessToken || !this.user) {
+      throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
+    }
+
+    const chan = (channel || 'marft').toLowerCase().replace('#', '').trim();
+
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+      const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          try { ws.close(); } catch(e){}
+          reject(new Error('Keine Antwort von bot/marvedbot im Chat innerhalb von 10 Sekunden erhalten.'));
+        }
+      }, 10000);
+
+      ws.on('open', () => {
+        ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+        ws.send(`PASS oauth:${this.accessToken}`);
+        ws.send(`NICK ${this.user.login.toLowerCase()}`);
+        ws.send(`JOIN #${chan}`);
+      });
+
+      ws.on('message', (data) => {
+        const raw = data.toString();
+
+        if (raw.startsWith('PING')) {
+          ws.send('PONG :tmi.twitch.tv');
+        }
+
+        // Once joined, send !setup to trigger bot response
+        if (raw.includes(`:${this.user.login.toLowerCase()}!`) || raw.includes('376') || raw.includes('JOIN')) {
+          ws.send(`PRIVMSG #${chan} :!setup`);
+        }
+
+        // Check for IRC PRIVMSG containing setup pattern (containing // or from marvedbot)
+        if (raw.includes('PRIVMSG')) {
+          const match = raw.match(/:([^!]+)![^@]+@[^\s]+\s+PRIVMSG\s+#\w+\s+:(.+)/);
+          if (match) {
+            const author = match[1].toLowerCase();
+            const text = match[2].trim();
+
+            // Ignore our own !setup request
+            if (text === '!setup' && author === this.user.login.toLowerCase()) {
+              return;
+            }
+
+            // Check if message is a setup response (contains // or contains name/tobacco)
+            if (text.includes('//') || author.includes('marvedbot') || author.includes('bot')) {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeout);
+                try { ws.close(); } catch(e){}
+                resolve({ success: true, author: match[1], text });
+              }
+            }
+          }
         }
       });
 

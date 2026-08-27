@@ -42,7 +42,6 @@
               <span id="user-display-name" class="user-name">User</span>
               <span class="user-status"><span class="status-dot green"></span> Verbunden</span>
             </div>
-            <button id="btn-twitch-settings" class="btn-icon" title="Twitch Einstellungen">⚙️</button>
             <button id="btn-twitch-logout" class="btn-icon" title="Abmelden">✕</button>
           </div>
         </div>
@@ -59,8 +58,8 @@
           <div class="counter-control">
             <button id="btn-dec-persons" class="btn-counter">-</button>
             <select id="person-count-select" class="person-select">
-              <option value="1">1 Person</option>
-              <option value="2" selected>2 Personen</option>
+              <option value="1" selected>1 Person</option>
+              <option value="2">2 Personen</option>
               <option value="3">3 Personen</option>
               <option value="4">4 Personen</option>
               <option value="5">5 Personen</option>
@@ -75,6 +74,10 @@
         </div>
 
         <div class="toolbar-group right">
+          <button id="btn-fetch-chat-setup" class="btn btn-secondary" title="Schreibt !setup in den Chat und lädt die aktuelle Antwort von marvedbot">
+            <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            Setup aus Chat ziehen
+          </button>
           <button id="btn-open-db" class="btn btn-secondary">
             <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
             Datenbank / Verzeichnis
@@ -137,7 +140,7 @@
       <span id="toast-message">Status-Nachricht</span>
     </div>
 
-    <!-- Twitch Login Modal -->
+    <!-- Twitch Login Modal (Fallback) -->
     <div id="twitch-modal" class="modal-overlay hidden">
       <div class="modal-card">
         <div class="modal-header">
@@ -170,7 +173,7 @@
             <p class="subtitle" style="margin-bottom: 10px;">Falls du eine eigene Client ID von <a href="#" id="link-twitch-dev" style="color: var(--accent-cyan);">dev.twitch.tv</a> verwendest (Redirect URI: <code>http://localhost:17525/auth</code>):</p>
             <div class="input-group" style="margin-bottom: 10px;">
               <label for="input-client-id">Twitch Client ID:</label>
-              <input type="text" id="input-client-id" placeholder="gp762nuuoqcoxypju8c569th9wz7q5">
+              <input type="text" id="input-client-id" placeholder="440sjk1dkut7ltxkf7b3p267dekbpu">
             </div>
             <button id="btn-start-browser-oauth" class="btn btn-twitch" style="width: 100%; justify-content: center;">
               <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.429h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>

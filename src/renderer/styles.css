@@ -364,14 +364,55 @@ input[type="text"]:focus, input[type="password"]:focus {
   gap: 6px;
 }
 
+.tobacco-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-add-tobacco-slot {
+  background: transparent;
+  border: none;
+  color: var(--accent-cyan);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.btn-add-tobacco-slot:hover {
+  background: rgba(0, 153, 255, 0.15);
+}
+
 .tobacco-mix-inputs {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.tobacco-mix-inputs input {
-  width: 100%;
+.tobacco-slot-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.tobacco-slot-row input {
+  flex: 1;
+}
+
+.btn-remove-tobacco-slot {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 0.85rem;
+}
+
+.btn-remove-tobacco-slot:hover {
+  color: var(--color-danger);
 }
 
 /* Extras Card */

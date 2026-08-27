@@ -129,9 +129,7 @@ function initDefaultPersons() {
       pipe: 'Amotion Futr',
       bowl: 'Cosmo Bowl',
       hmd: 'ONMO HMD',
-      tobacco1: 'Trofimoff Like Zaghoul',
-      tobacco2: '',
-      tobacco3: ''
+      tobaccos: ['Trofimoff Like Zaghoul']
     }
   ];
 }
@@ -148,16 +146,26 @@ function renderPersonsGrid() {
         pipe: '',
         bowl: '',
         hmd: '',
-        tobacco1: '',
-        tobacco2: '',
-        tobacco3: ''
+        tobaccos: ['']
       };
       state.persons[i] = p;
+    }
+
+    if (!p.tobaccos || p.tobaccos.length === 0) {
+      p.tobaccos = [''];
     }
 
     const card = document.createElement('div');
     card.className = 'person-card';
     card.setAttribute('data-index', i);
+
+    // Build Tobacco Slot HTML
+    const tobaccoSlotsHtml = p.tobaccos.map((tVal, tIdx) => `
+      <div class="tobacco-slot-row">
+        <input type="text" class="input-p-tob" data-pindex="${i}" data-tindex="${tIdx}" list="list-tobacco" value="${escapeHtml(tVal)}" placeholder="Tabak ${tIdx + 1}">
+        ${tIdx > 0 ? `<button class="btn-icon btn-remove-tobacco-slot" data-pindex="${i}" data-tindex="${tIdx}" title="Tabaksortenslot entfernen">✕</button>` : ''}
+      </div>
+    `).join('');
 
     card.innerHTML = `
       <div class="person-card-header">
@@ -191,11 +199,12 @@ function renderPersonsGrid() {
       </div>
 
       <div class="input-group full-width tobacco-mix-wrapper">
-        <label>Tabaksorte(n) [Bis zu 3 Sorten]:</label>
+        <div class="tobacco-header">
+          <label>Tabaksorte(n):</label>
+          <button class="btn-add-tobacco-slot" data-pindex="${i}">+ Weitere Sorte</button>
+        </div>
         <div class="tobacco-mix-inputs">
-          <input type="text" class="input-p-tob1" data-index="${i}" list="list-tobacco" value="${escapeHtml(p.tobacco1)}" placeholder="Tabak 1 (z. B. Darkside Shot)">
-          <input type="text" class="input-p-tob2" data-index="${i}" list="list-tobacco" value="${escapeHtml(p.tobacco2)}" placeholder="Tabak 2 (optional)">
-          <input type="text" class="input-p-tob3" data-index="${i}" list="list-tobacco" value="${escapeHtml(p.tobacco3)}" placeholder="Tabak 3 (optional)">
+          ${tobaccoSlotsHtml}
         </div>
       </div>
     `;
@@ -210,40 +219,82 @@ function renderPersonsGrid() {
 function attachCardInputListeners() {
   document.querySelectorAll('.person-card input').forEach(input => {
     input.addEventListener('input', (e) => {
-      const idx = parseInt(e.target.getAttribute('data-index'));
-      if (isNaN(idx) || !state.persons[idx]) return;
+      const pIdx = parseInt(e.target.getAttribute('data-index'));
+      
+      if (e.target.classList.contains('input-p-tob')) {
+        const personIdx = parseInt(e.target.getAttribute('data-pindex'));
+        const tobIdx = parseInt(e.target.getAttribute('data-tindex'));
+        if (!isNaN(personIdx) && state.persons[personIdx]) {
+          state.persons[personIdx].tobaccos[tobIdx] = e.target.value;
 
-      const p = state.persons[idx];
-      if (e.target.classList.contains('input-p-name')) {
-        p.name = e.target.value;
-        const card = e.target.closest('.person-card');
-        if (card) {
-          const nameDisplay = card.querySelector('.person-name-display');
-          if (nameDisplay) nameDisplay.textContent = p.name || `Person ${idx + 1}`;
+          // Auto-expand: if typing in the last tobacco slot and it's not empty, add a new empty slot!
+          if (tobIdx === state.persons[personIdx].tobaccos.length - 1 && e.target.value.trim() !== '') {
+            state.persons[personIdx].tobaccos.push('');
+            renderPersonsGrid();
+            // Restore focus to the input
+            const newInputs = document.querySelectorAll(`.input-p-tob[data-pindex="${personIdx}"]`);
+            if (newInputs[tobIdx]) {
+              newInputs[tobIdx].focus();
+              newInputs[tobIdx].setSelectionRange(e.target.value.length, e.target.value.length);
+            }
+          }
         }
-      } else if (e.target.classList.contains('input-p-pipe')) {
-        p.pipe = e.target.value;
-      } else if (e.target.classList.contains('input-p-bowl')) {
-        p.bowl = e.target.value;
-      } else if (e.target.classList.contains('input-p-hmd')) {
-        p.hmd = e.target.value;
-      } else if (e.target.classList.contains('input-p-tob1')) {
-        p.tobacco1 = e.target.value;
-      } else if (e.target.classList.contains('input-p-tob2')) {
-        p.tobacco2 = e.target.value;
-      } else if (e.target.classList.contains('input-p-tob3')) {
-        p.tobacco3 = e.target.value;
+      } else if (!isNaN(pIdx) && state.persons[pIdx]) {
+        const p = state.persons[pIdx];
+        if (e.target.classList.contains('input-p-name')) {
+          p.name = e.target.value;
+          const card = e.target.closest('.person-card');
+          if (card) {
+            const nameDisplay = card.querySelector('.person-name-display');
+            if (nameDisplay) nameDisplay.textContent = p.name || `Person ${pIdx + 1}`;
+          }
+        } else if (e.target.classList.contains('input-p-pipe')) {
+          p.pipe = e.target.value;
+        } else if (e.target.classList.contains('input-p-bowl')) {
+          p.bowl = e.target.value;
+        } else if (e.target.classList.contains('input-p-hmd')) {
+          p.hmd = e.target.value;
+        }
       }
 
       generateCommandString();
     });
   });
 
+  // Add Tobacco Slot Button
+  document.querySelectorAll('.btn-add-tobacco-slot').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
+      if (!isNaN(pIdx) && state.persons[pIdx]) {
+        state.persons[pIdx].tobaccos.push('');
+        renderPersonsGrid();
+        generateCommandString();
+      }
+    });
+  });
+
+  // Remove Tobacco Slot Button
+  document.querySelectorAll('.btn-remove-tobacco-slot').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
+      const tIdx = parseInt(e.currentTarget.getAttribute('data-tindex'));
+      if (!isNaN(pIdx) && state.persons[pIdx] && state.persons[pIdx].tobaccos[tIdx] !== undefined) {
+        state.persons[pIdx].tobaccos.splice(tIdx, 1);
+        if (state.persons[pIdx].tobaccos.length === 0) {
+          state.persons[pIdx].tobaccos = [''];
+        }
+        renderPersonsGrid();
+        generateCommandString();
+      }
+    });
+  });
+
+  // Clear Person Button
   document.querySelectorAll('.btn-clear-person').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.currentTarget.getAttribute('data-index'));
       if (!isNaN(idx) && state.persons[idx]) {
-        state.persons[idx] = { name: '', pipe: '', bowl: '', hmd: '', tobacco1: '', tobacco2: '', tobacco3: '' };
+        state.persons[idx] = { name: '', pipe: '', bowl: '', hmd: '', tobaccos: [''] };
         renderPersonsGrid();
         generateCommandString();
       }
@@ -266,7 +317,7 @@ function generateCommandString() {
     if (p.bowl) personSegments.push(p.bowl.trim());
     if (p.hmd) personSegments.push(p.hmd.trim());
 
-    const tobaccos = [p.tobacco1, p.tobacco2, p.tobacco3]
+    const tobaccos = (p.tobaccos || [])
       .map(t => (t || '').trim())
       .filter(Boolean);
 
@@ -277,7 +328,8 @@ function generateCommandString() {
       } else if (tobaccos.length === 2) {
         tobStr = `${tobaccos[0]} und ${tobaccos[1]}`;
       } else {
-        tobStr = `${tobaccos[0]}, ${tobaccos[1]} und ${tobaccos[2]}`;
+        const last = tobaccos.pop();
+        tobStr = `${tobaccos.join(', ')} und ${last}`;
       }
       personSegments.push(tobStr);
     }
@@ -305,12 +357,15 @@ function generateCommandString() {
   commandOutput.value = fullCommand;
 }
 
-// Smart Parser for Chat Setup Messages
+// Clean & Robust Parser for Chat Setup Messages
 function parseChatSetupMessage(rawText) {
   if (!rawText) return false;
 
-  // Clean prefix if exists (!editsetup / !setup)
-  let text = rawText.replace(/^!editsetup\s+/i, '').replace(/^!setup\s+/i, '').trim();
+  let text = rawText.trim();
+
+  // Strip bot user prefix e.g. "marvedbot: Marvin: ..." or "bazzteedj: Marvin: ..."
+  text = text.replace(/^([a-zA-Z0-9_]+):\s*(?=[a-zA-Z0-9_]+\s*:)/, '');
+  text = text.replace(/^!editsetup\s+/i, '').replace(/^!setup\s+/i, '').trim();
 
   const segments = text.split('//').map(s => s.trim()).filter(Boolean);
   if (segments.length === 0) return false;
@@ -322,11 +377,14 @@ function parseChatSetupMessage(rawText) {
   let sharedHmd = '';
 
   for (const seg of segments) {
-    // Check if segment has person name pattern "Name: ..."
+    // Check if segment contains person name pattern "Name: ..."
     if (seg.includes(':')) {
       const colonIdx = seg.indexOf(':');
-      const pName = seg.substring(0, colonIdx).trim();
-      const pSetup = seg.substring(colonIdx + 1).trim();
+      let pName = seg.substring(0, colonIdx).trim();
+      let pSetup = seg.substring(colonIdx + 1).trim();
+
+      // Clean bot prefixes or ACTION from name
+      pName = pName.replace(/^(action|marvedbot|marved|bot)\s+/i, '').trim();
 
       let pipe = '';
       let tobaccos = [];
@@ -334,7 +392,7 @@ function parseChatSetupMessage(rawText) {
       if (pSetup.includes('&')) {
         const parts = pSetup.split('&').map(x => x.trim());
         pipe = parts[0];
-        tobaccos.push(parts[1]);
+        if (parts[1]) tobaccos.push(parts[1]);
       } else {
         pipe = pSetup;
       }
@@ -344,9 +402,7 @@ function parseChatSetupMessage(rawText) {
         pipe: pipe,
         bowl: '',
         hmd: '',
-        tobacco1: tobaccos[0] || '',
-        tobacco2: tobaccos[1] || '',
-        tobacco3: tobaccos[2] || ''
+        tobaccos: tobaccos.length > 0 ? tobaccos : ['']
       });
     } else if (seg.toLowerCase().includes('!kohle') || seg.toLowerCase().includes('kohle') || seg.toLowerCase().includes('cubes')) {
       globalKohle = seg;
@@ -355,22 +411,24 @@ function parseChatSetupMessage(rawText) {
     } else if (seg.toLowerCase().includes('hmd') || seg.toLowerCase().includes('grani') || seg.toLowerCase().includes('lotus')) {
       sharedHmd = seg;
     } else if (seg.toLowerCase().includes('bowl') || seg.toLowerCase().includes('phunnel') || seg.toLowerCase().includes('shot')) {
-      // Shared bowl or bowl/tobacco combo e.g. "Darkside Shot und Cosmo Bowl"
       if (seg.includes('und') && (seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('darkside'))) {
         const parts = seg.split('und').map(x => x.trim());
         if (parsedPersons.length > 0) {
-          if (!parsedPersons[0].tobacco2 && parts[0]) parsedPersons[0].tobacco2 = parts[0];
+          if (!parsedPersons[0].tobaccos[1] && parts[0]) {
+            parsedPersons[0].tobaccos.push(parts[0]);
+          }
           if (parts[1]) sharedBowl = parts[1];
         }
       } else {
         sharedBowl = seg;
       }
     } else {
-      // General item or tobacco
-      if (parsedPersons.length > 0 && !parsedPersons[0].tobacco1) {
-        parsedPersons[0].tobacco1 = seg;
-      } else if (parsedPersons.length > 1 && !parsedPersons[1].tobacco1) {
-        parsedPersons[1].tobacco1 = seg;
+      if (parsedPersons.length > 0) {
+        if (!parsedPersons[0].tobaccos[0]) {
+          parsedPersons[0].tobaccos[0] = seg;
+        } else {
+          parsedPersons[0].tobaccos.push(seg);
+        }
       } else {
         globalExtra = globalExtra ? `${globalExtra} // ${seg}` : seg;
       }

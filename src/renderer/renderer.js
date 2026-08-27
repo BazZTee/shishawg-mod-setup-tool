@@ -856,132 +856,162 @@ async function triggerAutoLearn() {
 
 function matchNotesToForm(text) {
   if (!text || text.length < 2) return;
-  const catalog = state.catalog;
-  if (!catalog) return;
-
-  const lowerText = text.toLowerCase().replace(/[\/\\,\.-]/g, ' ');
-  const words = lowerText.split(/\s+/).filter(Boolean);
+  const catalog = state.catalog || {};
   let updated = false;
 
   if (!state.persons[0]) {
     state.persons[0] = { name: 'Marvin', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
   }
   const p = state.persons[0];
+  let workText = text.trim();
 
-  // Helper score matcher with Strict Confidence Threshold (score >= 30)
-  const findBestMatch = (items) => {
-    if (!items || items.length === 0) return null;
-    let bestItem = null;
-    let maxScore = 0;
-
-    for (const item of items) {
-      const itemName = (typeof item === 'string' ? item : item.name).trim();
-      const itemLower = itemName.toLowerCase();
-      const itemWords = itemLower.split(/\s+/).filter(w => w.length > 1);
-
-      let score = 0;
-      if (lowerText.includes(itemLower)) score += 100;
-
-      for (const iw of itemWords) {
-        if (['hmd', 'bowl', 'phunnel', 'glas', 'hookah', 'edition', 'shisha', 'shot'].includes(iw)) {
-          if (words.includes(iw)) score += 5;
-          continue;
-        }
-
-        for (const w of words) {
-          if (w === iw) {
-            score += 50;
-          } else if (w.length >= 3 && (iw.startsWith(w) || w.startsWith(iw))) {
-            score += 30;
-          }
-        }
-      }
-
-      if (score > maxScore) {
-        maxScore = score;
-        bestItem = itemName;
-      }
-    }
-
-    // Strict threshold: return null if match confidence is too low (< 30)
-    if (maxScore >= 30) {
-      return bestItem;
-    }
-    return null;
+  const capitalize = (str) => {
+    if (!str) return '';
+    return str.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
-  // Match Pipe
-  const matchedPipe = findBestMatch(catalog.pipes);
-  if (p.pipe !== (matchedPipe || '')) {
-    p.pipe = matchedPipe || '';
-    updated = true;
-  }
-
-  // Match Bowl (Kopf)
-  const matchedBowl = findBestMatch(catalog.bowls);
-  if (p.bowl !== (matchedBowl || '')) {
-    p.bowl = matchedBowl || '';
-    updated = true;
-  }
-
-  // Match Glass Bowl / Vase
-  if (catalog.vases) {
-    const matchedVessel = findBestMatch(catalog.vases);
-    if (p.vessel !== (matchedVessel || '')) {
-      p.vessel = matchedVessel || '';
-      updated = true;
+  // 1. Signal Extract: Bowl-Farbe ("in <color>")
+  const colorMatch = workText.match(/\bin\s+([a-zäöüß0-9-]+)(?=\s+|$|\b)/i);
+  if (colorMatch && colorMatch[1]) {
+    const rawColor = colorMatch[1].toLowerCase();
+    if (!['einer', 'dem', 'der', 'die', 'das', 'den', 'mit', 'auf'].includes(rawColor)) {
+      const extractedColor = capitalize(colorMatch[1].trim());
+      if (extractedColor && p.vesselColor !== extractedColor) {
+        p.vesselColor = extractedColor;
+        updated = true;
+      }
     }
   }
 
-  // Match HMD
-  const matchedHmd = findBestMatch(catalog.hmds);
-  if (p.hmd !== (matchedHmd || '')) {
-    p.hmd = matchedHmd || '';
-    updated = true;
+  // 2. Signal Extract: Bowl / Glas ("auf einer <glass>" or "auf <glass>")
+  const vesselMatch = workText.match(/\bauf\s+(?:einer\s+)?([a-zäöüß0-9\s-]+?)(?=\s+(?:von|mit|im|in|und|magic|musth|\!|$))/i);
+  if (vesselMatch && vesselMatch[1]) {
+    let extractedVessel = capitalize(vesselMatch[1].trim());
+    if (extractedVessel) {
+      if (catalog.vases) {
+        const known = catalog.vases.find(k => k.toLowerCase().includes(vesselMatch[1].toLowerCase()) || vesselMatch[1].toLowerCase().includes(k.toLowerCase()));
+        if (known) extractedVessel = known;
+      }
+      if (p.vessel !== extractedVessel) {
+        p.vessel = extractedVessel;
+        updated = true;
+      }
+    }
   }
 
-  // Match Tobaccos
+  // 3. Signal Extract: Kopf ("von <head>")
+  const headMatch = workText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
+  if (headMatch && headMatch[1]) {
+    let extractedHead = capitalize(headMatch[1].trim());
+    if (extractedHead) {
+      if (catalog.bowls) {
+        const known = catalog.bowls.find(k => k.toLowerCase().includes(headMatch[1].toLowerCase()) || headMatch[1].toLowerCase().includes(k.toLowerCase()));
+        if (known) extractedHead = known;
+      }
+      if (p.bowl !== extractedHead) {
+        p.bowl = extractedHead;
+        updated = true;
+      }
+    }
+  }
+
+  // 4. Signal Extract: Pfeife (Text before "in <color>", "auf einer", "von")
+  const pipeMatch = workText.match(/^([a-zäöüß0-9\s-]+?)(?=\s+(?:in\s+|auf\s+|von\s+|mit\s+|$))/i);
+  if (pipeMatch && pipeMatch[1]) {
+    let extractedPipe = capitalize(pipeMatch[1].trim());
+    if (extractedPipe && extractedPipe.length >= 3 && !['auf', 'von', 'in', 'mit'].includes(pipeMatch[1].toLowerCase())) {
+      if (catalog.pipes) {
+        const known = catalog.pipes.find(k => k.toLowerCase().includes(pipeMatch[1].toLowerCase()) || pipeMatch[1].toLowerCase().includes(k.toLowerCase()));
+        if (known) extractedPipe = known;
+      }
+      if (p.pipe !== extractedPipe) {
+        p.pipe = extractedPipe;
+        updated = true;
+      }
+    }
+  }
+
+  // 5. Match HMD
+  if (catalog.hmds) {
+    for (const hmd of catalog.hmds) {
+      const hName = (typeof hmd === 'string' ? hmd : hmd.name).trim();
+      const hLower = hName.toLowerCase();
+      if (workText.toLowerCase().includes(hLower) || (hLower.includes('onmo') && workText.toLowerCase().includes('onmo'))) {
+        if (p.hmd !== hName) {
+          p.hmd = hName;
+          updated = true;
+        }
+        break;
+      }
+    }
+  }
+
+  // 6. Match Tobacco with Abbreviation Expansion (musth -> Musthave, kwi -> Kiwi, etc.)
+  const lowerWork = workText.toLowerCase();
+  const matchedTobaccos = [];
+
+  const expandedText = lowerWork
+    .replace(/\bmusth\b/g, 'musthave')
+    .replace(/\bkwi\b/g, 'kiwi')
+    .replace(/\bleime\b/g, 'lime');
+
   if (catalog.tobacco) {
-    const matchedTobaccos = [];
     for (const tob of catalog.tobacco) {
       const tName = (typeof tob === 'string' ? tob : tob.name).trim();
       const tLower = tName.toLowerCase();
       const tWords = tLower.split(/\s+/).filter(w => w.length > 2 && w !== 'tobacco');
 
-      let isMatch = lowerText.includes(tLower);
+      let isMatch = expandedText.includes(tLower);
       if (!isMatch) {
         let matchedWordCount = 0;
         for (const tw of tWords) {
-          if (words.some(w => w.length >= 3 && (tw.startsWith(w) || w.startsWith(tw)))) {
-            matchedWordCount++;
-          }
+          if (expandedText.includes(tw)) matchedWordCount++;
         }
-        if (matchedWordCount >= 1 && tWords.length === 1) isMatch = true;
-        if (matchedWordCount >= 2) isMatch = true;
+        if (matchedWordCount >= 2 || (matchedWordCount >= 1 && tWords.length === 1)) {
+          isMatch = true;
+        }
       }
 
       if (isMatch && !matchedTobaccos.includes(tName)) {
         matchedTobaccos.push(tName);
       }
     }
+
+    if (expandedText.includes('musthave')) {
+      const musthaveMatches = expandedText.match(/\bmusthave\s+([a-z0-9\s-]+?)(?=\s+(?:musthave|magic|kohle|\!|$))/gi);
+      if (musthaveMatches) {
+        for (const m of musthaveMatches) {
+          const formatted = capitalize(m.trim());
+          if (!matchedTobaccos.includes(formatted)) {
+            matchedTobaccos.push(formatted);
+          }
+        }
+      }
+    }
+
     if (matchedTobaccos.length > 0 && JSON.stringify(p.tobaccos) !== JSON.stringify(matchedTobaccos)) {
       p.tobaccos = matchedTobaccos;
       updated = true;
     }
   }
 
-  // Match Charcoal
-  if (catalog.charcoal) {
+  // 7. Match Charcoal
+  if (catalog.charcoal || expandedText.includes('charcoal') || expandedText.includes('kohle')) {
     let matchedCharcoal = '';
-    for (const c of catalog.charcoal) {
-      const cName = (typeof c === 'string' ? c : c.name).trim();
-      const cLower = cName.toLowerCase();
-      if (lowerText.includes('cubes') || lowerText.includes('zauberwürfel') || lowerText.includes('magic') || lowerText.includes(cLower)) {
-        matchedCharcoal = cName;
-        break;
+    if (catalog.charcoal) {
+      for (const c of catalog.charcoal) {
+        const cName = (typeof c === 'string' ? c : c.name).trim();
+        const cLower = cName.toLowerCase();
+        if (expandedText.includes('magic') || expandedText.includes('cubes') || expandedText.includes('charcoal') || expandedText.includes(cLower)) {
+          matchedCharcoal = cName;
+          break;
+        }
       }
     }
-    if (inputGlobalKohle && inputGlobalKohle.value !== matchedCharcoal) {
+    if (!matchedCharcoal && (expandedText.includes('magic') || expandedText.includes('charcoal'))) {
+      matchedCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
+    }
+    if (matchedCharcoal && inputGlobalKohle && inputGlobalKohle.value !== matchedCharcoal) {
       inputGlobalKohle.value = matchedCharcoal;
       updated = true;
     }

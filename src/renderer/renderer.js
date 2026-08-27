@@ -350,7 +350,12 @@ function generateCommandString() {
     }
 
     if (personSegments.length > 0 || pName) {
-      const personStr = `${pName || `Person ${i+1}`}: ${personSegments.join(' // ')}`;
+      let personStr = '';
+      if (state.personCount > 1 && pName) {
+        personStr = `${pName}: ${personSegments.join(' // ')}`;
+      } else {
+        personStr = personSegments.join(' // ');
+      }
       parts.push(personStr);
     }
   }
@@ -451,9 +456,9 @@ function parseChatSetupMessage(rawText) {
           parsedPersons[0].tobaccos.push(seg);
         }
       } else {
-        // Fallback: create default Person 1 if no colon was present
+        // Fallback: create default Person 1 (Marvin) if no colon was present
         parsedPersons.push({
-          name: 'Person 1',
+          name: 'Marvin',
           pipe: seg,
           bowl: '',
           hmd: '',
@@ -463,10 +468,10 @@ function parseChatSetupMessage(rawText) {
     }
   }
 
-  // Fallback: if segments were found but no person matched, create default Person 1
+  // Fallback: if segments were found but no person matched, create default Person 1 (Marvin)
   if (parsedPersons.length === 0 && segments.length > 0) {
     parsedPersons.push({
-      name: 'Person 1',
+      name: 'Marvin',
       pipe: segments[0] || '',
       bowl: sharedBowl,
       hmd: sharedHmd,

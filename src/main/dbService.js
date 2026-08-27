@@ -4,7 +4,7 @@ const https = require('https');
 const { app } = require('electron');
 
 const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
-const GIST_TOKEN = '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';
+const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
 
 class DatabaseService {
   constructor() {

@@ -120,7 +120,20 @@ async function loadCatalog() {
 
 function updateDatalists() {
   populateDatalist('list-pipes', state.catalog.pipes || []);
-  populateDatalist('list-bowls', state.catalog.bowls || []);
+
+  const allBowls = state.catalog.bowls || [];
+  const normalBowls = allBowls.filter(b => {
+    if (typeof b === 'object') return !b.isElectric;
+    return !b.toLowerCase().includes('xkah');
+  });
+  const electricBowls = allBowls.filter(b => {
+    if (typeof b === 'object') return !!b.isElectric;
+    return b.toLowerCase().includes('xkah');
+  });
+
+  populateDatalist('list-bowls', normalBowls);
+  populateDatalist('list-electric-bowls', electricBowls);
+
   populateDatalist('list-vases', state.catalog.vases || []);
   populateDatalist('list-hmds', state.catalog.hmds || []);
   populateDatalist('list-tobacco', state.catalog.tobacco || []);
@@ -263,7 +276,7 @@ function renderPersonsGrid() {
       <div class="input-row">
         <div class="input-group" style="${isElectric ? 'grid-column: 1 / -1;' : ''}">
           <label>${isElectric ? '⚡ E-Gerät:' : 'Kopf:'}</label>
-          <input type="text" class="input-p-bowl" data-index="${i}" list="list-bowls" value="${escapeHtml(p.bowl)}" placeholder="${isElectric ? 'z. B. XKAH Lite oder Pro' : 'z. B. Cosmo Bowl'}">
+          <input type="text" class="input-p-bowl" data-index="${i}" list="${isElectric ? 'list-electric-bowls' : 'list-bowls'}" value="${escapeHtml(p.bowl)}" placeholder="${isElectric ? 'z. B. XKAH Lite oder Pro' : 'z. B. Cosmo Bowl'}">
         </div>
         ${!isElectric ? `
         <div class="input-group">

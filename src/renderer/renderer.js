@@ -992,22 +992,6 @@ function matchNotesToForm(text) {
     generateCommandString();
   }
 }
-      const cLower = cName.toLowerCase();
-      if (lowerText.includes('cubes') || lowerText.includes('zauberwürfel') || lowerText.includes(cLower)) {
-        if (inputGlobalKohle && inputGlobalKohle.value !== cName) {
-          inputGlobalKohle.value = cName;
-          updated = true;
-        }
-        break;
-      }
-    }
-  }
-
-  if (updated) {
-    renderPersonsGrid();
-    generateCommandString();
-  }
-}
 
   // Reset Form
   btnResetAll.addEventListener('click', () => {

@@ -1,4 +1,5 @@
 const { app, BrowserWindow, ipcMain, clipboard, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const TwitchService = require('./twitchService');
@@ -77,6 +78,43 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  setupAutoUpdater();
+}
+
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('updater:available', info);
+    }
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    if (mainWindow) {
+      mainWindow.webContents.send('updater:not-available');
+    }
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('updater:progress', progressObj);
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('updater:downloaded', info);
+    }
+  });
+
+  autoUpdater.on('error', (err) => {
+    if (mainWindow) {
+      mainWindow.webContents.send('updater:error', err ? err.message : 'Fehler beim Update-Prüfen');
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -91,7 +129,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// IPC Handlers
+// IPC Handlers for Twitch
 ipcMain.handle('twitch:check-auth', async () => {
   const token = store.get('twitch_access_token', '');
   if (!token) return null;
@@ -162,6 +200,7 @@ ipcMain.handle('twitch:fetch-setup', async (event, channel) => {
   }
 });
 
+// IPC Handlers for Database
 ipcMain.handle('db:get-catalog', async () => {
   return dbService.getCatalog();
 });
@@ -174,6 +213,34 @@ ipcMain.handle('db:add-item', async (event, { category, item }) => {
 ipcMain.handle('db:remove-item', async (event, { category, item }) => {
   const res = dbService.removeItem(category, item);
   return { success: res, catalog: dbService.getCatalog() };
+});
+
+// IPC Handlers for Auto-Updater
+ipcMain.handle('updater:check', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, result };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('updater:download', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('updater:install', async () => {
+  autoUpdater.quitAndInstall(false, true);
+  return { success: true };
+});
+
+ipcMain.handle('app:get-version', () => {
+  return app.getVersion();
 });
 
 ipcMain.handle('app:copy-clipboard', async (event, text) => {

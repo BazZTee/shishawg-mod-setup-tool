@@ -14,7 +14,7 @@
       <div class="brand">
         <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
         <div class="brand-text">
-          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <span class="version-tag">v1.3.0</span></h1>
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <span class="version-tag" id="app-version-tag">v1.3.2</span></h1>
           <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
         </div>
       </div>
@@ -82,6 +82,9 @@
             <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
             Datenbank / Verzeichnis
           </button>
+          <button id="btn-check-updates" class="btn btn-secondary" title="Auf Updates von GitHub prüfen">
+            🔄 Updates
+          </button>
           <button id="btn-reset-all" class="btn btn-danger-outline">
             Formular leeren
           </button>
@@ -138,6 +141,32 @@
     <!-- Toast Notification Banner -->
     <div id="toast-banner" class="toast hidden">
       <span id="toast-message">Status-Nachricht</span>
+    </div>
+
+    <!-- Auto-Updater Modal -->
+    <div id="updater-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>🚀 Software-Update verfügbar</h3>
+          <button id="btn-close-updater-modal" class="btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="updater-text">Eine neue Version des ShishaWG Mod Setup Tools ist auf GitHub verfügbar!</p>
+          <div id="updater-progress-container" class="hidden" style="margin: 15px 0;">
+            <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
+              <span id="updater-status-text">Download läuft...</span>
+              <span id="updater-percent">0%</span>
+            </div>
+            <div style="background:var(--bg-input); height:8px; border-radius:4px; overflow:hidden;">
+              <div id="updater-progress-bar" style="background:var(--accent-cyan); width:0%; height:100%; transition:width 0.2s;"></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px; margin-top:20px; justify-content:flex-end;">
+            <button id="btn-updater-skip" class="btn btn-secondary">Abbrechen / Überspringen</button>
+            <button id="btn-updater-action" class="btn btn-primary">Jetzt Updaten & Drüberinstallieren</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Twitch Login Modal (Fallback) -->

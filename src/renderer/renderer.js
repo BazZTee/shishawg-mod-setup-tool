@@ -56,6 +56,19 @@ const newItemInput = document.getElementById('new-item-input');
 const btnAddDbItem = document.getElementById('btn-add-db-item');
 const catalogListItems = document.getElementById('catalog-list-items');
 
+// Auto-Updater Modal Elements
+const updaterModal = document.getElementById('updater-modal');
+const btnCloseUpdaterModal = document.getElementById('btn-close-updater-modal');
+const btnUpdaterSkip = document.getElementById('btn-updater-skip');
+const btnUpdaterAction = document.getElementById('btn-updater-action');
+const btnCheckUpdates = document.getElementById('btn-check-updates');
+const updaterText = document.getElementById('updater-text');
+const updaterProgressContainer = document.getElementById('updater-progress-container');
+const updaterStatusText = document.getElementById('updater-status-text');
+const updaterPercent = document.getElementById('updater-percent');
+const updaterProgressBar = document.getElementById('updater-progress-bar');
+let updateState = 'available';
+
 // Initialize App
 document.addEventListener('DOMContentLoaded', async () => {
   await loadCatalog();
@@ -63,6 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initDefaultPersons();
   renderPersonsGrid();
   setupEventListeners();
+  setupUpdaterEvents();
   generateCommandString();
 });
 
@@ -309,7 +323,7 @@ function generateCommandString() {
     if (p.hmd) personSegments.push(p.hmd.trim());
 
     const tobaccos = (p.tobaccos || [])
-      .map(t => (t || '').trim())
+      .map(t => (t || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
       .filter(Boolean);
 
     if (tobaccos.length > 0) {
@@ -669,6 +683,89 @@ function setupEventListeners() {
       showToast(`"${val}" zur Datenbank hinzugefügt`, 'success');
     }
   });
+}
+
+// Auto-Updater Event Handlers
+function setupUpdaterEvents() {
+  if (btnCheckUpdates) {
+    btnCheckUpdates.addEventListener('click', async () => {
+      showToast('Prüfe auf Updates von GitHub...', 'info');
+      const res = await ipcRenderer.invoke('updater:check');
+      if (!res.success) {
+        showToast(`Keine Verbindung zum GitHub-Update-Server (${res.error})`, 'info');
+      }
+    });
+  }
+
+  if (btnCloseUpdaterModal) {
+    btnCloseUpdaterModal.addEventListener('click', () => {
+      updaterModal.classList.add('hidden');
+    });
+  }
+
+  if (btnUpdaterSkip) {
+    btnUpdaterSkip.addEventListener('click', () => {
+      updaterModal.classList.add('hidden');
+    });
+  }
+
+  if (btnUpdaterAction) {
+    btnUpdaterAction.addEventListener('click', async () => {
+      if (updateState === 'available') {
+        updateState = 'downloading';
+        btnUpdaterAction.disabled = true;
+        btnUpdaterAction.textContent = 'Lade herunter...';
+        updaterProgressContainer.classList.remove('hidden');
+        await ipcRenderer.invoke('updater:download');
+      } else if (updateState === 'downloaded') {
+        btnUpdaterAction.textContent = 'Starte Installation...';
+        await ipcRenderer.invoke('updater:install');
+      }
+    });
+  }
+
+  ipcRenderer.on('updater:available', (event, info) => {
+    updateState = 'available';
+    updaterText.innerHTML = `Eine neue Version (<strong>v${info.version}</strong>) ist auf GitHub verfügbar!<br>Möchtest du sie jetzt herunterladen und installieren?`;
+    btnUpdaterAction.disabled = false;
+    btnUpdaterAction.textContent = 'Jetzt Updaten & Drüberinstallieren';
+    updaterProgressContainer.classList.add('hidden');
+    updaterModal.classList.remove('hidden');
+  });
+
+  ipcRenderer.on('updater:not-available', () => {
+    showToast('Du verwendest bereits die neueste Version!', 'success');
+  });
+
+  ipcRenderer.on('updater:progress', (event, progressObj) => {
+    const percent = Math.round(progressObj.percent || 0);
+    updaterPercent.textContent = `${percent}%`;
+    updaterProgressBar.style.width = `${percent}%`;
+  });
+
+  ipcRenderer.on('updater:downloaded', (event, info) => {
+    updateState = 'downloaded';
+    updaterStatusText.textContent = 'Download abgeschlossen!';
+    updaterPercent.textContent = '100%';
+    updaterProgressBar.style.width = '100%';
+    btnUpdaterAction.disabled = false;
+    btnUpdaterAction.textContent = 'Jetzt Neu Starten & Installieren';
+  });
+
+  ipcRenderer.on('updater:error', (event, errMessage) => {
+    showToast(`Update-Prüfung: ${errMessage}`, 'info');
+  });
+
+  // Display version tag
+  ipcRenderer.invoke('app:get-version').then(ver => {
+    const tag = document.getElementById('app-version-tag');
+    if (tag) tag.textContent = `v${ver}`;
+  }).catch(() => {});
+
+  // Automatically check updates 3s after startup
+  setTimeout(() => {
+    ipcRenderer.invoke('updater:check').catch(() => {});
+  }, 3000);
 }
 
 function getCategoryKeyForTab(tabId) {

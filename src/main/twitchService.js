@@ -196,6 +196,7 @@ class TwitchService {
 
     return new Promise((resolve, reject) => {
       let resolved = false;
+      let hasSentCommand = false;
       const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
 
       const timeout = setTimeout(() => {
@@ -220,7 +221,8 @@ class TwitchService {
           ws.send('PONG :tmi.twitch.tv');
         }
 
-        if (msg.includes(`:${this.user.login.toLowerCase()}!`) || msg.includes('376') || msg.includes('JOIN')) {
+        if (!hasSentCommand && (msg.includes('376') || msg.includes('JOIN'))) {
+          hasSentCommand = true;
           ws.send(`PRIVMSG #${chan} :${message}`);
           setTimeout(() => {
             if (!resolved) {
@@ -252,6 +254,7 @@ class TwitchService {
 
     return new Promise((resolve, reject) => {
       let resolved = false;
+      let hasSentSetup = false;
       const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
 
       const timeout = setTimeout(() => {
@@ -276,8 +279,9 @@ class TwitchService {
           ws.send('PONG :tmi.twitch.tv');
         }
 
-        // Once joined, send !setup to trigger bot response
-        if (raw.includes(`:${this.user.login.toLowerCase()}!`) || raw.includes('376') || raw.includes('JOIN')) {
+        // Once joined, send !setup EXACTLY ONCE to trigger bot response
+        if (!hasSentSetup && (raw.includes('376') || raw.includes('JOIN'))) {
+          hasSentSetup = true;
           ws.send(`PRIVMSG #${chan} :!setup`);
         }
 

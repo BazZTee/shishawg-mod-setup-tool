@@ -236,14 +236,16 @@ function renderPersonsGrid() {
         </div>
       </div>
 
-      <div class="input-row">
-        <div class="input-group">
-          <label>Bowl / Glas (optional):</label>
-          <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
-        </div>
-        <div class="input-group">
-          <label>Bowl-Farbe (optional):</label>
-          <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+      <div class="optional-fields-box">
+        <div class="input-row">
+          <div class="input-group">
+            <label class="label-optional">Bowl / Glas (optional):</label>
+            <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
+          </div>
+          <div class="input-group">
+            <label class="label-optional">Bowl-Farbe (optional):</label>
+            <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+          </div>
         </div>
       </div>
 

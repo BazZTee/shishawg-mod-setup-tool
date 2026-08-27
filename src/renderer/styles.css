@@ -431,6 +431,19 @@ input[type="text"]:focus, input[type="password"]:focus {
   box-shadow: 0 0 0 2px rgba(0, 153, 255, 0.2);
 }
 
+.optional-fields-box {
+  background: rgba(0, 153, 255, 0.03);
+  border: 1px dashed rgba(0, 153, 255, 0.2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 2px 0;
+}
+
+.label-optional {
+  color: #7dd3fc !important;
+  font-size: 0.78rem !important;
+}
+
 /* Tobacco Mix Container */
 .tobacco-mix-wrapper {
   display: flex;

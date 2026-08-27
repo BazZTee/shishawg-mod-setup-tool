@@ -93,6 +93,26 @@ body {
   border: 1px solid var(--border-color);
 }
 
+.btn-version-tag {
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--accent-cyan);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-version-tag:hover {
+  background: rgba(0, 153, 255, 0.25);
+  border-color: var(--accent-cyan);
+}
+
 .subtitle {
   font-size: 0.85rem;
   color: var(--text-secondary);

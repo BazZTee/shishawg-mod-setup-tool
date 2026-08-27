@@ -3,6 +3,9 @@ const path = require('path');
 const https = require('https');
 const { app } = require('electron');
 
+const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
+const GIST_TOKEN = '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';
+
 class DatabaseService {
   constructor() {
     this.dbPath = path.join(app.getPath('userData'), 'setup_database.json');
@@ -86,6 +89,8 @@ class DatabaseService {
   saveCatalog(catalog) {
     try {
       fs.writeFileSync(this.dbPath, JSON.stringify(catalog, null, 2), 'utf-8');
+      // Push updated catalog to Gist in background
+      this.pushToGist(catalog).catch(() => {});
       return true;
     } catch (err) {
       console.error('Error saving catalog:', err);
@@ -158,16 +163,32 @@ class DatabaseService {
 
   async syncWithGitHubCommunityCatalog() {
     return new Promise((resolve) => {
-      const url = 'https://raw.githubusercontent.com/BazZTee/shishawg-mod-setup-tool/main/community_catalog.json';
-      https.get(url, (res) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: `/gists/${GIST_ID}`,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+          'Authorization': `token ${GIST_TOKEN}`
+        }
+      };
+
+      const req = https.request(options, (res) => {
         if (res.statusCode !== 200) {
           return resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
         }
+
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
           try {
-            const remoteCatalog = JSON.parse(body);
+            const parsed = JSON.parse(body);
+            const gistFile = parsed.files && (parsed.files['shishawg_catalog.json'] || parsed.files[Object.keys(parsed.files)[0]]);
+            if (!gistFile || !gistFile.content) {
+              return resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
+            }
+
+            const remoteCatalog = JSON.parse(gistFile.content);
             const localCatalog = this.getCatalog();
             let addedCount = 0;
 
@@ -188,16 +209,58 @@ class DatabaseService {
             }
 
             if (addedCount > 0) {
-              this.saveCatalog(localCatalog);
+              fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
+              this.pushToGist(localCatalog).catch(() => {});
             }
+
             resolve({ success: true, addedCount, catalog: localCatalog });
-          } catch(e) {
+          } catch (err) {
             resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
           }
         });
-      }).on('error', () => {
+      });
+
+      req.on('error', () => {
         resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
       });
+
+      req.end();
+    });
+  }
+
+  async pushToGist(catalog) {
+    return new Promise((resolve, reject) => {
+      const payload = JSON.stringify({
+        files: {
+          'shishawg_catalog.json': {
+            content: JSON.stringify(catalog, null, 2)
+          }
+        }
+      });
+
+      const options = {
+        hostname: 'api.github.com',
+        path: `/gists/${GIST_ID}`,
+        method: 'PATCH',
+        headers: {
+          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+          'Authorization': `token ${GIST_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        if (res.statusCode === 200) {
+          resolve(true);
+        } else {
+          reject(new Error(`Gist status: ${res.statusCode}`));
+        }
+      });
+
+      req.on('error', (err) => reject(err));
+      req.write(payload);
+      req.end();
     });
   }
 }

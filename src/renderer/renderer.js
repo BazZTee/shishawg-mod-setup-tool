@@ -225,9 +225,12 @@ function renderPersonsGrid() {
     card.setAttribute('data-index', i);
 
     // Build Tobacco Slot HTML
-    const tobaccoSlotsHtml = p.tobaccos.map((tVal, tIdx) => `
+    const tobaccoSlotsHtml = (p.tobaccos || ['']).map((tVal, tIdx) => `
       <div class="tobacco-slot-row">
-        <input type="text" class="input-p-tob" data-pindex="${i}" data-tindex="${tIdx}" list="list-tobacco" value="${escapeHtml(tVal)}" placeholder="Tabak ${tIdx + 1}">
+        <div class="clearable-input-wrapper" style="flex:1;">
+          <input type="text" class="input-p-tob" data-pindex="${i}" data-tindex="${tIdx}" list="list-tobacco" value="${escapeHtml(tVal)}" placeholder="Tabak ${tIdx + 1}">
+          <button class="btn-clear-field ${tVal ? '' : 'hidden'}" title="Feld leeren">✕</button>
+        </div>
         ${tIdx > 0 ? `<button class="btn-icon btn-remove-tobacco-slot" data-pindex="${i}" data-tindex="${tIdx}" title="Tabaksortenslot entfernen">✕</button>` : ''}
       </div>
     `).join('');
@@ -252,11 +255,17 @@ function renderPersonsGrid() {
       <div class="input-row">
         <div class="input-group">
           <label>Name:</label>
-          <input type="text" class="input-p-name" data-index="${i}" value="${escapeHtml(p.name)}" placeholder="z. B. Marvin">
+          <div class="clearable-input-wrapper">
+            <input type="text" class="input-p-name" data-index="${i}" value="${escapeHtml(p.name)}" placeholder="z. B. Marvin">
+            <button class="btn-clear-field ${p.name ? '' : 'hidden'}" title="Feld leeren">✕</button>
+          </div>
         </div>
         <div class="input-group">
           <label>Pfeife:</label>
-          <input type="text" class="input-p-pipe" data-index="${i}" list="list-pipes" value="${escapeHtml(p.pipe)}" placeholder="z. B. Amotion Futr">
+          <div class="clearable-input-wrapper">
+            <input type="text" class="input-p-pipe" data-index="${i}" list="list-pipes" value="${escapeHtml(p.pipe)}" placeholder="z. B. Amotion Futr">
+            <button class="btn-clear-field ${p.pipe ? '' : 'hidden'}" title="Feld leeren">✕</button>
+          </div>
         </div>
       </div>
 
@@ -264,11 +273,17 @@ function renderPersonsGrid() {
         <div class="input-row">
           <div class="input-group">
             <label class="label-optional">Bowl / Glas (optional):</label>
-            <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
+            <div class="clearable-input-wrapper">
+              <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
+              <button class="btn-clear-field ${p.vessel ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            </div>
           </div>
           <div class="input-group">
             <label class="label-optional">Bowl-Farbe (optional):</label>
-            <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+            <div class="clearable-input-wrapper">
+              <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+              <button class="btn-clear-field ${p.vesselColor ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            </div>
           </div>
         </div>
       </div>
@@ -276,12 +291,18 @@ function renderPersonsGrid() {
       <div class="input-row">
         <div class="input-group" style="${isElectric ? 'grid-column: 1 / -1;' : ''}">
           <label>${isElectric ? '⚡ E-Gerät:' : 'Kopf:'}</label>
-          <input type="text" class="input-p-bowl" data-index="${i}" list="${isElectric ? 'list-electric-bowls' : 'list-bowls'}" value="${escapeHtml(p.bowl)}" placeholder="${isElectric ? 'z. B. XKAH Lite oder Pro' : 'z. B. Cosmo Bowl'}">
+          <div class="clearable-input-wrapper">
+            <input type="text" class="input-p-bowl" data-index="${i}" list="${isElectric ? 'list-electric-bowls' : 'list-bowls'}" value="${escapeHtml(p.bowl)}" placeholder="${isElectric ? 'z. B. XKAH Lite oder Pro' : 'z. B. Cosmo Bowl'}">
+            <button class="btn-clear-field ${p.bowl ? '' : 'hidden'}" title="Feld leeren">✕</button>
+          </div>
         </div>
         ${!isElectric ? `
         <div class="input-group">
           <label>HMD:</label>
-          <input type="text" class="input-p-hmd" data-index="${i}" list="list-hmds" value="${escapeHtml(p.hmd)}" placeholder="z. B. ONMO HMD">
+          <div class="clearable-input-wrapper">
+            <input type="text" class="input-p-hmd" data-index="${i}" list="list-hmds" value="${escapeHtml(p.hmd)}" placeholder="z. B. ONMO HMD">
+            <button class="btn-clear-field ${p.hmd ? '' : 'hidden'}" title="Feld leeren">✕</button>
+          </div>
         </div>
         ` : ''}
       </div>
@@ -1144,6 +1165,31 @@ function matchNotesToForm(text) {
     generateCommandString();
   }
 }
+
+  // Clearable Input Field Listeners (1-Click Clear Button ✕)
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.matches('.clearable-input-wrapper input')) {
+      const btn = e.target.parentElement ? e.target.parentElement.querySelector('.btn-clear-field') : null;
+      if (btn) {
+        if (e.target.value.trim() !== '') btn.classList.remove('hidden');
+        else btn.classList.add('hidden');
+      }
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.matches('.btn-clear-field')) {
+      e.preventDefault();
+      const input = e.target.parentElement ? e.target.parentElement.querySelector('input') : null;
+      if (input) {
+        input.value = '';
+        e.target.classList.add('hidden');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.focus();
+      }
+    }
+  });
 
   // Reset Form
   btnResetAll.addEventListener('click', () => {

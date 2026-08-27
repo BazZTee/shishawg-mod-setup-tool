@@ -138,16 +138,25 @@
         <div class="extras-grid-v2">
           <div class="input-group">
             <label for="input-global-kohle">Kohlesorte:</label>
-            <input type="text" id="input-global-kohle" list="list-charcoal" placeholder="z. B. Magic Cubes (Zauberwürfel)" value="">
+            <div class="clearable-input-wrapper">
+              <input type="text" id="input-global-kohle" list="list-charcoal" placeholder="z. B. Magic Cubes (Zauberwürfel)" value="">
+              <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+            </div>
           </div>
           <div class="input-group">
             <label for="input-global-extra">Zusatz-Info / Tasting:</label>
-            <input type="text" id="input-global-extra" list="list-tastings" placeholder="z. B. Trofimoffs No Aroma Tasting">
+            <div class="clearable-input-wrapper">
+              <input type="text" id="input-global-extra" list="list-tastings" placeholder="z. B. Trofimoffs No Aroma Tasting">
+              <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+            </div>
           </div>
           <div class="input-group full-row-promo">
             <label for="input-global-promo">Zusatz-Command / Promo-Text & Zuordnung:</label>
             <div class="promo-input-row">
-              <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xk">
+              <div class="clearable-input-wrapper" style="flex:1;">
+                <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xkah">
+                <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+              </div>
               <select id="select-promo-target" class="promo-target-select">
                 <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
                 <option value="pipe">➔ Hinter Pfeife anfügen</option>

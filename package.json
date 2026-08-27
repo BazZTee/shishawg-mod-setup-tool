@@ -53,6 +53,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
+      "artifactName": "ShishaWG-Mod-Setup-Tool-Setup-${version}.${ext}",
       "guid": "de-shishawg-modsetuptool-nsis-guid",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,

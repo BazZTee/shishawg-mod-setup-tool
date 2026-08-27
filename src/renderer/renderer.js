@@ -830,7 +830,13 @@ function setupUpdaterEvents() {
   });
 
   ipcRenderer.on('updater:error', (event, errMessage) => {
-    showToast(`Update-Prüfung: ${errMessage}`, 'info');
+    updaterStatusText.textContent = `Fehler: ${errMessage || 'Asset-Name auf GitHub weicht ab'}`;
+    btnUpdaterAction.disabled = false;
+    btnUpdaterAction.textContent = '🌐 Im Browser öffnen & Herunterladen';
+    btnUpdaterAction.onclick = () => {
+      ipcRenderer.invoke('app:open-external', 'https://github.com/BazZTee/shishawg-mod-setup-tool/releases/latest');
+    };
+    showToast(`Update-Fehler: ${errMessage}`, 'error');
   });
 
   // Display version tag

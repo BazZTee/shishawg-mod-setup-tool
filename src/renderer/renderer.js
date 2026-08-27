@@ -356,9 +356,10 @@ function setupEventListeners() {
     showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
   });
 
-  // Twitch Auth Listeners
-  btnTwitchLogin.addEventListener('click', () => {
-    twitchModal.classList.remove('hidden');
+  // Twitch Auth Listeners - 1-Click Seamless Browser Login
+  btnTwitchLogin.addEventListener('click', async () => {
+    showToast('Öffne Twitch-Login im Browser...', 'info');
+    await ipcRenderer.invoke('twitch:login');
   });
 
   if (btnTwitchSettings) {

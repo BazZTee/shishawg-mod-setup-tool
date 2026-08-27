@@ -9,8 +9,8 @@ class TwitchService {
     this.store = store;
     this.authServer = null;
     this.ws = null;
-    // Default to Twitch CLI / Standard Public Chat Client ID or user-configured Client ID
-    this.clientId = store.get('twitch_client_id', 'gp762nuuoqcoxypju8c569th9wz7q5'); 
+    // Twitch CLI Official Client ID designed for local desktop apps (localhost redirect)
+    this.clientId = store.get('twitch_client_id', 'q6batx0wpep6bch5sy1qxyygxj2tv1'); 
     this.accessToken = store.get('twitch_access_token', '');
     this.user = store.get('twitch_user', null);
     this.targetChannel = store.get('target_channel', 'marft');

@@ -45,7 +45,7 @@ class DatabaseService {
         'Fog Your Life Lemon',
         'Holster Ice Kaktuz',
         'Nameless Black Nana',
-        'O's Tobacco African Queen',
+        "O's Tobacco African Queen",
         'Al Massiva Handgemacht & Illegal'
       ],
       charcoal: [

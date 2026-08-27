@@ -194,26 +194,17 @@ class DatabaseService {
 
             const categories = ['pipes', 'bowls', 'hmds', 'tobacco', 'charcoal'];
             for (const cat of categories) {
-              if (!localCatalog[cat]) localCatalog[cat] = [];
               if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
-                for (const item of remoteCatalog[cat]) {
-                  const itemName = typeof item === 'string' ? item : (item.name || item);
-                  const trimmed = itemName.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-                  if (trimmed && !localCatalog[cat].includes(trimmed)) {
-                    localCatalog[cat].push(trimmed);
-                    addedCount++;
-                  }
-                }
-                localCatalog[cat].sort((a, b) => (typeof a === 'string' ? a : a.name).localeCompare(typeof b === 'string' ? b : b.name, 'de'));
+                const cleanedList = remoteCatalog[cat]
+                  .map(item => (typeof item === 'string' ? item : (item.name || item)).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
+                  .filter(Boolean);
+                cleanedList.sort((a, b) => a.localeCompare(b, 'de'));
+                localCatalog[cat] = cleanedList;
               }
             }
 
-            if (addedCount > 0) {
-              fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
-              this.pushToGist(localCatalog).catch(() => {});
-            }
-
-            resolve({ success: true, addedCount, catalog: localCatalog });
+            fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
+            resolve({ success: true, addedCount: 0, catalog: localCatalog });
           } catch (err) {
             resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
           }

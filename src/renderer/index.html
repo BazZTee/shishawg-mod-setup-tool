@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ShishaWG Mod Setup Tool</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+
+    <!-- Top Header Navigation -->
+    <header class="app-header">
+      <div class="brand">
+        <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
+        <div class="brand-text">
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span></h1>
+          <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <!-- Target Channel Selector -->
+        <div class="channel-selector">
+          <label for="target-channel-input">Twitch-Kanal:</label>
+          <div class="channel-input-wrapper">
+            <span class="prefix">#</span>
+            <input type="text" id="target-channel-input" value="marft" placeholder="marft">
+          </div>
+        </div>
+
+        <!-- Twitch User Profile / Login -->
+        <div class="twitch-auth-container" id="twitch-auth-container">
+          <button id="btn-twitch-login" class="btn btn-twitch">
+            <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.429h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>
+            Mit Twitch verbinden
+          </button>
+          
+          <div id="twitch-user-badge" class="user-badge hidden">
+            <img id="user-avatar" src="" alt="Avatar" class="user-avatar">
+            <div class="user-info">
+              <span id="user-display-name" class="user-name">User</span>
+              <span class="user-status"><span class="status-dot green"></span> Verbunden</span>
+            </div>
+            <button id="btn-twitch-logout" class="btn-icon" title="Abmelden">✕</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="app-content">
+
+      <!-- Tool Bar Controls -->
+      <section class="toolbar">
+        <div class="toolbar-group">
+          <label for="person-count-select">Anzahl Personen:</label>
+          <div class="counter-control">
+            <button id="btn-dec-persons" class="btn-counter">-</button>
+            <select id="person-count-select" class="person-select">
+              <option value="1">1 Person</option>
+              <option value="2" selected>2 Personen</option>
+              <option value="3">3 Personen</option>
+              <option value="4">4 Personen</option>
+              <option value="5">5 Personen</option>
+              <option value="6">6 Personen</option>
+              <option value="7">7 Personen</option>
+              <option value="8">8 Personen</option>
+              <option value="9">9 Personen</option>
+              <option value="10">10 Personen</option>
+            </select>
+            <button id="btn-inc-persons" class="btn-counter">+</button>
+          </div>
+        </div>
+
+        <div class="toolbar-group right">
+          <button id="btn-open-db" class="btn btn-secondary">
+            <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4-3.58-4-8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
+            Datenbank / Verzeichnis
+          </button>
+          <button id="btn-reset-all" class="btn btn-danger-outline">
+            Formular leeren
+          </button>
+        </div>
+      </section>
+
+      <!-- Dynamic Persons Container -->
+      <section class="persons-section">
+        <div id="persons-container" class="persons-grid">
+          <!-- Dynamically populated via JS -->
+        </div>
+      </section>
+
+      <!-- Global Extra & Kohle Section -->
+      <section class="global-extras-card">
+        <h3>Stream Extras & Kohle</h3>
+        <div class="extras-grid">
+          <div class="input-group">
+            <label for="input-global-kohle">Kohlesorte:</label>
+            <input type="text" id="input-global-kohle" list="list-charcoal" placeholder="z. B. Magic Cubes (Zauberwürfel) !kohle" value="Magic Cubes (Zauberwürfel) !kohle">
+          </div>
+          <div class="input-group">
+            <label for="input-global-extra">Zusatz-Info / Tasting:</label>
+            <input type="text" id="input-global-extra" list="list-tobacco" placeholder="z. B. Trofimoffs No Aroma Tasting">
+          </div>
+        </div>
+      </section>
+
+      <!-- Command Generator & Live Output Card -->
+      <section class="generator-card">
+        <div class="generator-header">
+          <h2>Generierter Befehl (Twitch Chat)</h2>
+          <span class="schema-hint">Schema: <code>!editsetup Name: Pfeife // Kopf // HMD // Tabak...</code></span>
+        </div>
+
+        <div class="output-wrapper">
+          <textarea id="command-output" readonly placeholder="Command wird hier automatisch generiert..."></textarea>
+          <button id="btn-copy" class="btn btn-copy" title="In Zwischenablage kopieren">
+            <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/></svg>
+            Kopieren
+          </button>
+        </div>
+
+        <div class="generator-actions">
+          <button id="btn-send-chat" class="btn btn-primary btn-large">
+            <svg class="icon-lg" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            In Twitch-Chat Senden (!editsetup)
+          </button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Toast Notification Banner -->
+    <div id="toast-banner" class="toast hidden">
+      <span id="toast-message">Status-Nachricht</span>
+    </div>
+
+    <!-- Database Management Modal -->
+    <div id="db-modal" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Datenbank & Autovervollständigung</h3>
+          <button id="btn-close-db-modal" class="btn-icon">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-tabs">
+            <button class="tab-btn active" data-tab="tab-tobacco">Tabak</button>
+            <button class="tab-btn" data-tab="tab-pipes">Pfeifen</button>
+            <button class="tab-btn" data-tab="tab-bowls">Köpfe</button>
+            <button class="tab-btn" data-tab="tab-hmds">HMDs</button>
+            <button class="tab-btn" data-tab="tab-charcoal">Kohle</button>
+          </div>
+
+          <div class="tab-content" id="tab-content-area">
+            <div class="add-item-row">
+              <input type="text" id="new-item-input" placeholder="Neues Element hinzufügen...">
+              <button id="btn-add-db-item" class="btn btn-primary">Hinzufügen</button>
+            </div>
+            <div class="catalog-list" id="catalog-list-items">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Datalists for Auto-Complete -->
+    <datalist id="list-pipes"></datalist>
+    <datalist id="list-bowls"></datalist>
+    <datalist id="list-hmds"></datalist>
+    <datalist id="list-tobacco"></datalist>
+    <datalist id="list-charcoal"></datalist>
+
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

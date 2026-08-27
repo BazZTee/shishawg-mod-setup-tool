@@ -1,0 +1,53 @@
+{
+  "name": "shishawg-mod-setup-tool",
+  "version": "1.0.0",
+  "description": "Moderator Tool für ShishaWG zum Erstellen und Senden des Stream-Setups im Twitch-Chat",
+  "main": "src/main/main.js",
+  "author": "ShishaWG Mod Team",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^2.1.8"
+  },
+  "build": {
+    "appId": "de.shishawg.modsetuptool",
+    "productName": "ShishaWG Mod Setup Tool",
+    "copyright": "Copyright © 2026 ShishaWG",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ShishaWG Mod Setup Tool"
+    }
+  }
+}

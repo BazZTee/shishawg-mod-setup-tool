@@ -121,15 +121,15 @@ function updateTwitchUI() {
   }
 }
 
-// Default Initial Persons Setup (Default: 1 Person)
+// Default Initial Persons Setup (Default: 1 Person, Empty Fields)
 function initDefaultPersons() {
   state.persons = [
     {
-      name: 'Marvin',
-      pipe: 'Amotion Futr',
-      bowl: 'Cosmo Bowl',
-      hmd: 'ONMO HMD',
-      tobaccos: ['Trofimoff Like Zaghoul']
+      name: '',
+      pipe: '',
+      bowl: '',
+      hmd: '',
+      tobaccos: ['']
     }
   ];
 }
@@ -142,7 +142,7 @@ function renderPersonsGrid() {
     let p = state.persons[i];
     if (!p) {
       p = {
-        name: i === 0 ? 'Marvin' : i === 1 ? 'Yannick' : `Person ${i + 1}`,
+        name: '',
         pipe: '',
         bowl: '',
         hmd: '',

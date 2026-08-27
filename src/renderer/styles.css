@@ -747,11 +747,17 @@ textarea#command-output {
   margin-bottom: 6px;
 }
 
+.btn-secondary.btn-sm {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
 .modal-tabs {
   display: flex;
   gap: 6px;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
+  margin-bottom: 14px;
 }
 
 .tab-btn {
@@ -773,6 +779,7 @@ textarea#command-output {
 .add-item-row {
   display: flex;
   gap: 10px;
+  margin-bottom: 14px;
 }
 
 .add-item-row input {
@@ -782,9 +789,28 @@ textarea#command-output {
 .catalog-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 300px;
+  gap: 8px;
+  max-height: 340px;
   overflow-y: auto;
+  padding-right: 6px;
+}
+
+.catalog-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.catalog-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.catalog-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+.catalog-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
 }
 
 .catalog-item {
@@ -792,9 +818,16 @@ textarea#command-output {
   justify-content: space-between;
   align-items: center;
   background: var(--bg-input);
-  padding: 8px 12px;
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 10px 14px;
+  border-radius: 8px;
   font-size: 0.9rem;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.catalog-item:hover {
+  background: rgba(0, 153, 255, 0.1);
+  border-color: rgba(0, 153, 255, 0.3);
 }
 
 .hidden { display: none !important; }

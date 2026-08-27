@@ -865,6 +865,7 @@ function matchNotesToForm(text) {
     generateCommandString();
     return;
   }
+
   const catalog = state.catalog || {};
   let updated = false;
 
@@ -872,101 +873,115 @@ function matchNotesToForm(text) {
     state.persons[0] = { name: 'Marvin', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
   }
   const p = state.persons[0];
-  let workText = text.trim();
+  const origText = text.trim();
+  const lowerText = origText.toLowerCase();
 
   const capitalize = (str) => {
     if (!str) return '';
     return str.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
-  // 1. Signal Extract: Bowl-Farbe ("in <color>")
-  const colorMatch = workText.match(/\bin\s+([a-zäöüß0-9-]+)(?=\s+|$|\b)/i);
-  if (colorMatch && colorMatch[1]) {
-    const rawColor = colorMatch[1].toLowerCase();
-    if (!['einer', 'dem', 'der', 'die', 'das', 'den', 'mit', 'auf'].includes(rawColor)) {
-      const extractedColor = capitalize(colorMatch[1].trim());
-      if (extractedColor && p.vesselColor !== extractedColor) {
-        p.vesselColor = extractedColor;
-        updated = true;
-      }
-    }
-  }
-
-  // 2. Signal Extract: Bowl / Glas ("auf einer <glass>" or "auf <glass>")
-  const vesselMatch = workText.match(/\bauf\s+(?:einer\s+)?([a-zäöüß0-9-]+(?:\s+[a-zäöüß0-9-]+){0,2})/i);
-  if (vesselMatch && vesselMatch[1]) {
-    let extractedVessel = capitalize(vesselMatch[1].trim());
-    if (extractedVessel) {
-      if (catalog.vases) {
-        const known = catalog.vases.find(k => k.toLowerCase().includes(vesselMatch[1].toLowerCase()) || vesselMatch[1].toLowerCase().includes(k.toLowerCase()));
-        if (known) extractedVessel = known;
-      }
-      if (p.vessel !== extractedVessel) {
-        p.vessel = extractedVessel;
-        updated = true;
-      }
-    }
-  }
-
-  // 3. Signal Extract: Kopf ("von <head>" or brand words like voskurymsia, mumia, cosmo)
-  let extractedHead = '';
-  const headMatch = workText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
-  if (headMatch && headMatch[1]) {
-    extractedHead = capitalize(headMatch[1].trim());
-  } else {
-    const fallbackHead = workText.match(/\b(voskurymsia\s+mumia|cosmo\s+bowl|litbowl|v1|kalifa|oblako|solaris|vosun|moon)/i);
-    if (fallbackHead && fallbackHead[1]) {
-      extractedHead = capitalize(fallbackHead[1].trim());
-    }
-  }
-
-  if (extractedHead) {
-    if (catalog.bowls) {
-      const known = catalog.bowls.find(k => k.toLowerCase().includes(extractedHead.toLowerCase()) || extractedHead.toLowerCase().includes(k.toLowerCase()));
-      if (known) extractedHead = known;
-    }
-    if (p.bowl !== extractedHead) {
-      p.bowl = extractedHead;
-      updated = true;
-    }
-  }
-
-  // 4. Signal Extract: Pfeife (Text before "in <color>", "auf einer", "von")
-  const pipeMatch = workText.match(/^([a-zäöüß0-9\s-]+?)(?=\s+(?:in\s+|auf\s+|von\s+|mit\s+|$))/i);
-  if (pipeMatch && pipeMatch[1]) {
-    let extractedPipe = capitalize(pipeMatch[1].trim());
-    if (extractedPipe && extractedPipe.length >= 3 && !['auf', 'von', 'in', 'mit'].includes(pipeMatch[1].toLowerCase())) {
-      if (catalog.pipes) {
-        const known = catalog.pipes.find(k => k.toLowerCase().includes(pipeMatch[1].toLowerCase()) || pipeMatch[1].toLowerCase().includes(k.toLowerCase()));
-        if (known) extractedPipe = known;
-      }
-      if (p.pipe !== extractedPipe) {
-        p.pipe = extractedPipe;
-        updated = true;
-      }
-    }
-  }
-
-  // 5. Match HMD
-  if (catalog.hmds) {
-    for (const hmd of catalog.hmds) {
-      const hName = (typeof hmd === 'string' ? hmd : hmd.name).trim();
-      const hLower = hName.toLowerCase();
-      if (workText.toLowerCase().includes(hLower) || (hLower.includes('onmo') && workText.toLowerCase().includes('onmo'))) {
-        if (p.hmd !== hName) {
-          p.hmd = hName;
-          updated = true;
-        }
+  // 1. Pipe Scanner (Scan catalog pipes + synonyms like "futr", "emotion", "amotion", "breeze", "varity", "vyro")
+  let matchedPipe = '';
+  if (catalog.pipes) {
+    for (const pipe of catalog.pipes) {
+      const pName = (typeof pipe === 'string' ? pipe : pipe.name).trim();
+      const pLower = pName.toLowerCase();
+      const tokens = pLower.split(/\s+/).filter(w => w.length > 2);
+      if (lowerText.includes(pLower) || tokens.some(t => lowerText.includes(t))) {
+        matchedPipe = pName;
         break;
       }
     }
   }
+  if (!matchedPipe) {
+    if (lowerText.includes('futr') || lowerText.includes('emotion') || lowerText.includes('amotion')) matchedPipe = 'Amotion Futr';
+    else if (lowerText.includes('breeze')) matchedPipe = 'Moze Breeze Two';
+    else if (lowerText.includes('varity')) matchedPipe = 'Moze Varity';
+    else if (lowerText.includes('flash bang')) matchedPipe = 'Amotion Flash Bang';
+    else if (lowerText.includes('specter') || lowerText.includes('vyro')) matchedPipe = 'Vyro Specter';
+  }
+  if (p.pipe !== matchedPipe) {
+    p.pipe = matchedPipe;
+    updated = true;
+  }
 
-  // 6. Match Tobacco with Abbreviation Expansion (musth -> Musthave, kwi -> Kiwi, etc.)
-  const lowerWork = workText.toLowerCase();
+  // 2. Bowl/Glas Scanner ("auf einer ...", "auf ...")
+  let matchedVessel = '';
+  const vesselMatch = origText.match(/\bauf\s+(?:einer\s+)?([a-zäöüß0-9-]+(?:\s+[a-zäöüß0-9-]+){0,2})/i);
+  if (vesselMatch && vesselMatch[1]) {
+    matchedVessel = capitalize(vesselMatch[1].trim());
+    if (catalog.vases) {
+      const known = catalog.vases.find(k => k.toLowerCase().includes(vesselMatch[1].toLowerCase()) || vesselMatch[1].toLowerCase().includes(k.toLowerCase()));
+      if (known) matchedVessel = known;
+    }
+  }
+  if (p.vessel !== matchedVessel) {
+    p.vessel = matchedVessel;
+    updated = true;
+  }
+
+  // 3. Bowl-Farbe Scanner ("in <color>")
+  let matchedColor = '';
+  const colorMatch = origText.match(/\bin\s+([a-zäöüß0-9-]+)(?=\s+|$|\b)/i);
+  if (colorMatch && colorMatch[1]) {
+    const rawColor = colorMatch[1].toLowerCase();
+    if (!['einer', 'dem', 'der', 'die', 'das', 'den', 'mit', 'auf'].includes(rawColor)) {
+      matchedColor = capitalize(colorMatch[1].trim());
+    }
+  }
+  if (p.vesselColor !== matchedColor) {
+    p.vesselColor = matchedColor;
+    updated = true;
+  }
+
+  // 4. Kopf Scanner ("von <head>" or known bowls like voskurymsia, mumia, cosmo, litbowl)
+  let matchedBowl = '';
+  const headMatch = origText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
+  if (headMatch && headMatch[1]) {
+    matchedBowl = capitalize(headMatch[1].trim());
+  } else if (catalog.bowls) {
+    for (const bowl of catalog.bowls) {
+      const bName = (typeof bowl === 'string' ? bowl : bowl.name).trim();
+      const bLower = bName.toLowerCase();
+      const tokens = bLower.split(/\s+/).filter(w => w.length > 2);
+      if (lowerText.includes(bLower) || tokens.some(t => lowerText.includes(t))) {
+        matchedBowl = bName;
+        break;
+      }
+    }
+  }
+  if (!matchedBowl) {
+    if (lowerText.includes('voskurymsia') || lowerText.includes('mumia')) matchedBowl = 'Voskurymsia Mumia';
+    else if (lowerText.includes('cosmo')) matchedBowl = 'Cosmo Bowl';
+    else if (lowerText.includes('litbowl')) matchedBowl = 'Hookain LitBowl';
+  }
+  if (p.bowl !== matchedBowl) {
+    p.bowl = matchedBowl;
+    updated = true;
+  }
+
+  // 5. HMD Scanner (ONMO, Na Grani, Kaloud, AO)
+  let matchedHmd = '';
+  if (catalog.hmds) {
+    for (const hmd of catalog.hmds) {
+      const hName = (typeof hmd === 'string' ? hmd : hmd.name).trim();
+      const hLower = hName.toLowerCase();
+      if (lowerText.includes(hLower) || (hLower.includes('onmo') && lowerText.includes('onmo'))) {
+        matchedHmd = hName;
+        break;
+      }
+    }
+  }
+  if (!matchedHmd && lowerText.includes('onmo')) matchedHmd = 'ONMO HMD';
+  if (p.hmd !== matchedHmd) {
+    p.hmd = matchedHmd;
+    updated = true;
+  }
+
+  // 6. Tobacco Scanner (Scan all catalog tobaccos + handle multi-musthave / abbreviations)
   const matchedTobaccos = [];
-
-  const expandedText = lowerWork
+  const expandedText = lowerText
     .replace(/\bmusth\b/g, 'musthave')
     .replace(/\bkwi\b/g, 'kiwi')
     .replace(/\bleime\b/g, 'lime');
@@ -979,61 +994,55 @@ function matchNotesToForm(text) {
 
       let isMatch = expandedText.includes(tLower);
       if (!isMatch) {
-        let matchedWordCount = 0;
+        let count = 0;
         for (const tw of tWords) {
-          if (expandedText.includes(tw)) matchedWordCount++;
+          if (expandedText.includes(tw)) count++;
         }
-        if (matchedWordCount >= 2 || (matchedWordCount >= 1 && tWords.length === 1)) {
-          isMatch = true;
-        }
+        if (count >= 2 || (count >= 1 && tWords.length === 1)) isMatch = true;
       }
-
       if (isMatch && !matchedTobaccos.includes(tName)) {
         matchedTobaccos.push(tName);
       }
     }
+  }
 
-    if (expandedText.includes('musthave')) {
-      const musthaveMatches = expandedText.match(/\bmusthave\s+([a-z0-9\s-]+?)(?=\s+(?:musthave|magic|kohle|\!|$))/gi);
-      if (musthaveMatches) {
-        for (const m of musthaveMatches) {
-          const formatted = capitalize(m.trim());
-          if (!matchedTobaccos.includes(formatted)) {
-            matchedTobaccos.push(formatted);
-          }
-        }
-      }
-    }
+  const musthaveRegex = /musthave\s+([a-z0-9\s-]+?)(?=\s+(?:musthave|magic|charcoal|kohle|\!|$))/gi;
+  let mMatch;
+  while ((mMatch = musthaveRegex.exec(expandedText)) !== null) {
+    const rawFlavor = mMatch[1].trim();
+    if (rawFlavor) {
+      let fullCandidate = `Musthave ${capitalize(rawFlavor)}`;
+      if (rawFlavor.includes('kiwi') || rawFlavor.includes('smooth')) fullCandidate = 'Musthave Kiwi Smooth';
+      if (rawFlavor.includes('lime') || rawFlavor.includes('leime')) fullCandidate = 'Musthave Lime';
 
-    if (matchedTobaccos.length > 0) {
-      const formattedTobaccos = [...matchedTobaccos, ''];
-      if (JSON.stringify(p.tobaccos) !== JSON.stringify(formattedTobaccos)) {
-        p.tobaccos = formattedTobaccos;
-        updated = true;
+      if (!matchedTobaccos.includes(fullCandidate)) {
+        matchedTobaccos.push(fullCandidate);
       }
     }
   }
 
-  // 7. Match Charcoal
-  if (catalog.charcoal || expandedText.includes('charcoal') || expandedText.includes('kohle')) {
-    let matchedCharcoal = '';
-    if (catalog.charcoal) {
-      for (const c of catalog.charcoal) {
-        const cName = (typeof c === 'string' ? c : c.name).trim();
-        const cLower = cName.toLowerCase();
-        if (expandedText.includes('magic') || expandedText.includes('cubes') || expandedText.includes('charcoal') || expandedText.includes(cLower)) {
-          matchedCharcoal = cName;
-          break;
-        }
+  const formattedTobaccos = matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''];
+  if (JSON.stringify(p.tobaccos) !== JSON.stringify(formattedTobaccos)) {
+    p.tobaccos = formattedTobaccos;
+    updated = true;
+  }
+
+  // 7. Charcoal Scanner (Magic Cubes, Black Coco, Shaman)
+  let matchedCharcoal = '';
+  if (lowerText.includes('magic') || lowerText.includes('cubes') || lowerText.includes('zauberwürfel')) {
+    matchedCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
+  } else if (catalog.charcoal) {
+    for (const c of catalog.charcoal) {
+      const cName = (typeof c === 'string' ? c : c.name).trim();
+      if (lowerText.includes(cName.toLowerCase())) {
+        matchedCharcoal = cName;
+        break;
       }
     }
-    if (!matchedCharcoal && (expandedText.includes('magic') || expandedText.includes('charcoal'))) {
-      matchedCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
-    }
-    if (matchedCharcoal && inputGlobalKohle && inputGlobalKohle.value !== matchedCharcoal) {
-      inputGlobalKohle.value = matchedCharcoal;
-      updated = true;
-    }
+  }
+  if (inputGlobalKohle && inputGlobalKohle.value !== matchedCharcoal) {
+    inputGlobalKohle.value = matchedCharcoal;
+    updated = true;
   }
 
   if (updated) {

@@ -57,10 +57,10 @@ function createWindow() {
   const iconExists = fs.existsSync(iconPath);
 
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 980,
-    minWidth: 980,
-    minHeight: 720,
+    width: 1200,
+    height: 860,
+    minWidth: 960,
+    minHeight: 680,
     title: 'ShishaWG Mod Setup Tool',
     icon: iconExists ? iconPath : undefined,
     backgroundColor: '#0b0f17',

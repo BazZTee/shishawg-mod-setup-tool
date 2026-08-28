@@ -963,23 +963,29 @@ function matchNotesToForm(text) {
   } else {
     // Continuous text: Scan strictly for KNOWN person names or explicit "Name:" pattern
     const words = lowerText.split(/\s+/).filter(Boolean);
+    const origWords = origText.split(/\s+/).filter(Boolean);
     const foundIndices = [];
 
     for (let i = 0; i < words.length; i++) {
       const cleanW = words[i].replace(/[:;,]/g, '');
-      const isColonName = words[i].endsWith(':') && words[i].length >= 3;
+      const isColonName = words[i].endsWith(':') && cleanW.length >= 2;
       const isKnownPerson = allKnownPersons.includes(cleanW);
 
-      if (isKnownPerson || isColonName) {
+      if (isColonName || (isKnownPerson && (i === 0 || isKnownPipeOrBowl(words[i - 1])))) {
         foundIndices.push({ index: i, name: cleanW });
       }
     }
 
-    if (foundIndices.length > 1) {
+    if (foundIndices.length > 0) {
+      // If there is text before the first person name, that's Person 1
+      if (foundIndices[0].index > 0) {
+        rawSegments.push(origWords.slice(0, foundIndices[0].index).join(' '));
+      }
+
       for (let k = 0; k < foundIndices.length; k++) {
         const startIdx = foundIndices[k].index;
-        const endIdx = (k + 1 < foundIndices.length) ? foundIndices[k + 1].index : words.length;
-        rawSegments.push(words.slice(startIdx, endIdx).join(' '));
+        const endIdx = (k + 1 < foundIndices.length) ? foundIndices[k + 1].index : origWords.length;
+        rawSegments.push(origWords.slice(startIdx, endIdx).join(' '));
       }
     } else {
       rawSegments = [origText];

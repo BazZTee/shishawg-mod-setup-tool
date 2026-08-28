@@ -841,7 +841,265 @@ function parseChatSetupMessage(rawText) {
   return false;
 }
 
+async function triggerAutoLearn() {
+  try {
+    const res = await ipcRenderer.invoke('db:auto-learn', {
+      persons: state.persons,
+      kohle: inputGlobalKohle ? inputGlobalKohle.value : '',
+      extra: inputGlobalExtra ? inputGlobalExtra.value : ''
+    });
+    if (res && res.addedCount > 0) {
+      state.catalog = res.catalog;
+      updateDatalists();
+      showToast(`${res.addedCount} neue(s) Element(e) automatisch in die Datenbank aufgenommen!`, 'success');
+    }
+  } catch(e) {}
+}
 
+const COMMON_PERSON_NAMES = [
+  'marvin', 'marv', 'basti', 'gary', 'janni', 'yanni', 'dennis', 'daniel',
+  'niklas', 'tim', 'tasting', 'alex', 'chris', 'jan', 'max', 'sven', 'leon', 'robin',
+  'nils', 'lukas', 'jonas', 'paul', 'finn', 'elias', 'noah', 'luis', 'david', 'simon',
+  'hannes', 'erik', 'marc', 'lars', 'julian', 'flo', 'stefan', 'micha', 'christian',
+  'person 1', 'person 2', 'person 3', 'person 4', 'person 5', 'person 6'
+];
+
+function matchNotesToForm(text) {
+  if (!text || text.trim().length < 2) {
+    if (state.persons[0]) {
+      const pName = state.persons[0].name || 'Marvin';
+      state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
+    }
+    if (inputGlobalKohle) inputGlobalKohle.value = '';
+    renderPersonsGrid();
+    generateCommandString();
+    return;
+  }
+
+  const catalog = state.catalog || {};
+  const origText = text.trim();
+  const lowerText = origText.toLowerCase();
+  const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+
+  // 1. Gather all catalog gear for structure lookahead
+  const dbPersons = (catalog.persons || []).map(p => getItemName(p).toLowerCase());
+  const allKnownPersons = Array.from(new Set([...COMMON_PERSON_NAMES, ...dbPersons]));
+
+  const pipesList = (catalog.pipes || []).map(p => getItemName(p).toLowerCase());
+  const bowlsList = (catalog.bowls || []).map(b => getItemName(b).toLowerCase());
+  const hmdsList = (catalog.hmds || []).map(h => getItemName(h).toLowerCase());
+  const charcoalList = (catalog.charcoal || []).map(c => getItemName(c).toLowerCase());
+
+  function isKnownGearToken(tok) {
+    if (!tok || tok.length < 2) return false;
+    if (SHISHA_SYNONYMS[tok]) return true;
+    const allGear = [...pipesList, ...bowlsList, ...hmdsList, ...charcoalList];
+    return allGear.some(item => {
+      const parts = item.split(/[\s-]+/);
+      return parts.some(p => p === tok || similarityScore(p, tok) >= 0.82);
+    });
+  }
+
+  function isKnownPipeOrBowl(tok, nextTok = '') {
+    const combined = nextTok ? `${tok} ${nextTok}` : tok;
+    if (pipesList.some(p => p.includes(tok) || p.includes(combined)) || bowlsList.some(b => b.includes(tok) || b.includes(combined))) return true;
+    if (SHISHA_SYNONYMS[tok] || (nextTok && SHISHA_SYNONYMS[combined])) return true;
+    return false;
+  }
+
+  // 2. Multi-Person Delimiter Detection (//, /, ;, \n, or structure-aware sequence)
+  let rawSegments = [];
+
+  if (origText.includes('//')) {
+    rawSegments = origText.split(/\/{2,}/);
+  } else if (origText.includes('\n')) {
+    rawSegments = origText.split(/\n+/);
+  } else if (origText.includes(';')) {
+    rawSegments = origText.split(/;+/);
+  } else if (origText.includes('/')) {
+    rawSegments = origText.split(/\/+/);
+  } else {
+    // Structure-Aware continuous text scan
+    const words = lowerText.split(/\s+/).filter(Boolean);
+    const foundIndices = [];
+
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i].replace(/[:;,]/g, '');
+      const isKnownPerson = allKnownPersons.includes(w) || ['person 1', 'person 2', 'person 3', 'person 4'].includes(w);
+
+      if (isKnownPerson) {
+        foundIndices.push({ index: i, name: w });
+      } else if (i > 0 && i < words.length - 1) {
+        // Hybrid Structure Guardrail: An unknown word is a person ONLY IF followed by a pipe or bowl, and is not itself known gear
+        const nextWord = words[i + 1].replace(/[:;,]/g, '');
+        const nextNextWord = (i + 2 < words.length) ? words[i + 2].replace(/[:;,]/g, '') : '';
+        const followedByGear = isKnownPipeOrBowl(nextWord, nextNextWord);
+        const isGearItself = isKnownGearToken(w);
+
+        if (followedByGear && !isGearItself && w.length >= 3) {
+          foundIndices.push({ index: i, name: w });
+        }
+      }
+    }
+
+    if (foundIndices.length > 1) {
+      for (let k = 0; k < foundIndices.length; k++) {
+        const startIdx = foundIndices[k].index;
+        const endIdx = (k + 1 < foundIndices.length) ? foundIndices[k + 1].index : words.length;
+        rawSegments.push(words.slice(startIdx, endIdx).join(' '));
+      }
+    } else {
+      rawSegments = [origText];
+    }
+  }
+
+  rawSegments = rawSegments.map(s => s.trim()).filter(Boolean);
+
+  let globalCharcoal = '';
+  const candidateSegments = [];
+
+  for (const seg of rawSegments) {
+    const sLower = seg.toLowerCase();
+    const cMatch = findBestFuzzyMatch(seg, catalog.charcoal || [], 0.70);
+    const hasPersonOrGear = Object.values(catalog).flat().some(item => {
+      const iName = getItemName(item).toLowerCase();
+      if ((catalog.charcoal || []).some(c => getItemName(c).toLowerCase() === iName)) return false;
+      return sLower.includes(iName.split(' ')[0]);
+    }) || allKnownPersons.some(n => sLower.includes(n));
+
+    const isCharcoalOnly = !hasPersonOrGear && (cMatch || sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('blackcoco'));
+    if (isCharcoalOnly) {
+      globalCharcoal = cMatch ? cMatch.name : (sLower.includes('black') ? 'Black Coco 26mm' : 'Magic Cubes (Zauberwürfel) !kohle');
+    } else {
+      candidateSegments.push(seg);
+    }
+  }
+
+  const segmentsToProcess = candidateSegments.length > 0 ? candidateSegments : [origText];
+  const newPersons = [];
+
+  for (let idx = 0; idx < segmentsToProcess.length; idx++) {
+    const seg = segmentsToProcess[idx];
+    const sLower = seg.toLowerCase();
+    const tokens = sLower.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
+
+    // 1. Name Scanner
+    let matchedName = `Person ${idx + 1}`;
+    const firstTok = tokens[0];
+    if (firstTok) {
+      if (allKnownPersons.includes(firstTok)) {
+        matchedName = capitalize(firstTok);
+      } else if (seg.includes(':')) {
+        matchedName = capitalize(seg.split(':')[0].trim());
+      } else {
+        const isKnownShishaTerm = Object.values(catalog).flat().some(item => getItemName(item).toLowerCase().includes(firstTok)) || !!SHISHA_SYNONYMS[firstTok];
+        if (!isKnownShishaTerm && firstTok.length >= 3) {
+          matchedName = capitalize(firstTok);
+        }
+      }
+    }
+
+    function scanCategory(catList) {
+      if (!catList || catList.length === 0) return null;
+      for (let i = 0; i < tokens.length - 1; i++) {
+        const window2 = `${tokens[i]} ${tokens[i + 1]}`;
+        const syn = SHISHA_SYNONYMS[window2];
+        if (syn && catList.some(item => getItemName(item) === syn)) {
+          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
+        }
+        const m2 = findBestFuzzyMatch(window2, catList, 0.70);
+        if (m2) return m2;
+      }
+      for (const tok of tokens) {
+        if (tok.length < 3) continue;
+        const syn = SHISHA_SYNONYMS[tok];
+        if (syn && catList.some(item => getItemName(item) === syn)) {
+          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
+        }
+        for (const item of catList) {
+          const iName = getItemName(item);
+          const iTokens = iName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2);
+          if (iTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
+            return { name: iName, item };
+          }
+        }
+        const m1 = findBestFuzzyMatch(tok, catList, 0.72);
+        if (m1) return m1;
+      }
+      return null;
+    }
+
+    const pipeMatch = scanCategory(catalog.pipes || []);
+    const pipe = pipeMatch ? pipeMatch.name : '';
+
+    let bowl = '';
+    let isElectric = false;
+    if (sLower.includes('xkah') || sLower.includes('xk-ah') || sLower.includes('xk ah') || sLower.includes('xklite') || sLower.includes('xkpro')) {
+      bowl = (sLower.includes('pro') || sLower.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
+      isElectric = true;
+    } else {
+      const bowlMatch = scanCategory(catalog.bowls || []);
+      if (bowlMatch) {
+        bowl = bowlMatch.name;
+        if (bowlMatch.item && bowlMatch.item.isElectric) isElectric = true;
+      }
+    }
+
+    let hmd = '';
+    if (!isElectric) {
+      const hmdMatch = scanCategory(catalog.hmds || []);
+      if (hmdMatch) hmd = hmdMatch.name;
+    }
+
+    const vesselMatch = scanCategory(catalog.vases || []);
+    const vessel = vesselMatch ? vesselMatch.name : '';
+
+    const matchedTobaccos = [];
+    for (const item of catalog.tobacco || []) {
+      const tName = getItemName(item);
+      const tTokens = tName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2 && w !== 'tobacco');
+      for (const tok of tokens) {
+        if (tok.length > 2 && tTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
+          if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
+        }
+      }
+    }
+
+    // Check charcoal if not found globally
+    if (!globalCharcoal) {
+      const cMatch = scanCategory(catalog.charcoal || []);
+      if (cMatch) {
+        globalCharcoal = cMatch.name;
+      } else if (sLower.includes('zauber') || sLower.includes('magic') || sLower.includes('cubes')) {
+        globalCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
+      }
+    }
+
+    newPersons.push({
+      name: matchedName,
+      pipe,
+      bowl,
+      hmd,
+      vessel,
+      vesselColor: '',
+      tobaccos: matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''],
+      isElectric
+    });
+  }
+
+  state.personCount = Math.min(10, Math.max(1, newPersons.length));
+  updatePersonCountLabel();
+  state.persons = newPersons;
+
+  if (globalCharcoal && inputGlobalKohle) {
+    inputGlobalKohle.value = globalCharcoal;
+    const btn = inputGlobalKohle.parentElement ? inputGlobalKohle.parentElement.querySelector('.btn-clear-field') : null;
+    if (btn) btn.classList.toggle('hidden', !globalCharcoal);
+  }
+
+  renderPersonsGrid();
+  generateCommandString();
+}
 
 // Global Event Listeners
 function setupEventListeners() {
@@ -1217,6 +1475,15 @@ function setupEventListeners() {
       if (btnSendChat) btnSendChat.click();
     }
   });
+
+  // OBS Stream Overlay Modal Elements
+  const btnOpenObs = document.getElementById('btn-open-obs');
+  const obsModal = document.getElementById('obs-modal');
+  const btnCloseObsModal = document.getElementById('btn-close-obs-modal');
+  const btnCloseObs = document.getElementById('btn-close-obs');
+  const btnCopyObsCloud = document.getElementById('btn-copy-obs-cloud');
+  const btnCopyObsLocal = document.getElementById('btn-copy-obs-local');
+  const btnTestOverlayBrowser = document.getElementById('btn-test-overlay-browser');
 
   function updateObsUrls() {
     const chan = (state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();

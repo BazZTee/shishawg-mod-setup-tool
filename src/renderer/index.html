@@ -45,23 +45,11 @@
       <!-- Tool Bar Controls -->
       <section class="toolbar">
         <div class="toolbar-group">
-          <label for="person-count-select">Anzahl Personen:</label>
-          <div class="counter-control">
-            <button id="btn-dec-persons" class="btn-counter">-</button>
-            <select id="person-count-select" class="person-select">
-              <option value="1" selected>1 Person</option>
-              <option value="2">2 Personen</option>
-              <option value="3">3 Personen</option>
-              <option value="4">4 Personen</option>
-              <option value="5">5 Personen</option>
-              <option value="6">6 Personen</option>
-              <option value="7">7 Personen</option>
-              <option value="8">8 Personen</option>
-              <option value="9">9 Personen</option>
-              <option value="10">10 Personen</option>
-            </select>
-            <button id="btn-inc-persons" class="btn-counter">+</button>
-          </div>
+          <span id="person-count-label" class="person-count-label">1 Person</span>
+          <button id="btn-inc-persons" class="btn btn-secondary btn-add-person">
+            <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Person
+          </button>
         </div>
 
         <div class="toolbar-group right">
@@ -153,14 +141,14 @@
             <label for="input-global-kohle">Kohlesorte:</label>
             <div class="clearable-input-wrapper">
               <input type="text" id="input-global-kohle" list="list-charcoal" placeholder="z. B. Magic Cubes (Zauberwürfel)" value="">
-              <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+              <button class="btn-clear-field hidden" tabindex="-1" title="Feld leeren">✕</button>
             </div>
           </div>
           <div class="input-group">
             <label for="input-global-extra">Zusatz-Info / Tasting:</label>
             <div class="clearable-input-wrapper">
               <input type="text" id="input-global-extra" list="list-tastings" placeholder="z. B. Trofimoffs No Aroma Tasting">
-              <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+              <button class="btn-clear-field hidden" tabindex="-1" title="Feld leeren">✕</button>
             </div>
           </div>
 
@@ -177,7 +165,7 @@
               <div class="promo-input-row">
                 <div class="clearable-input-wrapper" style="flex:1;">
                   <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xkah">
-                  <button class="btn-clear-field hidden" title="Feld leeren">✕</button>
+                  <button class="btn-clear-field hidden" tabindex="-1" title="Feld leeren">✕</button>
                 </div>
                 <select id="select-promo-target" class="promo-target-select">
                   <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
@@ -200,7 +188,6 @@
       <section class="generator-card generator-card-sticky">
         <div class="generator-header">
           <h2>💬 Schritt 3: Generierter Befehl <span id="command-length-badge" class="char-badge">0 / 500</span></h2>
-          <span class="schema-hint">Schema: <code>!editsetup Name: Pfeife // Kopf // HMD // Tabak...</code></span>
         </div>
 
         <div class="generator-sticky-body">

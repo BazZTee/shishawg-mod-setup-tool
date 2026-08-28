@@ -20,9 +20,8 @@ let state = {
 
 // DOM Elements
 const personsContainer = document.getElementById('persons-container');
-const personCountSelect = document.getElementById('person-count-select');
+const personCountLabel = document.getElementById('person-count-label');
 const btnIncPersons = document.getElementById('btn-inc-persons');
-const btnDecPersons = document.getElementById('btn-dec-persons');
 const commandOutput = document.getElementById('command-output');
 const btnCopy = document.getElementById('btn-copy');
 const btnSendChat = document.getElementById('btn-send-chat');
@@ -100,6 +99,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupUpdaterEvents();
   generateCommandString();
 
+  // Auto-focus on first name field
+  const firstNameInput = document.querySelector('.input-p-name');
+  if (firstNameInput) firstNameInput.focus();
+
   // Auto-sync community catalog from GitHub on startup
   setTimeout(async () => {
     try {
@@ -118,6 +121,16 @@ async function loadCatalog() {
   state.catalog = await ipcRenderer.invoke('db:get-catalog');
   updateDatalists();
 }
+
+// Update person count label text
+function updatePersonCountLabel() {
+  if (personCountLabel) {
+    personCountLabel.textContent = state.personCount === 1
+      ? '1 Person'
+      : `${state.personCount} Personen`;
+  }
+}
+
 
 function updateDatalists() {
   populateDatalist('list-pipes', state.catalog.pipes || []);
@@ -230,7 +243,7 @@ function renderPersonsGrid() {
       <div class="tobacco-slot-row">
         <div class="clearable-input-wrapper" style="flex:1;">
           <input type="text" class="input-p-tob" data-pindex="${i}" data-tindex="${tIdx}" list="list-tobacco" value="${escapeHtml(tVal)}" placeholder="Tabak ${tIdx + 1}">
-          <button class="btn-clear-field ${tVal ? '' : 'hidden'}" title="Feld leeren">✕</button>
+          <button class="btn-clear-field ${tVal ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
         </div>
         ${tIdx > 0 ? `<button class="btn-icon btn-remove-tobacco-slot" data-pindex="${i}" data-tindex="${tIdx}" title="Tabaksortenslot entfernen">✕</button>` : ''}
       </div>
@@ -258,14 +271,14 @@ function renderPersonsGrid() {
           <label>Name:</label>
           <div class="clearable-input-wrapper">
             <input type="text" class="input-p-name" data-index="${i}" value="${escapeHtml(p.name)}" placeholder="z. B. Marvin">
-            <button class="btn-clear-field ${p.name ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            <button class="btn-clear-field ${p.name ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
           </div>
         </div>
         <div class="input-group">
           <label>Pfeife:</label>
           <div class="clearable-input-wrapper">
             <input type="text" class="input-p-pipe" data-index="${i}" list="list-pipes" value="${escapeHtml(p.pipe)}" placeholder="z. B. Amotion Futr">
-            <button class="btn-clear-field ${p.pipe ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            <button class="btn-clear-field ${p.pipe ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
           </div>
         </div>
       </div>
@@ -281,14 +294,14 @@ function renderPersonsGrid() {
               <label class="label-optional">Bowl / Glas (optional):</label>
               <div class="clearable-input-wrapper">
                 <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
-                <button class="btn-clear-field ${p.vessel ? '' : 'hidden'}" title="Feld leeren">✕</button>
+                <button class="btn-clear-field ${p.vessel ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
               </div>
             </div>
             <div class="input-group">
               <label class="label-optional">Bowl-Farbe (optional):</label>
               <div class="clearable-input-wrapper">
                 <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
-                <button class="btn-clear-field ${p.vesselColor ? '' : 'hidden'}" title="Feld leeren">✕</button>
+                <button class="btn-clear-field ${p.vesselColor ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
               </div>
             </div>
           </div>
@@ -300,7 +313,7 @@ function renderPersonsGrid() {
           <label>${isElectric ? '⚡ E-Gerät:' : 'Kopf:'}</label>
           <div class="clearable-input-wrapper">
             <input type="text" class="input-p-bowl" data-index="${i}" list="${isElectric ? 'list-electric-bowls' : 'list-bowls'}" value="${escapeHtml(p.bowl)}" placeholder="${isElectric ? 'z. B. XKAH Lite oder Pro' : 'z. B. Cosmo Bowl'}">
-            <button class="btn-clear-field ${p.bowl ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            <button class="btn-clear-field ${p.bowl ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
           </div>
         </div>
         ${!isElectric ? `
@@ -308,7 +321,7 @@ function renderPersonsGrid() {
           <label>HMD:</label>
           <div class="clearable-input-wrapper">
             <input type="text" class="input-p-hmd" data-index="${i}" list="list-hmds" value="${escapeHtml(p.hmd)}" placeholder="z. B. ONMO HMD">
-            <button class="btn-clear-field ${p.hmd ? '' : 'hidden'}" title="Feld leeren">✕</button>
+            <button class="btn-clear-field ${p.hmd ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
           </div>
         </div>
         ` : ''}
@@ -401,7 +414,7 @@ function attachCardInputListeners() {
         if (state.personCount > 1) {
           state.persons.splice(idx, 1);
           state.personCount--;
-          personCountSelect.value = String(state.personCount);
+          updatePersonCountLabel();
         } else {
           // If only 1 person, clear fields of the remaining card
           state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
@@ -680,7 +693,7 @@ function parseChatSetupMessage(rawText) {
 
   if (parsedPersons.length > 0) {
     state.personCount = parsedPersons.length;
-    personCountSelect.value = state.personCount;
+    updatePersonCountLabel();
 
     state.persons = parsedPersons.map(p => ({
       ...p,
@@ -702,26 +715,11 @@ function parseChatSetupMessage(rawText) {
 
 // Global Event Listeners
 function setupEventListeners() {
-  // Person Count Stepper
-  personCountSelect.addEventListener('change', (e) => {
-    state.personCount = parseInt(e.target.value) || 1;
-    renderPersonsGrid();
-    generateCommandString();
-  });
-
+  // Person Count — only + button, count shown as label
   btnIncPersons.addEventListener('click', () => {
     if (state.personCount < 10) {
       state.personCount++;
-      personCountSelect.value = state.personCount;
-      renderPersonsGrid();
-      generateCommandString();
-    }
-  });
-
-  btnDecPersons.addEventListener('click', () => {
-    if (state.personCount > 1) {
-      state.personCount--;
-      personCountSelect.value = state.personCount;
+      updatePersonCountLabel();
       renderPersonsGrid();
       generateCommandString();
     }
@@ -1277,7 +1275,7 @@ function matchNotesToForm(text) {
 
   btnResetAll.addEventListener('click', () => {
     state.personCount = 1;
-    personCountSelect.value = "1";
+    updatePersonCountLabel();
     state.persons = [];
     if (notesTextarea) notesTextarea.value = '';
     if (inputGlobalKohle) inputGlobalKohle.value = '';

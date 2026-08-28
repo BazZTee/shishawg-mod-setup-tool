@@ -154,7 +154,7 @@
 
           <!-- Collapsible Promo Block -->
           <div class="promo-toggle-row">
-            <button id="btn-toggle-promo" class="btn-expand-toggle" aria-expanded="false">
+            <button id="btn-toggle-promo" class="btn-expand-toggle" tabindex="-1" aria-expanded="false">
               <svg class="toggle-chevron" viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
               Promo-Command hinzufügen
             </button>
@@ -164,10 +164,10 @@
               <label for="input-global-promo">Zusatz-Command / Promo-Text &amp; Zuordnung:</label>
               <div class="promo-input-row">
                 <div class="clearable-input-wrapper" style="flex:1;">
-                  <input type="text" id="input-global-promo" list="list-promos" placeholder="z. B. !kohle oder !xkah">
+                  <input type="text" id="input-global-promo" list="list-promos" tabindex="-1" placeholder="z. B. !kohle oder !xkah">
                   <button class="btn-clear-field hidden" tabindex="-1" title="Feld leeren">✕</button>
                 </div>
-                <select id="select-promo-target" class="promo-target-select">
+                <select id="select-promo-target" class="promo-target-select" tabindex="-1">
                   <option value="kohle" selected>➔ Hinter Kohle anfügen</option>
                   <option value="pipe">➔ Hinter Pfeife anfügen</option>
                   <option value="bowl">➔ Hinter Kopf anfügen</option>
@@ -175,7 +175,7 @@
                   <option value="extra">➔ Als eigenes Extra anfügen</option>
                 </select>
                 <label class="checkbox-label" title="Schreibt die Beschreibung des Promo-Commands mit in den Chat-Befehl">
-                  <input type="checkbox" id="chk-include-promo-desc" checked>
+                  <input type="checkbox" id="chk-include-promo-desc" tabindex="-1" checked>
                   <span>Beschreibung mit übernehmen</span>
                 </label>
               </div>

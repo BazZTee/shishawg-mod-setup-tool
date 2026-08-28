@@ -250,6 +250,8 @@ function renderPersonsGrid() {
     `).join('');
 
     const isElectric = !!p.isElectric;
+    const isOptionalOpen = state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor);
+    const optTabIndex = isOptionalOpen ? '0' : '-1';
 
     card.innerHTML = `
       <div class="person-card-header">
@@ -259,10 +261,10 @@ function renderPersonsGrid() {
         </div>
         <div class="person-header-actions" style="display:flex; align-items:center; gap:12px;">
           <label class="checkbox-label" style="font-size: 0.78rem; color: var(--accent-cyan);" title="Kennzeichnet diese Person als E-Gerät Nutzer (z. B. XKAH Lite / Pro)">
-            <input type="checkbox" class="chk-p-electric" data-index="${i}" ${isElectric ? 'checked' : ''}>
+            <input type="checkbox" class="chk-p-electric" tabindex="-1" data-index="${i}" ${isElectric ? 'checked' : ''}>
             <span>⚡ E-Gerät</span>
           </label>
-          <button class="btn-icon btn-clear-person" data-index="${i}" title="Person entfernen">✕</button>
+          <button class="btn-icon btn-clear-person" tabindex="-1" data-index="${i}" title="Person entfernen">✕</button>
         </div>
       </div>
 
@@ -283,24 +285,24 @@ function renderPersonsGrid() {
         </div>
       </div>
 
-      <button class="optional-fields-toggle" aria-expanded="${state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor) ? 'true' : 'false'}" data-card-index="${i}">
+      <button class="optional-fields-toggle" tabindex="-1" aria-expanded="${isOptionalOpen ? 'true' : 'false'}" data-card-index="${i}">
         <svg class="toggle-chevron" viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
         Glas / Bowl ${(p.vessel || p.vesselColor) ? '✓' : '(optional)'}
       </button>
-      <div class="optional-fields-collapsible ${state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor) ? '' : 'collapsed'}">
+      <div class="optional-fields-collapsible ${isOptionalOpen ? '' : 'collapsed'}">
         <div class="optional-fields-box">
           <div class="input-row">
             <div class="input-group">
               <label class="label-optional">Bowl / Glas (optional):</label>
               <div class="clearable-input-wrapper">
-                <input type="text" class="input-p-vessel" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
+                <input type="text" class="input-p-vessel" tabindex="${optTabIndex}" data-index="${i}" list="list-vases" value="${escapeHtml(p.vessel || '')}" placeholder="z. B. Caesar Crystal">
                 <button class="btn-clear-field ${p.vessel ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
               </div>
             </div>
             <div class="input-group">
               <label class="label-optional">Bowl-Farbe (optional):</label>
               <div class="clearable-input-wrapper">
-                <input type="text" class="input-p-vessel-color" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
+                <input type="text" class="input-p-vessel-color" tabindex="${optTabIndex}" data-index="${i}" value="${escapeHtml(p.vesselColor || '')}" placeholder="z. B. Clear, Amber">
                 <button class="btn-clear-field ${p.vesselColor ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
               </div>
             </div>
@@ -447,10 +449,16 @@ function attachCardInputListeners() {
         e.currentTarget.setAttribute('aria-expanded', 'false');
         collapsible.classList.add('collapsed');
         state.expandedOptionalCards.delete(cardIdx);
+        collapsible.querySelectorAll('input').forEach(el => {
+          if (!el.classList.contains('btn-clear-field')) el.setAttribute('tabindex', '-1');
+        });
       } else {
         e.currentTarget.setAttribute('aria-expanded', 'true');
         collapsible.classList.remove('collapsed');
         state.expandedOptionalCards.add(cardIdx);
+        collapsible.querySelectorAll('input').forEach(el => {
+          if (!el.classList.contains('btn-clear-field')) el.setAttribute('tabindex', '0');
+        });
       }
     });
   });
@@ -1233,6 +1241,11 @@ function matchNotesToForm(text) {
       const isExpanded = btnTogglePromo.getAttribute('aria-expanded') === 'true';
       btnTogglePromo.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
       promoBlock.classList.toggle('collapsed', isExpanded);
+      promoBlock.querySelectorAll('input, select').forEach(el => {
+        if (!el.classList.contains('btn-clear-field')) {
+          el.setAttribute('tabindex', isExpanded ? '-1' : '0');
+        }
+      });
     });
   }
 

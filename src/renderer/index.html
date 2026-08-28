@@ -20,6 +20,11 @@
       </div>
 
       <div class="header-actions">
+        <!-- Hotkey Quick Info Bulb -->
+        <div class="hotkey-bulb-wrapper" title="⚡ Schnelle Tastatur-Shortcuts:&#10;• Ctrl + N: Notizen fokussieren&#10;• Ctrl + L: Formular &amp; Notizen leeren&#10;• Ctrl + Shift + C: Befehl kopieren&#10;• Ctrl + Enter: In Twitch-Chat senden">
+          <button id="btn-hotkey-bulb" class="btn-icon-bulb" aria-label="Tastatur-Shortcuts">💡</button>
+        </div>
+
         <!-- Twitch User Profile / Login -->
         <div class="twitch-auth-container" id="twitch-auth-container">
           <button id="btn-twitch-login" class="btn btn-twitch">
@@ -191,26 +196,22 @@
       <!-- Command Generator & Live Output Card (Sticky) -->
       <section class="generator-card generator-card-sticky">
         <div class="generator-header">
-          <h2>💬 Schritt 3: Generierter Befehl <span id="command-length-badge" class="char-badge">0 / 500</span></h2>
+          <h2>💬 Schritt 3: Twitch-Chat Befehl <span id="command-length-badge" class="char-badge">0 / 500</span></h2>
         </div>
 
         <div class="generator-sticky-body">
-          <!-- Authentic Twitch-Chat Message Live-Preview -->
-          <div class="twitch-chat-preview" id="twitch-chat-preview" title="Live-Vorschau: So sieht die Nachricht im Twitch-Chat aus">
+          <!-- Authentic Twitch-Chat Message Primary Box -->
+          <div class="twitch-chat-preview" id="twitch-chat-preview" title="Live Twitch-Chat Nachricht">
             <div class="twitch-msg-header">
               <span class="twitch-badge-mod" title="Moderator">⚔️</span>
-              <span class="twitch-badge-bot">BOT</span>
-              <strong class="twitch-username" id="preview-bot-name">marvedbot:</strong>
+              <strong class="twitch-username" id="preview-mod-name">Mod:</strong>
             </div>
-            <span class="twitch-msg-body" id="preview-chat-text">!setup Marvin: Amotion Futr // Cosmo Bowl // ONMO // Musthave Pinkman // Magic Cubes (Zauberwürfel) !kohle</span>
-          </div>
-
-          <div class="output-wrapper">
-            <textarea id="command-output" readonly rows="2" placeholder="Command wird hier automatisch generiert..."></textarea>
+            <span class="twitch-msg-body" id="preview-chat-text">!editsetup Marvin: Amotion Futr // Cosmo Bowl // ONMO // Musthave Pinkman // Magic Cubes (Zauberwürfel) !kohle</span>
             <button id="btn-copy" class="btn btn-copy" title="In Zwischenablage kopieren (Ctrl+Shift+C)">
-              <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/></svg>
+              <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 21H8V7h11m0-2H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m-3-4H4a2 2 0 0 0-2 2v14h2V3h12V1z"/></svg>
               Kopieren
             </button>
+            <input type="hidden" id="command-output" value="">
           </div>
 
           <div class="generator-actions">
@@ -227,35 +228,35 @@
 
     <!-- OBS Stream Overlay Modal -->
     <div id="obs-modal" class="modal-overlay hidden">
-      <div class="modal-card" style="max-width: 600px;">
+      <div class="modal-card" style="max-width: 620px;">
         <div class="modal-header">
           <h3>📺 OBS Stream-Overlay (Live-Sync)</h3>
           <button id="btn-close-obs-modal" class="btn-icon">✕</button>
         </div>
         <div class="modal-body">
           <p class="subtitle" style="margin-bottom: 14px;">
-            Sobald du im Tool auf <strong>"In Twitch-Chat Senden"</strong> klickst, wird das Setup automatisch in die Cloud synchronisiert und im OBS-Stream von Marvin live aktualisiert!
+            Sobald ein Mod im Tool auf <strong>"In Twitch-Chat Senden"</strong> klickt, blendet sich das Setup im Stream bei Marvin automatisch mit sanfter Animation für 25 Sekunden ein!
           </p>
 
           <div class="obs-link-box">
-            <label style="font-weight: 700; color: var(--accent-cyan); display: block; margin-bottom: 4px;">🌐 Cloud OBS Browser-Quelle URL (für Marvin an jedem Rechner):</label>
+            <label style="font-weight: 700; color: var(--accent-cyan); display: block; margin-bottom: 4px;">🌐 Cloud OBS Browser-Quelle URL (für Marvins OBS):</label>
             <div style="display:flex; gap:8px; margin-bottom: 6px;">
-              <input type="text" id="obs-cloud-url" readonly value="https://bazzteedj.github.io/shishawg-mod-setup-tool/overlay.html" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:0.85rem; font-family:var(--font-mono);">
+              <input type="text" id="obs-cloud-url" readonly value="https://raw.githack.com/BazZTee/shishawg-mod-setup-tool/main/docs/overlay.html" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:0.85rem; font-family:var(--font-mono);">
               <button id="btn-copy-obs-cloud" class="btn btn-secondary">📋 Kopieren</button>
             </div>
-            <p class="hint-text" style="font-size:0.8rem; color:var(--text-secondary);">👉 In OBS als <strong>Browser-Quelle</strong> einfügen (Breite: 720px, Höhe: 160px, Transparenz aktiv).</p>
+            <p class="hint-text" style="font-size:0.8rem; color:var(--text-secondary);">👉 In OBS als <strong>Browser-Quelle</strong> einfügen (Breite: 780px, Höhe: 160px, Transparenz aktiv).</p>
           </div>
 
           <div class="obs-link-box" style="margin-top: 14px;">
             <label style="font-weight: 700; color: var(--accent-purple); display: block; margin-bottom: 4px;">💻 Lokale OBS Browser-Quelle URL (wenn Tool & OBS auf selbem PC laufen):</label>
             <div style="display:flex; gap:8px; margin-bottom: 6px;">
-              <input type="text" id="obs-local-url" readonly value="http://localhost:18942/overlay" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:0.85rem; font-family:var(--font-mono);">
+              <input type="text" id="obs-local-url" readonly value="http://127.0.0.1:18942/overlay" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:0.85rem; font-family:var(--font-mono);">
               <button id="btn-copy-obs-local" class="btn btn-secondary">📋 Kopieren</button>
             </div>
           </div>
 
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 20px;">
-            <button id="btn-test-overlay-browser" class="btn btn-secondary">🌐 Im Browser testen</button>
+            <button id="btn-test-overlay-browser" class="btn btn-secondary">🌐 Overlay im Browser testen</button>
             <button id="btn-close-obs" class="btn btn-primary">Schließen</button>
           </div>
         </div>

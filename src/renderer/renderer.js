@@ -210,14 +210,22 @@ function updateChannelBotTooltips() {
 }
 
 function updateTwitchUI() {
+  const previewModName = document.getElementById('preview-mod-name');
   if (state.twitchUser) {
     btnTwitchLogin.classList.add('hidden');
     twitchUserBadge.classList.remove('hidden');
-    userDisplayName.textContent = state.twitchUser.display_name || state.twitchUser.login;
+    const name = state.twitchUser.display_name || state.twitchUser.login;
+    userDisplayName.textContent = name;
     userAvatar.src = state.twitchUser.profile_image_url || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+    if (previewModName) {
+      previewModName.textContent = `${name}:`;
+    }
   } else {
     btnTwitchLogin.classList.remove('hidden');
     twitchUserBadge.classList.add('hidden');
+    if (previewModName) {
+      previewModName.textContent = 'Mod:';
+    }
   }
 }
 
@@ -603,14 +611,15 @@ function generateCommandString() {
 
   commandOutput.value = fullCommand;
 
-  // Update Authentic Twitch-Chat Live-Preview
-  const previewBotName = document.getElementById('preview-bot-name');
+  // Update Authentic Twitch-Chat Primary Output Box
+  const previewModName = document.getElementById('preview-mod-name');
   const previewChatText = document.getElementById('preview-chat-text');
-  if (previewBotName) {
-    previewBotName.textContent = `@${(state.targetBot || 'marvedbot').trim()}:`;
+  if (previewModName) {
+    const name = state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod';
+    previewModName.textContent = `${name}:`;
   }
   if (previewChatText) {
-    previewChatText.textContent = fullCommand.replace(/^!editsetup/i, '!setup');
+    previewChatText.textContent = fullCommand;
   }
 
   // Live Sync to OBS Overlay Server & Cloud Gist
@@ -1075,9 +1084,46 @@ function matchNotesToForm(text) {
 
   const catalog = state.catalog || {};
   const origText = text.trim();
-  const rawSegments = origText.split(/(?:\/{2,}|\n+)/).map(s => s.trim()).filter(Boolean);
+  const lowerText = origText.toLowerCase();
 
   const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+
+  // 1. Flexible Multi-Person Delimiter Detection (//, /, ;, \n, or multiple person names in sequence)
+  let rawSegments = [];
+
+  if (origText.includes('//')) {
+    rawSegments = origText.split(/\/{2,}/);
+  } else if (origText.includes('\n')) {
+    rawSegments = origText.split(/\n+/);
+  } else if (origText.includes(';')) {
+    rawSegments = origText.split(/;+/);
+  } else if (origText.includes('/')) {
+    rawSegments = origText.split(/\/+/);
+  } else {
+    // Check if multiple names appear in continuous text (e.g. "marvin futr cosmo onmo basti breeze litbowl nagrani")
+    const knownNames = ['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'person 1', 'person 2', 'person 3', 'person 4'];
+    const words = lowerText.split(/\s+/);
+    const foundIndices = [];
+
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i].replace(/[:;,]/g, '');
+      if (knownNames.includes(w)) {
+        foundIndices.push({ index: i, name: w });
+      }
+    }
+
+    if (foundIndices.length > 1) {
+      for (let k = 0; k < foundIndices.length; k++) {
+        const startIdx = foundIndices[k].index;
+        const endIdx = (k + 1 < foundIndices.length) ? foundIndices[k + 1].index : words.length;
+        rawSegments.push(words.slice(startIdx, endIdx).join(' '));
+      }
+    } else {
+      rawSegments = [origText];
+    }
+  }
+
+  rawSegments = rawSegments.map(s => s.trim()).filter(Boolean);
 
   let globalCharcoal = '';
   const candidateSegments = [];
@@ -1098,8 +1144,8 @@ function matchNotesToForm(text) {
 
   for (let idx = 0; idx < segmentsToProcess.length; idx++) {
     const seg = segmentsToProcess[idx];
-    const lowerText = seg.toLowerCase();
-    const tokens = lowerText.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
+    const sLower = seg.toLowerCase();
+    const tokens = sLower.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
 
     // 1. Name Scanner
     let matchedName = `Person ${idx + 1}`;
@@ -1152,8 +1198,8 @@ function matchNotesToForm(text) {
 
     let bowl = '';
     let isElectric = false;
-    if (lowerText.includes('xkah') || lowerText.includes('xk-ah') || lowerText.includes('xk ah') || lowerText.includes('xklite') || lowerText.includes('xkpro')) {
-      bowl = (lowerText.includes('pro') || lowerText.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
+    if (sLower.includes('xkah') || sLower.includes('xk-ah') || sLower.includes('xk ah') || sLower.includes('xklite') || sLower.includes('xkpro')) {
+      bowl = (sLower.includes('pro') || sLower.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
       isElectric = true;
     } else {
       const bowlMatch = scanCategory(catalog.bowls || []);
@@ -1188,7 +1234,7 @@ function matchNotesToForm(text) {
       const cMatch = scanCategory(catalog.charcoal || []);
       if (cMatch) {
         globalCharcoal = cMatch.name;
-      } else if (lowerText.includes('zauber') || lowerText.includes('magic') || lowerText.includes('cubes')) {
+      } else if (sLower.includes('zauber') || sLower.includes('magic') || sLower.includes('cubes')) {
         globalCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
       }
     }

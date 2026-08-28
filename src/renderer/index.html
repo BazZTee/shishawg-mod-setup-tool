@@ -69,7 +69,7 @@
             </div>
           </div>
 
-          <button id="btn-toggle-notes" class="btn btn-secondary" title="Öffnet ein Notizfeld zum schnellen Mitschreiben während des Streams">
+          <button id="btn-toggle-notes" class="btn btn-secondary active" title="Notizfeld zum schnellen Mitschreiben während des Streams ein-/ausblenden">
             📝 Notizen
           </button>
           <button id="btn-reset-all" class="btn btn-danger-outline">
@@ -112,13 +112,13 @@
         <button id="btn-dismiss-onboarding" class="btn-icon" title="Schließen">✕</button>
       </div>
 
-      <!-- Collapsible Quick Notes Card -->
-      <section id="notes-card" class="notes-card hidden">
+      <!-- Collapsible Quick Notes Card (Open by default) -->
+      <section id="notes-card" class="notes-card">
         <div class="notes-header">
-          <h4>📝 Moderator Schnell-Notizen (Scratchpad)</h4>
+          <h4>📝 Moderator Schnell-Notizen (Scratchpad mit Fuzzy Matching)</h4>
           <button id="btn-clear-notes" class="btn-icon" title="Notizen leeren">🗑️</button>
         </div>
-        <textarea id="notes-textarea" placeholder="Hier schnell im Streamgeschehen mitschreiben... (wird beim Schließen automatisch geleert)"></textarea>
+        <textarea id="notes-textarea" placeholder="Hier schnell im Streamgeschehen mitschreiben... (z. B. Marvin: Amotion Futr // Cosmo Bowl // ONMO // Musthave Pinkman)"></textarea>
       </section>
 
       <!-- Dynamic Persons Container -->

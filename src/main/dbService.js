@@ -332,17 +332,17 @@ class DatabaseService {
     if (!itemName) return false;
 
     if (category === 'tobacco' || category === 'customTobacco') {
-      let customTobacco = [];
-      try {
-        if (fs.existsSync(this.dbPath)) {
-          const raw = fs.readFileSync(this.dbPath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
-          else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
-        }
-      } catch (e) {}
+      const catalog = this.getCatalog();
+      const customTobacco = Array.isArray(catalog.customTobacco) ? [...catalog.customTobacco] : [];
+      const hookahTobacco = Array.isArray(catalog.hookahTobacco) ? catalog.hookahTobacco : [];
 
-      const exists = customTobacco.some(i => (typeof i === 'string' ? i : i.name) === itemName);
+      // If already in HookahTools, no need to duplicate into Custom
+      const existsInHT = hookahTobacco.some(i => (typeof i === 'string' ? i : i.name).toLowerCase() === itemName.toLowerCase());
+      if (existsInHT) {
+        return false;
+      }
+
+      const exists = customTobacco.some(i => (typeof i === 'string' ? i : i.name).toLowerCase() === itemName.toLowerCase());
       if (!exists) {
         customTobacco.push(itemName);
         customTobacco.sort((a, b) => a.localeCompare(b, 'de'));
@@ -355,7 +355,7 @@ class DatabaseService {
     const catalog = this.getCatalog();
     if (!catalog[category]) catalog[category] = [];
     
-    const exists = catalog[category].some(i => (typeof i === 'string' ? i : i.name) === itemName);
+    const exists = catalog[category].some(i => (typeof i === 'string' ? i : i.name).toLowerCase() === itemName.toLowerCase());
     if (!exists) {
       catalog[category].push(item);
       catalog[category].sort((a, b) => {
@@ -384,7 +384,7 @@ class DatabaseService {
         }
       } catch (e) {}
 
-      const filtered = customTobacco.filter(i => (typeof i === 'string' ? i : i.name).trim() !== targetName);
+      const filtered = customTobacco.filter(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() !== targetName.toLowerCase());
       if (filtered.length !== customTobacco.length) {
         this.saveCustomTobacco(filtered);
         return true;
@@ -394,7 +394,7 @@ class DatabaseService {
 
     const catalog = this.getCatalog();
     if (catalog[category]) {
-      catalog[category] = catalog[category].filter(i => (typeof i === 'string' ? i : i.name).trim() !== targetName);
+      catalog[category] = catalog[category].filter(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() !== targetName.toLowerCase());
       this.saveCatalog(catalog);
       return true;
     }
@@ -418,7 +418,7 @@ class DatabaseService {
         }
       } catch (e) {}
 
-      const idx = customTobacco.findIndex(i => (typeof i === 'string' ? i : i.name).trim() === oldName);
+      const idx = customTobacco.findIndex(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() === oldName.toLowerCase());
       if (idx !== -1) {
         customTobacco[idx] = newName;
         customTobacco.sort((a, b) => a.localeCompare(b, 'de'));
@@ -430,7 +430,7 @@ class DatabaseService {
 
     const catalog = this.getCatalog();
     if (catalog[category]) {
-      const idx = catalog[category].findIndex(i => (typeof i === 'string' ? i : i.name).trim() === oldName);
+      const idx = catalog[category].findIndex(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() === oldName.toLowerCase());
       if (idx !== -1) {
         catalog[category][idx] = newItem;
         catalog[category].sort((a, b) => {
@@ -448,7 +448,6 @@ class DatabaseService {
   autoLearnSetup(setupData) {
     if (!setupData) return { addedCount: 0, catalog: this.getCatalog() };
     let addedCount = 0;
-    const catalog = this.getCatalog();
 
     const TOBACCO_FILTER = [
       'darkside', 'musthave', 'musth', 'pinkman', 'pynkman', 'black burn', 'burn', 'haribo',
@@ -468,17 +467,28 @@ class DatabaseService {
     const addIfNew = (category, val) => {
       if (!val || typeof val !== 'string') return;
       const trimmed = val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (trimmed.length < 2) return;
       if ((category === 'pipes' || category === 'bowls') && isTobaccoWord(trimmed)) return;
+
+      const currentCatalog = this.getCatalog();
       if (category === 'tobacco') {
-        this.addItem('tobacco', trimmed);
-        addedCount++;
+        // Only learn as custom if not already in HookahTools or Custom
+        const existsInAny = (currentCatalog.tobacco || []).some(t => {
+          const tName = (typeof t === 'string' ? t : t.name).toLowerCase().trim();
+          return tName === trimmed.toLowerCase();
+        });
+        if (!existsInAny) {
+          const added = this.addItem('tobacco', trimmed);
+          if (added) addedCount++;
+        }
         return;
       }
-      if (!catalog[category]) catalog[category] = [];
-      if (trimmed.length > 1 && !catalog[category].includes(trimmed)) {
-        catalog[category].push(trimmed);
-        catalog[category].sort((a, b) => a.localeCompare(b, 'de'));
-        addedCount++;
+
+      if (!currentCatalog[category]) currentCatalog[category] = [];
+      const exists = currentCatalog[category].some(i => (typeof i === 'string' ? i : i.name).toLowerCase().trim() === trimmed.toLowerCase());
+      if (!exists) {
+        const added = this.addItem(category, trimmed);
+        if (added) addedCount++;
       }
     };
 
@@ -498,9 +508,6 @@ class DatabaseService {
     if (setupData.kohle) addIfNew('charcoal', setupData.kohle);
     if (setupData.extra) addIfNew('tobacco', setupData.extra);
 
-    if (addedCount > 0) {
-      this.saveCatalog(catalog);
-    }
     return { addedCount, catalog: this.getCatalog() };
   }
 

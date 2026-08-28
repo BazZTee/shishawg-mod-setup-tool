@@ -1060,7 +1060,32 @@ function matchNotesToForm(text) {
       let best = null;
       let highestScore = 0;
 
-      // 1. Two-word windows
+      // 1. Three-word windows (e.g. 'aeon edition 6', 'moze breeze pro', 'cosmo bowl shot')
+      for (let i = 0; i <= tokens.length - 3; i++) {
+        if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
+        const window3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
+        const syn = SHISHA_SYNONYMS[window3];
+        if (syn) {
+          const match = catList.find(item => {
+            const iName = getItemName(item).toLowerCase();
+            return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
+          });
+          if (match) {
+            const score = 1.0;
+            if (score > highestScore) {
+              highestScore = score;
+              best = { name: getItemName(match), item: match, indices: [i, i + 1, i + 2] };
+            }
+          }
+        }
+        const m3 = findBestFuzzyMatch(window3, catList, 0.70);
+        if (m3 && m3.score > highestScore) {
+          highestScore = m3.score;
+          best = { name: m3.name, item: m3.item, indices: [i, i + 1, i + 2] };
+        }
+      }
+
+      // 2. Two-word windows
       for (let i = 0; i < tokens.length - 1; i++) {
         if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
         const window2 = `${tokens[i]} ${tokens[i + 1]}`;
@@ -1085,7 +1110,7 @@ function matchNotesToForm(text) {
         }
       }
 
-      // 2. Single tokens
+      // 3. Single tokens
       for (let i = 0; i < tokens.length; i++) {
         if (usedIndices.has(i)) continue;
         const tok = tokens[i];
@@ -1180,11 +1205,18 @@ function matchNotesToForm(text) {
     }
 
     // Step 3: Single-Token Tobacco Scanning for remaining unreserved tokens
+    const HARDWARE_ONLY_TOKENS = new Set([
+      'dark', 'shot', 'intro', 'aeon', 'edition', 'breeze', 'varity', 'futr', 'pedal',
+      'flashbang', 'flash', 'bang', 'specter', 'fibonacci', 'cosmo', 'mumiya', 'mumia', 'vosku', 'litbowl',
+      'onmo', 'nagrani', 'kaloud', 'lotus', 'cubes', 'magic', 'zauber', 'xkah', 'smart', 'stratos',
+      'ocean', 'kaif', 'solaris', 'vandenberg', 'oblako', 'moon', 'alpha'
+    ]);
+
     for (let i = 0; i < tokens.length; i++) {
       if (usedIndices.has(i)) continue;
       const tok = tokens[i];
       if (tok.length < 3) continue;
-      if (tok === 'dark' || tok === 'shot' || tok === 'intro') continue;
+      if (HARDWARE_ONLY_TOKENS.has(tok)) continue;
 
       const syn = SHISHA_SYNONYMS[tok];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
@@ -1999,7 +2031,7 @@ function renderCatalogList() {
     
     if (catKey === 'tobacco') {
       if (isGistTobacco) {
-        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-gist" title="Eigene / Gist-Sorte (bearbeitbar & löschbar)">🟢 Custom / Gist</span></span>`;
+        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-gist" title="Eigene Custom-Sorte (bearbeitbar & löschbar)">🟢 Custom</span></span>`;
       } else if (isHookahToolsTobacco) {
         displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-ht" title="Automatisch von HookahTools.de synchronisiert">🌐 HookahTools</span></span>`;
       }

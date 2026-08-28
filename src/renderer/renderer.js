@@ -1083,16 +1083,25 @@ function matchNotesToForm(text) {
       let best = null;
       let highestScore = 0;
 
+      function findFromSynonym(syn) {
+        if (!syn) return null;
+        const s = syn.toLowerCase().trim();
+        let m = catList.find(item => getItemName(item).toLowerCase().trim() === s);
+        if (m) return m;
+        m = catList.find(item => getItemName(item).toLowerCase().trim().includes(s));
+        if (m) return m;
+        m = catList.find(item => s.includes(getItemName(item).toLowerCase().trim()));
+        if (m) return m;
+        return null;
+      }
+
       // 1. Three-word windows (e.g. 'aeon edition 6', 'moze breeze pro', 'cosmo bowl shot')
       for (let i = 0; i <= tokens.length - 3; i++) {
         if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
         const window3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
         const syn = SHISHA_SYNONYMS[window3];
         if (syn) {
-          const match = catList.find(item => {
-            const iName = getItemName(item).toLowerCase();
-            return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
-          });
+          const match = findFromSynonym(syn);
           if (match) {
             const score = 1.0;
             if (score > highestScore) {
@@ -1114,10 +1123,7 @@ function matchNotesToForm(text) {
         const window2 = `${tokens[i]} ${tokens[i + 1]}`;
         const syn = SHISHA_SYNONYMS[window2];
         if (syn) {
-          const match = catList.find(item => {
-            const iName = getItemName(item).toLowerCase();
-            return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
-          });
+          const match = findFromSynonym(syn);
           if (match) {
             const score = 1.0;
             if (score > highestScore) {
@@ -1138,15 +1144,11 @@ function matchNotesToForm(text) {
         if (usedIndices.has(i)) continue;
         const tok = tokens[i];
         if (tok.length < 2) continue;
-        // Generic brand names alone without distinctive model token cannot match hardware
         if (tok === 'dark' || tok === 'darkside') continue;
 
         const syn = SHISHA_SYNONYMS[tok];
         if (syn) {
-          const match = catList.find(item => {
-            const iName = getItemName(item).toLowerCase();
-            return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
-          });
+          const match = findFromSynonym(syn);
           if (match) {
             const score = 0.95;
             if (score > highestScore) {
@@ -1193,6 +1195,23 @@ function matchNotesToForm(text) {
     const vesselMatch = scanCategory(catalog.vases || []);
     const vessel = vesselMatch ? vesselMatch.name : '';
 
+    // Pre-reserve charcoal tokens in usedIndices so they are NEVER matched as tobacco
+    for (let i = 0; i <= tokens.length - 2; i++) {
+      if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
+      const w2 = `${tokens[i]} ${tokens[i + 1]}`;
+      if (w2 === 'magic charcoal' || w2 === 'magic cubes' || w2 === 'black coco' || w2 === 'black coco26' || w2 === 'black coco27' || w2 === 'zauber würfel' || w2 === 'zauber wuerfel' || w2 === 'one nation' || w2 === 'cocodice 27mm' || w2 === 'shaman 26mm') {
+        usedIndices.add(i);
+        usedIndices.add(i + 1);
+      }
+    }
+
+    const CHARCOAL_SINGLE_TOKENS = new Set(['zauber', 'zauberwürfel', 'zauberwuerfel', 'cubes', 'blackcoco', 'charcoal', 'kohle', 'shaman', 'cocodice']);
+    for (let i = 0; i < tokens.length; i++) {
+      if (CHARCOAL_SINGLE_TOKENS.has(tokens[i])) {
+        usedIndices.add(i);
+      }
+    }
+
     const isPersonTok = (tok) => allKnownPersons.includes(tok) || (matchedName && matchedName.toLowerCase() === tok);
 
     // Step 2: Multi-Word Tobacco Scanning (2-word & 3-word phrases on remaining tokens)
@@ -1235,8 +1254,9 @@ function matchNotesToForm(text) {
     const HARDWARE_ONLY_TOKENS = new Set([
       'dark', 'shot', 'intro', 'aeon', 'edition', 'breeze', 'varity', 'futr', 'pedal',
       'flashbang', 'flash', 'bang', 'specter', 'fibonacci', 'cosmo', 'mumiya', 'mumia', 'vosku', 'litbowl',
-      'onmo', 'nagrani', 'kaloud', 'lotus', 'cubes', 'magic', 'zauber', 'xkah', 'smart', 'stratos',
+      'onmo', 'nagrani', 'kaloud', 'lotus', 'cubes', 'magic', 'zauber', 'zauberwürfel', 'zauberwuerfel', 'xkah', 'smart', 'stratos',
       'ocean', 'kaif', 'solaris', 'vandenberg', 'oblako', 'moon', 'alpha',
+      'charcoal', 'kohle', 'blackcoco', 'shaman', 'cocodice', 'würfel', 'wuerfel', '26er', '27er',
       ...allKnownPersons
     ]);
 

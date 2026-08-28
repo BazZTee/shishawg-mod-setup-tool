@@ -123,7 +123,20 @@ class DatabaseService {
     try {
       if (fs.existsSync(this.dbPath)) {
         const raw = fs.readFileSync(this.dbPath, 'utf-8');
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            pipes: Array.isArray(parsed.pipes) ? parsed.pipes : this.defaultCatalog.pipes,
+            bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
+            vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
+            hmds: Array.isArray(parsed.hmds) ? parsed.hmds : this.defaultCatalog.hmds,
+            tobacco: Array.isArray(parsed.tobacco) ? parsed.tobacco : this.defaultCatalog.tobacco,
+            charcoal: Array.isArray(parsed.charcoal) ? parsed.charcoal : this.defaultCatalog.charcoal,
+            persons: Array.isArray(parsed.persons) && parsed.persons.length > 0 ? parsed.persons : this.defaultCatalog.persons,
+            tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
+            promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
+          };
+        }
       }
     } catch (err) {
       console.error('Error reading catalog:', err);

@@ -1,4 +1,13 @@
 const { ipcRenderer } = require('electron');
+const {
+  levenshteinDistance,
+  similarityScore,
+  findBestFuzzyMatch,
+  fuzzyFilterList,
+  checkDuplicateFuzzy,
+  getItemName,
+  SHISHA_SYNONYMS
+} = require('./fuzzy');
 
 // App State
 let state = {
@@ -715,13 +724,52 @@ function parseChatSetupMessage(rawText) {
     state.personCount = parsedPersons.length;
     updatePersonCountLabel();
 
-    state.persons = parsedPersons.map(p => ({
-      ...p,
-      bowl: p.bowl || sharedBowl,
-      hmd: p.hmd || sharedHmd
-    }));
+    const catalog = state.catalog || {};
+    state.persons = parsedPersons.map(p => {
+      let finalPipe = p.pipe;
+      let finalBowl = p.bowl || sharedBowl;
+      let finalHmd = p.hmd || sharedHmd;
+      let isElec = !!p.isElectric;
 
-    if (globalKohle) inputGlobalKohle.value = globalKohle;
+      if (finalPipe && catalog.pipes) {
+        const match = findBestFuzzyMatch(finalPipe, catalog.pipes, 0.65);
+        if (match) finalPipe = match.name;
+      }
+      if (finalBowl && catalog.bowls) {
+        const match = findBestFuzzyMatch(finalBowl, catalog.bowls, 0.65);
+        if (match) {
+          finalBowl = match.name;
+          if (match.item && match.item.isElectric) isElec = true;
+        }
+      }
+      if (finalHmd && catalog.hmds) {
+        const match = findBestFuzzyMatch(finalHmd, catalog.hmds, 0.65);
+        if (match) finalHmd = match.name;
+      }
+
+      const mappedTobaccos = (p.tobaccos || ['']).map(tob => {
+        if (!tob || !catalog.tobacco) return tob;
+        const match = findBestFuzzyMatch(tob, catalog.tobacco, 0.68);
+        return match ? match.name : tob;
+      });
+
+      return {
+        ...p,
+        pipe: finalPipe,
+        bowl: finalBowl,
+        hmd: isElec ? '' : finalHmd,
+        tobaccos: mappedTobaccos,
+        isElectric: isElec
+      };
+    });
+
+    if (globalKohle) {
+      if (catalog.charcoal) {
+        const match = findBestFuzzyMatch(globalKohle, catalog.charcoal, 0.65);
+        if (match) globalKohle = match.name;
+      }
+      inputGlobalKohle.value = globalKohle;
+    }
     if (globalExtra) inputGlobalExtra.value = globalExtra;
 
     renderPersonsGrid();
@@ -999,7 +1047,7 @@ function matchNotesToForm(text) {
   if (!text || text.trim().length < 2) {
     if (state.persons[0]) {
       const pName = state.persons[0].name || 'Marvin';
-      state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
+      state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
     }
     if (inputGlobalKohle) inputGlobalKohle.value = '';
     renderPersonsGrid();
@@ -1011,7 +1059,7 @@ function matchNotesToForm(text) {
   let updated = false;
 
   if (!state.persons[0]) {
-    state.persons[0] = { name: 'Marvin', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''] };
+    state.persons[0] = { name: 'Marvin', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
   }
   const p = state.persons[0];
   const origText = text.trim();
@@ -1022,55 +1070,33 @@ function matchNotesToForm(text) {
     return str.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
-  // 1. Pipe Scanner with Token Scoring (Model > Brand)
+  // 1. Pipe Scanner with Fuzzy Matching
   let matchedPipe = '';
-  if (catalog.pipes) {
-    let maxScore = 0;
-    for (const pipe of catalog.pipes) {
-      const pName = (typeof pipe === 'string' ? pipe : pipe.name).trim();
-      const pLower = pName.toLowerCase();
-      let score = 0;
-
-      if (lowerText.includes(pLower)) {
-        score += 100;
-      } else {
-        const tokens = pLower.split(/\s+/).filter(w => w.length > 1);
-        for (const t of tokens) {
-          if (['amotion', 'moze', 'vyro', 'ocean', 'aeon', 'almani', 'hookah', 'edition'].includes(t)) {
-            if (lowerText.includes(t)) score += 10;
-          } else {
-            if (lowerText.includes(t)) score += 50;
-          }
-        }
-      }
-
-      if (score > maxScore && score >= 25) {
-        maxScore = score;
-        matchedPipe = pName;
+  const pipeFuzzy = findBestFuzzyMatch(origText, catalog.pipes || [], 0.60);
+  if (pipeFuzzy) {
+    matchedPipe = pipeFuzzy.name;
+  } else {
+    for (const [key, val] of Object.entries(SHISHA_SYNONYMS)) {
+      if (lowerText.includes(key) && (catalog.pipes || []).some(p => getItemName(p) === val)) {
+        matchedPipe = val;
+        break;
       }
     }
-  }
-  if (!matchedPipe) {
-    if (lowerText.includes('futr') || lowerText.includes('emotion')) matchedPipe = 'Amotion Futr';
-    else if (lowerText.includes('breeze')) matchedPipe = 'Moze Breeze Two';
-    else if (lowerText.includes('varity')) matchedPipe = 'Moze Varity';
-    else if (lowerText.includes('flash bang')) matchedPipe = 'Amotion Flash Bang';
-    else if (lowerText.includes('specter')) matchedPipe = 'Vyro Specter';
   }
   if (p.pipe !== matchedPipe) {
     p.pipe = matchedPipe;
     updated = true;
   }
 
-  // 2. Bowl/Glas Scanner ("auf einer ...", "auf ...")
+  // 2. Bowl/Glas (Vessel) Scanner with Fuzzy Matching
   let matchedVessel = '';
   const vesselMatch = origText.match(/\bauf\s+(?:einer\s+)?([a-zäöüß0-9-]+(?:\s+[a-zäöüß0-9-]+){0,2})/i);
   if (vesselMatch && vesselMatch[1]) {
-    matchedVessel = capitalize(vesselMatch[1].trim());
-    if (catalog.vases) {
-      const known = catalog.vases.find(k => k.toLowerCase().includes(vesselMatch[1].toLowerCase()) || vesselMatch[1].toLowerCase().includes(k.toLowerCase()));
-      if (known) matchedVessel = known;
-    }
+    const vFuzzy = findBestFuzzyMatch(vesselMatch[1], catalog.vases || [], 0.65);
+    matchedVessel = vFuzzy ? vFuzzy.name : capitalize(vesselMatch[1].trim());
+  } else {
+    const vDirectFuzzy = findBestFuzzyMatch(origText, catalog.vases || [], 0.70);
+    if (vDirectFuzzy) matchedVessel = vDirectFuzzy.name;
   }
   if (p.vessel !== matchedVessel) {
     p.vessel = matchedVessel;
@@ -1091,10 +1117,10 @@ function matchNotesToForm(text) {
     updated = true;
   }
 
-  // 4. Kopf Scanner ("von <head>" or known bowls like voskurymsia, mumia, cosmo, litbowl, xkah)
+  // 4. Kopf Scanner with Fuzzy Matching & E-Gerät detection
   let matchedBowl = '';
-  if (lowerText.includes('xkah') || lowerText.includes('xk-ah') || lowerText.includes('xk ah')) {
-    matchedBowl = lowerText.includes('pro') ? 'XKAH Pro' : 'XKAH Lite';
+  if (lowerText.includes('xkah') || lowerText.includes('xk-ah') || lowerText.includes('xk ah') || lowerText.includes('xklite') || lowerText.includes('xkpro')) {
+    matchedBowl = (lowerText.includes('pro') || lowerText.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
     if (!p.isElectric) {
       p.isElectric = true;
       updated = true;
@@ -1102,70 +1128,73 @@ function matchNotesToForm(text) {
   } else {
     const headMatch = origText.match(/\bvon\s+([a-zäöüß0-9\s-]+?)(?=\s+(?:mit|im|in|auf|und|magic|musth|\!|$))/i);
     if (headMatch && headMatch[1]) {
-      matchedBowl = capitalize(headMatch[1].trim());
-    } else if (catalog.bowls) {
-      for (const bowl of catalog.bowls) {
-        const bName = (typeof bowl === 'string' ? bowl : bowl.name).trim();
-        const bLower = bName.toLowerCase();
-        const tokens = bLower.split(/\s+/).filter(w => w.length > 2);
-        if (lowerText.includes(bLower) || tokens.some(t => lowerText.includes(t))) {
-          matchedBowl = bName;
-          break;
+      const bFuzzy = findBestFuzzyMatch(headMatch[1], catalog.bowls || [], 0.60);
+      matchedBowl = bFuzzy ? bFuzzy.name : capitalize(headMatch[1].trim());
+    } else {
+      const bDirectFuzzy = findBestFuzzyMatch(origText, catalog.bowls || [], 0.65);
+      if (bDirectFuzzy) {
+        matchedBowl = bDirectFuzzy.name;
+        if (bDirectFuzzy.item && bDirectFuzzy.item.isElectric && !p.isElectric) {
+          p.isElectric = true;
+          updated = true;
         }
       }
     }
   }
   if (!matchedBowl) {
-    if (lowerText.includes('voskurymsia') || lowerText.includes('mumia')) matchedBowl = 'Voskurymsia Mumia';
-    else if (lowerText.includes('cosmo')) matchedBowl = 'Cosmo Bowl';
-    else if (lowerText.includes('litbowl')) matchedBowl = 'Hookain LitBowl';
+    for (const [key, val] of Object.entries(SHISHA_SYNONYMS)) {
+      if (lowerText.includes(key) && (catalog.bowls || []).some(b => getItemName(b) === val)) {
+        matchedBowl = val;
+        break;
+      }
+    }
   }
   if (p.bowl !== matchedBowl) {
     p.bowl = matchedBowl;
     updated = true;
   }
 
-  // 5. HMD Scanner (ONMO, Na Grani, Kaloud, AO)
+  // 5. HMD Scanner with Fuzzy Matching
   let matchedHmd = '';
-  if (catalog.hmds) {
-    for (const hmd of catalog.hmds) {
-      const hName = (typeof hmd === 'string' ? hmd : hmd.name).trim();
-      const hLower = hName.toLowerCase();
-      if (lowerText.includes(hLower) || (hLower.includes('onmo') && lowerText.includes('onmo'))) {
-        matchedHmd = hName;
+  const hmdFuzzy = findBestFuzzyMatch(origText, catalog.hmds || [], 0.65);
+  if (hmdFuzzy) {
+    matchedHmd = hmdFuzzy.name;
+  } else {
+    for (const [key, val] of Object.entries(SHISHA_SYNONYMS)) {
+      if (lowerText.includes(key) && (catalog.hmds || []).some(h => getItemName(h) === val)) {
+        matchedHmd = val;
         break;
       }
     }
   }
-  if (!matchedHmd && lowerText.includes('onmo')) matchedHmd = 'ONMO HMD';
   if (p.hmd !== matchedHmd) {
     p.hmd = matchedHmd;
     updated = true;
   }
 
-  // 6. Tobacco Scanner (Scan all catalog tobaccos + handle multi-musthave / abbreviations)
+  // 6. Tobacco Scanner with Fuzzy Matching & Multi-Flavor Support
   const matchedTobaccos = [];
   const expandedText = lowerText
     .replace(/\bmusth\b/g, 'musthave')
     .replace(/\bkwi\b/g, 'kiwi')
-    .replace(/\bleime\b/g, 'lime');
+    .replace(/\bleime\b/g, 'lime')
+    .replace(/\banjo\b/g, 'anejo');
 
   if (catalog.tobacco) {
     for (const tob of catalog.tobacco) {
-      const tName = (typeof tob === 'string' ? tob : tob.name).trim();
+      const tName = getItemName(tob);
       const tLower = tName.toLowerCase();
-      const tWords = tLower.split(/\s+/).filter(w => w.length > 2 && w !== 'tobacco');
 
-      let isMatch = expandedText.includes(tLower);
-      if (!isMatch) {
-        let count = 0;
-        for (const tw of tWords) {
-          if (expandedText.includes(tw)) count++;
+      if (expandedText.includes(tLower) || similarityScore(expandedText, tLower) > 0.75) {
+        if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
+      } else {
+        const tokens = expandedText.split(/[\s,+/&]+/);
+        for (const tok of tokens) {
+          if (tok.length > 2 && tLower.includes(tok)) {
+            if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
+            break;
+          }
         }
-        if (count >= 2 || (count >= 1 && tWords.length === 1)) isMatch = true;
-      }
-      if (isMatch && !matchedTobaccos.includes(tName)) {
-        matchedTobaccos.push(tName);
       }
     }
   }
@@ -1191,15 +1220,15 @@ function matchNotesToForm(text) {
     updated = true;
   }
 
-  // 7. Charcoal Scanner (Magic Cubes, Black Coco, Shaman)
+  // 7. Charcoal Scanner with Fuzzy Matching
   let matchedCharcoal = '';
-  if (lowerText.includes('magic') || lowerText.includes('cubes') || lowerText.includes('zauberwürfel')) {
-    matchedCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
-  } else if (catalog.charcoal) {
-    for (const c of catalog.charcoal) {
-      const cName = (typeof c === 'string' ? c : c.name).trim();
-      if (lowerText.includes(cName.toLowerCase())) {
-        matchedCharcoal = cName;
+  const cFuzzy = findBestFuzzyMatch(origText, catalog.charcoal || [], 0.65);
+  if (cFuzzy) {
+    matchedCharcoal = cFuzzy.name;
+  } else {
+    for (const [key, val] of Object.entries(SHISHA_SYNONYMS)) {
+      if (lowerText.includes(key) && (catalog.charcoal || []).some(c => getItemName(c) === val)) {
+        matchedCharcoal = val;
         break;
       }
     }
@@ -1443,6 +1472,19 @@ function matchNotesToForm(text) {
     }
 
     const catKey = getCategoryKeyForTab(state.currentDbTab);
+    const existingList = state.catalog[catKey] || [];
+    const checkName = typeof itemVal === 'string' ? itemVal : itemVal.name;
+    const dupCheck = checkDuplicateFuzzy(checkName, existingList);
+
+    if (dupCheck.isExact) {
+      showToast(`⚠️ "${dupCheck.matchName}" existiert bereits in dieser Kategorie!`, 'warning');
+      return;
+    }
+    if (dupCheck.isNearDuplicate) {
+      const pct = Math.round(dupCheck.similarity * 100);
+      showToast(`⚠️ Ähnlicher Eintrag existiert bereits: "${dupCheck.matchName}" (${pct}% Ähnlichkeit)`, 'info');
+    }
+
     const res = await ipcRenderer.invoke('db:add-item', { category: catKey, item: itemVal });
     if (res.success) {
       state.catalog = res.catalog;
@@ -1453,6 +1495,8 @@ function matchNotesToForm(text) {
       renderCatalogList();
       const addedName = typeof itemVal === 'string' ? itemVal : itemVal.name;
       showToast(`"${addedName}" zur Datenbank hinzugefügt`, 'success');
+    } else {
+      showToast(`Eintrag existiert bereits!`, 'warning');
     }
   });
 
@@ -1569,12 +1613,9 @@ function renderCatalogList() {
   let items = state.catalog[catKey] || [];
 
   const dbSearchInput = document.getElementById('db-search-input');
-  const searchVal = dbSearchInput ? dbSearchInput.value.trim().toLowerCase() : '';
+  const searchVal = dbSearchInput ? dbSearchInput.value.trim() : '';
   if (searchVal) {
-    items = items.filter(item => {
-      const nameStr = typeof item === 'string' ? item : item.name;
-      return nameStr.toLowerCase().includes(searchVal);
-    });
+    items = fuzzyFilterList(searchVal, items, 0.40);
   }
 
   if (items.length === 0) {

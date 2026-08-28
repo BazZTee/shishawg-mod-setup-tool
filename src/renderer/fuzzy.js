@@ -45,12 +45,18 @@ function similarityScore(s1, s2) {
   if (a === b) return 1.0;
   if (a.length === 0 || b.length === 0) return 0;
 
-  // Direct substring bonus
+  // Prefix match (e.g. 'vosku' vs 'voskurimsya')
+  if (a.startsWith(b) || b.startsWith(a)) {
+    const minLen = Math.min(a.length, b.length);
+    const maxLen = Math.max(a.length, b.length);
+    return minLen / maxLen;
+  }
+
+  // Substring inclusion (scaled proportionally)
   if (a.includes(b) || b.includes(a)) {
     const minLen = Math.min(a.length, b.length);
     const maxLen = Math.max(a.length, b.length);
-    const subRatio = minLen / maxLen;
-    return Math.max(0.8, subRatio);
+    return (minLen / maxLen) * 0.9;
   }
 
   const dist = levenshteinDistance(a, b);
@@ -96,11 +102,13 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
     // 2. Full-string similarity
     let score = similarityScore(qClean, nLower);
 
-    // 3. Substring inclusion
+    // 3. Substring inclusion (scaled by length ratio)
     if (nLower.includes(qClean)) {
-      score = Math.max(score, 0.85 + (qClean.length / nLower.length) * 0.15);
+      const ratio = qClean.length / nLower.length;
+      score = Math.max(score, 0.65 + ratio * 0.35);
     } else if (qClean.includes(nLower)) {
-      score = Math.max(score, 0.85 + (nLower.length / qClean.length) * 0.15);
+      const ratio = nLower.length / qClean.length;
+      score = Math.max(score, 0.65 + ratio * 0.35);
     }
 
     // 4. Token-based matching
@@ -108,23 +116,27 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
     let matchedTokenCount = 0;
 
     for (const qt of qTokens) {
+      let bestTokSim = 0;
       for (const nt of nTokens) {
         if (qt === nt) {
-          matchedTokenCount++;
+          bestTokSim = 1.0;
           break;
         } else {
           const tSim = similarityScore(qt, nt);
-          if (tSim >= 0.8) {
-            matchedTokenCount += tSim;
-            break;
+          if (tSim > bestTokSim && tSim >= 0.80) {
+            bestTokSim = tSim;
           }
         }
       }
+      matchedTokenCount += bestTokSim;
     }
 
-    if (nTokens.length > 0) {
-      const tokenScore = (matchedTokenCount / nTokens.length);
-      score = Math.max(score, tokenScore * 0.95);
+    if (qTokens.length > 0) {
+      const qCoverage = matchedTokenCount / qTokens.length;
+      const nCoverage = matchedTokenCount / (nTokens.length || 1);
+      // Weighted token score: favors matching all query tokens while rewarding specific item matches
+      const tokenScore = qCoverage * 0.85 + nCoverage * 0.15;
+      score = Math.max(score, tokenScore);
     }
 
     if (score > highestScore && score >= minScore) {

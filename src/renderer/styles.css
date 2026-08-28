@@ -1205,7 +1205,7 @@ textarea#command-output {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  width: 800px;
+  width: 860px;
   max-width: 95vw;
   display: flex;
   flex-direction: column;
@@ -1266,21 +1266,22 @@ textarea#command-output {
 
 .modal-tabs {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   border-bottom: 1px solid var(--border-color);
   padding-bottom: 8px;
   margin-bottom: 14px;
 }
 
 .tab-btn {
-  flex: 1;
+  flex: 1 1 auto;
   text-align: center;
   background: transparent;
   border: none;
   color: var(--text-secondary);
-  padding: 8px 6px;
+  padding: 7px 10px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;

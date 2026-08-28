@@ -1054,14 +1054,65 @@ function matchNotesToForm(text) {
     const vesselMatch = scanCategory(catalog.vases || []);
     const vessel = vesselMatch ? vesselMatch.name : '';
 
+    // Precise Multi-Word & Token Tobacco Extraction
     const matchedTobaccos = [];
-    for (const item of catalog.tobacco || []) {
-      const tName = getItemName(item);
-      const tTokens = tName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2 && w !== 'tobacco');
-      for (const tok of tokens) {
-        if (tok.length > 2 && tTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
-          if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
-        }
+    const usedTobaccoIndices = new Set();
+
+    // 1. Check 3-word windows
+    for (let i = 0; i <= tokens.length - 3; i++) {
+      if (usedTobaccoIndices.has(i) || usedTobaccoIndices.has(i + 1) || usedTobaccoIndices.has(i + 2)) continue;
+      const w3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
+      const syn = SHISHA_SYNONYMS[w3];
+      if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
+        matchedTobaccos.push(syn);
+        usedTobaccoIndices.add(i);
+        usedTobaccoIndices.add(i + 1);
+        usedTobaccoIndices.add(i + 2);
+        continue;
+      }
+      const m = findBestFuzzyMatch(w3, catalog.tobacco || [], 0.78);
+      if (m) {
+        matchedTobaccos.push(m.name);
+        usedTobaccoIndices.add(i);
+        usedTobaccoIndices.add(i + 1);
+        usedTobaccoIndices.add(i + 2);
+      }
+    }
+
+    // 2. Check 2-word windows
+    for (let i = 0; i <= tokens.length - 2; i++) {
+      if (usedTobaccoIndices.has(i) || usedTobaccoIndices.has(i + 1)) continue;
+      const w2 = `${tokens[i]} ${tokens[i + 1]}`;
+      const syn = SHISHA_SYNONYMS[w2];
+      if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
+        matchedTobaccos.push(syn);
+        usedTobaccoIndices.add(i);
+        usedTobaccoIndices.add(i + 1);
+        continue;
+      }
+      const m = findBestFuzzyMatch(w2, catalog.tobacco || [], 0.75);
+      if (m) {
+        matchedTobaccos.push(m.name);
+        usedTobaccoIndices.add(i);
+        usedTobaccoIndices.add(i + 1);
+      }
+    }
+
+    // 3. Check single tokens
+    for (let i = 0; i < tokens.length; i++) {
+      if (usedTobaccoIndices.has(i)) continue;
+      const tok = tokens[i];
+      if (tok.length < 3) continue;
+      const syn = SHISHA_SYNONYMS[tok];
+      if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
+        if (!matchedTobaccos.includes(syn)) matchedTobaccos.push(syn);
+        usedTobaccoIndices.add(i);
+        continue;
+      }
+      const m = findBestFuzzyMatch(tok, catalog.tobacco || [], 0.78);
+      if (m && !matchedTobaccos.includes(m.name)) {
+        matchedTobaccos.push(m.name);
+        usedTobaccoIndices.add(i);
       }
     }
 

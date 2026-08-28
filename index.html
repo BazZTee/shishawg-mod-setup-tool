@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>ShishaWG Live Stream Setup Overlay</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: transparent;
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      padding: 20px;
+    }
+
+    .hud-card {
+      display: inline-flex;
+      flex-direction: column;
+      background: rgba(10, 15, 29, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(0, 240, 255, 0.35);
+      border-left: 4px solid #00f0ff;
+      border-radius: 14px;
+      padding: 14px 20px;
+      color: #ffffff;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 240, 255, 0.2);
+      max-width: 760px;
+      opacity: 0;
+      transform: translateY(-15px);
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .hud-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .hud-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .hud-badge {
+      background: linear-gradient(135deg, #00f0ff, #7928ca);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 5px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(0, 240, 255, 0.3);
+    }
+
+    .hud-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .hud-content {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.45;
+      color: #f8fafc;
+    }
+
+    .hud-name {
+      color: #00f0ff;
+      font-weight: 700;
+    }
+
+    .hud-promo {
+      color: #a855f7;
+      font-weight: 700;
+    }
+
+    .hud-time {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 6px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud-card" id="hud-card">
+    <div class="hud-header">
+      <span class="hud-badge">💨 STREAM SETUP</span>
+      <span class="hud-title">ShishaWG Live</span>
+    </div>
+    <div class="hud-content" id="hud-text">Lade Setup...</div>
+    <div class="hud-time" id="hud-time">Live-Sync aktiv</div>
+  </div>
+
+  <script>
+    const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
+    let lastContent = '';
+    let hideTimer = null;
+
+    function showOverlayTemporarily() {
+      const card = document.getElementById('hud-card');
+      card.classList.add('visible');
+
+      if (hideTimer) clearTimeout(hideTimer);
+      // Stay visible for 25 seconds, then fade out smoothly
+      hideTimer = setTimeout(() => {
+        card.classList.remove('visible');
+      }, 25000);
+    }
+
+    async function syncSetup() {
+      // 1. Try Local Server first (if available on same PC)
+      try {
+        const localRes = await fetch('http://127.0.0.1:18942/setup.json?' + Date.now(), { signal: AbortSignal.timeout(1500) });
+        if (localRes.ok) {
+          const data = await localRes.json();
+          handleNewData(data);
+          return;
+        }
+      } catch(e) {}
+
+      // 2. Fallback: Cloud GitHub Gist
+      try {
+        const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const file = data.files && data.files['current_setup.json'];
+        if (file && file.content) {
+          const parsed = JSON.parse(file.content);
+          handleNewData(parsed);
+        }
+      } catch (err) {
+        console.error('Cloud Sync Error:', err);
+      }
+    }
+
+    function handleNewData(parsed) {
+      const raw = (parsed.commandText || '').replace(/^!setup\s+/i, '').replace(/^!editsetup\s+/i, '');
+      if (raw && raw !== lastContent) {
+        lastContent = raw;
+        const el = document.getElementById('hud-text');
+        // Format highlights
+        let formatted = raw
+          .replace(/(\b[A-Za-z0-9äöüÄÖÜß-]+:)/g, '<span class="hud-name">$1</span>')
+          .replace(/(\!(?:kohle|xkah|hookain|almassiva|shaman|blackcoco)[a-zA-Z0-9_-]*)/g, '<span class="hud-promo">$1</span>');
+        el.innerHTML = formatted;
+
+        if (parsed.updatedAt) {
+          const d = new Date(parsed.updatedAt);
+          const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          document.getElementById('hud-time').textContent = `Aktualisiert um ${timeStr} Uhr`;
+        }
+
+        // Trigger smooth fade-in and timer
+        showOverlayTemporarily();
+      }
+    }
+
+    syncSetup();
+    setInterval(syncSetup, 3000);
+  </script>
+</body>
+</html>

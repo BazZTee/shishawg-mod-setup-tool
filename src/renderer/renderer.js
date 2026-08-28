@@ -1070,6 +1070,14 @@ async function triggerAutoLearn() {
   } catch(e) {}
 }
 
+const COMMON_PERSON_NAMES = [
+  'marvin', 'marv', 'basti', 'gary', 'tobi', 'kevin', 'felix', 'dennis', 'daniel',
+  'niklas', 'tim', 'tasting', 'alex', 'chris', 'jan', 'max', 'sven', 'leon', 'robin',
+  'nils', 'lukas', 'jonas', 'paul', 'finn', 'elias', 'noah', 'luis', 'david', 'simon',
+  'hannes', 'erik', 'marc', 'lars', 'julian', 'flo', 'stefan', 'micha', 'christian',
+  'person 1', 'person 2', 'person 3', 'person 4', 'person 5', 'person 6'
+];
+
 function matchNotesToForm(text) {
   if (!text || text.trim().length < 2) {
     if (state.persons[0]) {
@@ -1100,14 +1108,14 @@ function matchNotesToForm(text) {
   } else if (origText.includes('/')) {
     rawSegments = origText.split(/\/+/);
   } else {
-    // Check if multiple names appear in continuous text (e.g. "marvin futr cosmo onmo basti breeze litbowl nagrani")
-    const knownNames = ['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'person 1', 'person 2', 'person 3', 'person 4'];
-    const words = lowerText.split(/\s+/);
+    // Check if multiple names appear in continuous text (e.g. "marvin futr basti edition 6 gary darkside")
+    const words = lowerText.split(/\s+/).filter(Boolean);
     const foundIndices = [];
 
     for (let i = 0; i < words.length; i++) {
       const w = words[i].replace(/[:;,]/g, '');
-      if (knownNames.includes(w)) {
+      const isKnownName = COMMON_PERSON_NAMES.includes(w);
+      if (isKnownName) {
         foundIndices.push({ index: i, name: w });
       }
     }
@@ -1131,7 +1139,13 @@ function matchNotesToForm(text) {
   for (const seg of rawSegments) {
     const sLower = seg.toLowerCase();
     const cMatch = findBestFuzzyMatch(seg, catalog.charcoal || [], 0.70);
-    const isCharcoalOnly = (cMatch || sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('blackcoco')) && !sLower.includes('futr') && !sLower.includes('breeze') && !sLower.includes('cosmo');
+    const hasPersonOrGear = Object.values(catalog).flat().some(item => {
+      const iName = getItemName(item).toLowerCase();
+      if ((catalog.charcoal || []).some(c => getItemName(c).toLowerCase() === iName)) return false;
+      return sLower.includes(iName.split(' ')[0]);
+    }) || COMMON_PERSON_NAMES.some(n => sLower.includes(n));
+
+    const isCharcoalOnly = !hasPersonOrGear && (cMatch || sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('blackcoco'));
     if (isCharcoalOnly) {
       globalCharcoal = cMatch ? cMatch.name : (sLower.includes('black') ? 'Black Coco 26mm' : 'Magic Cubes (Zauberwürfel) !kohle');
     } else {
@@ -1151,7 +1165,7 @@ function matchNotesToForm(text) {
     let matchedName = `Person ${idx + 1}`;
     const firstTok = tokens[0];
     if (firstTok) {
-      if (['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'tasting'].includes(firstTok)) {
+      if (COMMON_PERSON_NAMES.includes(firstTok)) {
         matchedName = capitalize(firstTok);
       } else if (seg.includes(':')) {
         matchedName = capitalize(seg.split(':')[0].trim());

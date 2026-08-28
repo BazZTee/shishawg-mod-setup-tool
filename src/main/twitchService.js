@@ -49,6 +49,7 @@ class TwitchService {
         const valData = await valResp.json();
         
         let profileImage = '';
+        let displayName = valData.login;
         try {
           const userResp = await fetch(`https://api.twitch.tv/helix/users?id=${valData.user_id}`, {
             headers: {
@@ -60,15 +61,33 @@ class TwitchService {
             const uData = await userResp.json();
             if (uData.data && uData.data.length > 0) {
               profileImage = uData.data[0].profile_image_url;
+              displayName = uData.data[0].display_name || valData.login;
+            }
+          }
+        } catch(e) {}
+
+        let chatColor = '';
+        try {
+          const colorResp = await fetch(`https://api.twitch.tv/helix/chat/color?user_id=${valData.user_id}`, {
+            headers: {
+              'Authorization': `Bearer ${cleanToken}`,
+              'Client-Id': valData.client_id || this.clientId
+            }
+          });
+          if (colorResp.ok) {
+            const cData = await colorResp.json();
+            if (cData.data && cData.data.length > 0 && cData.data[0].color) {
+              chatColor = cData.data[0].color;
             }
           }
         } catch(e) {}
 
         this.user = {
           login: valData.login,
-          display_name: valData.login,
+          display_name: displayName,
           id: valData.user_id,
-          profile_image_url: profileImage
+          profile_image_url: profileImage,
+          color: chatColor
         };
         this.accessToken = cleanToken;
         if (valData.client_id) {

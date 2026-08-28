@@ -632,14 +632,6 @@ function generateCommandString() {
     previewChatText.textContent = fullCommand;
   }
 
-  // Live Sync to OBS Overlay Server & Cloud Gist
-  ipcRenderer.invoke('obs:publish-setup', {
-    commandText: fullCommand,
-    persons: state.persons,
-    kohle,
-    extra
-  }).catch(() => {});
-
   const len = fullCommand.length;
   if (commandLengthBadge) {
     if (len > 500) {
@@ -1095,6 +1087,16 @@ function setupEventListeners() {
     if (res.success) {
       showToast(`!editsetup Befehl in #${state.targetChannel} gesendet!`, 'success');
       triggerAutoLearn();
+
+      // Publish confirmed setup to OBS Overlay Server & Cloud Gist
+      const kohleVal = (inputGlobalKohle ? inputGlobalKohle.value : '').trim();
+      const extraVal = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
+      ipcRenderer.invoke('obs:publish-setup', {
+        commandText: message,
+        persons: state.persons,
+        kohle: kohleVal,
+        extra: extraVal
+      }).catch(() => {});
     } else {
       showToast(`Fehler beim Senden: ${res.error}`, 'error');
     }

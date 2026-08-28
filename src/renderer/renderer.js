@@ -456,6 +456,26 @@ function attachCardInputListeners() {
         }
       }
 
+      // Auto-fill Person 1 name with 'Marvin' if any field of Person 1 has content and name is empty/default
+      const personIndexForCheck = !isNaN(pIdx) ? pIdx : (typeof personIdx !== 'undefined' ? personIdx : null);
+      if (personIndexForCheck === 0 && !e.target.classList.contains('input-p-name')) {
+        const p1 = state.persons[0];
+        if (p1 && (!p1.name || p1.name.trim() === '' || p1.name === 'Person 1')) {
+          const hasContent = !!(p1.pipe || p1.vessel || p1.vesselColor || p1.bowl || p1.hmd || (p1.tobaccos && p1.tobaccos.some(t => t && t.trim())));
+          if (hasContent) {
+            p1.name = 'Marvin';
+            const nameInput = document.querySelector('.input-p-name[data-index="0"]');
+            if (nameInput) {
+              nameInput.value = 'Marvin';
+              const clearBtn = nameInput.parentElement ? nameInput.parentElement.querySelector('.btn-clear-field') : null;
+              if (clearBtn) clearBtn.classList.remove('hidden');
+            }
+            const nameDisplay = document.querySelector('.person-card[data-index="0"] .person-name-display');
+            if (nameDisplay) nameDisplay.textContent = 'Marvin';
+          }
+        }
+      }
+
       generateCommandString();
     });
   });
@@ -1026,6 +1046,11 @@ function matchNotesToForm(text) {
       } else if (seg.includes(':')) {
         matchedName = capitalize(seg.split(':')[0].trim());
       }
+    }
+
+    // Auto-fill Person 1 name with 'Marvin' if not explicitly given another name
+    if (idx === 0 && (!matchedName || matchedName === 'Person 1')) {
+      matchedName = 'Marvin';
     }
 
     // Step 1: Hardware Gear Scanners (Highest score selection & unambiguous brand tokens)

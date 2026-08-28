@@ -186,6 +186,18 @@ async function checkTwitchAuth() {
       inputClientId.value = state.clientId;
     }
   }
+  updateChannelBotTooltips();
+}
+
+function updateChannelBotTooltips() {
+  if (targetChannelInput) {
+    const val = targetChannelInput.value.trim() || 'marved';
+    targetChannelInput.title = `Ziel-Kanal: #${val}`;
+  }
+  if (targetBotInput) {
+    const val = targetBotInput.value.trim() || 'marvedbot';
+    targetBotInput.title = `Bot-Name: @${val}`;
+  }
 }
 
 function updateTwitchUI() {
@@ -808,11 +820,17 @@ function setupEventListeners() {
   if (selectPromoTarget) selectPromoTarget.addEventListener('change', generateCommandString);
 
   // Target Channel Listener
-  targetChannelInput.addEventListener('change', async () => {
-    state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marved';
-    await ipcRenderer.invoke('twitch:set-channel', state.targetChannel);
-    showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
-  });
+  if (targetChannelInput) {
+    targetChannelInput.addEventListener('input', () => {
+      targetChannelInput.title = `Ziel-Kanal: #${targetChannelInput.value.trim() || 'marved'}`;
+    });
+    targetChannelInput.addEventListener('change', async () => {
+      state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marved';
+      updateChannelBotTooltips();
+      await ipcRenderer.invoke('twitch:set-channel', state.targetChannel);
+      showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
+    });
+  }
 
   // Twitch Auth Listeners - 1-Click Seamless Browser Login
   btnTwitchLogin.addEventListener('click', async () => {
@@ -1334,8 +1352,12 @@ function matchNotesToForm(text) {
 
   // Target Bot Listener
   if (targetBotInput) {
+    targetBotInput.addEventListener('input', () => {
+      targetBotInput.title = `Bot-Name: @${targetBotInput.value.trim() || 'marvedbot'}`;
+    });
     targetBotInput.addEventListener('change', () => {
       state.targetBot = targetBotInput.value.trim().toLowerCase() || 'marvedbot';
+      updateChannelBotTooltips();
       showToast(`Bot-Name zum Auslesen auf @${state.targetBot} gesetzt`, 'success');
     });
   }

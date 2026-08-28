@@ -625,7 +625,7 @@ input[type="text"]:focus, input[type="password"]:focus {
 .dropdown-menu-right {
   left: auto;
   right: 0;
-  min-width: 240px;
+  min-width: 290px;
 }
 
 /* Hamburger Field Row (for inline inputs inside dropdown) */
@@ -646,10 +646,14 @@ input[type="text"]:focus, input[type="password"]:focus {
 
 .hamburger-field-row .channel-input-wrapper {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
 }
 
 .hamburger-field-row .channel-input-wrapper input {
-  width: 100%;
+  width: 100% !important;
+  min-width: 0;
 }
 
 .hamburger-divider {

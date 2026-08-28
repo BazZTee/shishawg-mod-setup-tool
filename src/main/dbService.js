@@ -10,6 +10,31 @@ class DatabaseService {
   constructor() {
     this.dbPath = path.join(app.getPath('userData'), 'setup_database.json');
     this.defaultCatalog = {
+      persons: [
+        'Marvin',
+        'Basti',
+        'Gary',
+        'Janni',
+        'Yanni',
+        'Dennis',
+        'Daniel',
+        'Felix',
+        'Kevin',
+        'Tobi',
+        'Niklas',
+        'Tim',
+        'Alex',
+        'Chris',
+        'Jan',
+        'Max',
+        'Sven',
+        'Leon',
+        'Robin',
+        'Nils',
+        'Lukas',
+        'Jonas',
+        'Paul'
+      ],
       pipes: [
         'Amotion Futr',
         'Amotion Pedal',
@@ -311,15 +336,58 @@ class DatabaseService {
     });
   }
 
-  async publishLiveSetupToGist(setupPayload) {
-    return new Promise((resolve) => {
+  async publishLiveSetupToGist(setupPayload, targetChannel = 'marved') {
+    return new Promise(async (resolve) => {
+      const chan = (targetChannel || setupPayload.channel || 'marved').toLowerCase().replace('#', '').trim();
+      let currentMap = {};
+
+      try {
+        const getOptions = {
+          hostname: 'api.github.com',
+          path: `/gists/${GIST_ID}`,
+          method: 'GET',
+          headers: {
+            'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+            'Authorization': `token ${GIST_TOKEN}`
+          }
+        };
+
+        const existingRaw = await new Promise((res) => {
+          const r = https.request(getOptions, (resp) => {
+            let data = '';
+            resp.on('data', chunk => data += chunk);
+            resp.on('end', () => res(data));
+          });
+          r.on('error', () => res(''));
+          r.end();
+        });
+
+        if (existingRaw) {
+          const parsedGist = JSON.parse(existingRaw);
+          const f = parsedGist.files && parsedGist.files['current_setup.json'];
+          if (f && f.content) {
+            const parsedContent = JSON.parse(f.content);
+            if (parsedContent && typeof parsedContent === 'object') {
+              if (parsedContent.commandText && !parsedContent[chan]) {
+                currentMap['marved'] = parsedContent;
+              } else {
+                currentMap = parsedContent;
+              }
+            }
+          }
+        }
+      } catch(e) {}
+
+      currentMap[chan] = {
+        channel: chan,
+        updatedAt: new Date().toISOString(),
+        ...setupPayload
+      };
+
       const payload = JSON.stringify({
         files: {
           'current_setup.json': {
-            content: JSON.stringify({
-              updatedAt: new Date().toISOString(),
-              ...setupPayload
-            }, null, 2)
+            content: JSON.stringify(currentMap, null, 2)
           }
         }
       });

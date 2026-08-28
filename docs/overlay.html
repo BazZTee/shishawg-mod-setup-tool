@@ -27,7 +27,7 @@
       padding: 14px 22px;
       color: #ffffff;
       box-shadow: 0 10px 35px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 240, 255, 0.25);
-      max-width: 800px;
+      max-width: 820px;
       opacity: 0;
       transform: translateY(-15px);
       transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
@@ -96,7 +96,7 @@
   <div class="hud-card" id="hud-card">
     <div class="hud-header">
       <span class="hud-badge">💨 STREAM SETUP</span>
-      <span class="hud-title">ShishaWG Live</span>
+      <span class="hud-title" id="hud-channel-title">ShishaWG Live</span>
     </div>
     <div class="hud-content" id="hud-text">Lade Setup...</div>
     <div class="hud-time" id="hud-time">Live-Sync aktiv</div>
@@ -107,7 +107,13 @@
     let lastContent = '';
     let hideTimer = null;
     const urlParams = new URLSearchParams(window.location.search);
+    const targetChannel = (urlParams.get('channel') || urlParams.get('streamer') || 'marved').toLowerCase().replace('#', '').trim();
     const isPersistent = urlParams.get('persistent') === '1';
+
+    const titleEl = document.getElementById('hud-channel-title');
+    if (titleEl) {
+      titleEl.textContent = targetChannel ? `#${targetChannel} Live` : 'ShishaWG Live';
+    }
 
     function showOverlayTemporarily() {
       const card = document.getElementById('hud-card');
@@ -130,7 +136,21 @@
         const file = data.files && data.files['current_setup.json'];
         if (file && file.content) {
           const parsed = JSON.parse(file.content);
-          handleNewData(parsed);
+          // Look for channel-specific entry first, fallback to legacy root or marved
+          let channelSetup = null;
+          if (parsed && typeof parsed === 'object') {
+            if (parsed[targetChannel]) {
+              channelSetup = parsed[targetChannel];
+            } else if (targetChannel === 'marved' && parsed.commandText) {
+              channelSetup = parsed;
+            } else if (parsed.commandText && !parsed['marved']) {
+              channelSetup = parsed;
+            }
+          }
+
+          if (channelSetup) {
+            handleNewData(channelSetup);
+          }
         }
       } catch (err) {
         console.error('Cloud Sync Error:', err);
@@ -151,7 +171,7 @@
         if (parsed.updatedAt) {
           const d = new Date(parsed.updatedAt);
           const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-          document.getElementById('hud-time').textContent = `Aktualisiert um ${timeStr} Uhr`;
+          document.getElementById('hud-time').textContent = `Kanal #${targetChannel} • Aktualisiert um ${timeStr} Uhr`;
         }
 
         showOverlayTemporarily();

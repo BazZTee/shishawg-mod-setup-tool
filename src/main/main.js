@@ -450,8 +450,9 @@ ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
     fs.writeFileSync(textFilePath, setupPayload.commandText || '', 'utf-8');
   } catch(e) {}
 
-  // Publish to GitHub Gist for cloud access
-  dbService.publishLiveSetupToGist(setupPayload).catch(() => {});
+  // Publish to GitHub Gist for cloud access (channel-separated)
+  const channel = setupPayload.channel || (twitchService ? twitchService.targetChannel : 'marved');
+  dbService.publishLiveSetupToGist(setupPayload, channel).catch(() => {});
 
   return {
     success: true,

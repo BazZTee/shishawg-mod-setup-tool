@@ -161,6 +161,7 @@ function updateDatalists() {
   populateDatalist('list-hmds', state.catalog.hmds || []);
   populateDatalist('list-tobacco', state.catalog.tobacco || []);
   populateDatalist('list-charcoal', state.catalog.charcoal || []);
+  populateDatalist('list-persons', state.catalog.persons || []);
   populateDatalist('list-tastings', state.catalog.tastings || []);
   populateDatalist('list-promos', state.catalog.promos || []);
 }
@@ -904,6 +905,7 @@ function setupEventListeners() {
     targetChannelInput.addEventListener('change', async () => {
       state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marved';
       updateChannelBotTooltips();
+      if (typeof updateObsUrls === 'function') updateObsUrls();
       await ipcRenderer.invoke('twitch:set-channel', state.targetChannel);
       showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
     });
@@ -1118,7 +1120,7 @@ async function triggerAutoLearn() {
 }
 
 const COMMON_PERSON_NAMES = [
-  'marvin', 'marv', 'basti', 'gary', 'tobi', 'kevin', 'felix', 'dennis', 'daniel',
+  'marvin', 'marv', 'basti', 'gary', 'janni', 'yanni', 'dennis', 'daniel',
   'niklas', 'tim', 'tasting', 'alex', 'chris', 'jan', 'max', 'sven', 'leon', 'robin',
   'nils', 'lukas', 'jonas', 'paul', 'finn', 'elias', 'noah', 'luis', 'david', 'simon',
   'hannes', 'erik', 'marc', 'lars', 'julian', 'flo', 'stefan', 'micha', 'christian',
@@ -1140,10 +1142,35 @@ function matchNotesToForm(text) {
   const catalog = state.catalog || {};
   const origText = text.trim();
   const lowerText = origText.toLowerCase();
-
   const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
 
-  // 1. Flexible Multi-Person Delimiter Detection (//, /, ;, \n, or multiple person names in sequence)
+  // 1. Gather all catalog gear for structure lookahead
+  const dbPersons = (catalog.persons || []).map(p => getItemName(p).toLowerCase());
+  const allKnownPersons = Array.from(new Set([...COMMON_PERSON_NAMES, ...dbPersons]));
+
+  const pipesList = (catalog.pipes || []).map(p => getItemName(p).toLowerCase());
+  const bowlsList = (catalog.bowls || []).map(b => getItemName(b).toLowerCase());
+  const hmdsList = (catalog.hmds || []).map(h => getItemName(h).toLowerCase());
+  const charcoalList = (catalog.charcoal || []).map(c => getItemName(c).toLowerCase());
+
+  function isKnownGearToken(tok) {
+    if (!tok || tok.length < 2) return false;
+    if (SHISHA_SYNONYMS[tok]) return true;
+    const allGear = [...pipesList, ...bowlsList, ...hmdsList, ...charcoalList];
+    return allGear.some(item => {
+      const parts = item.split(/[\s-]+/);
+      return parts.some(p => p === tok || similarityScore(p, tok) >= 0.82);
+    });
+  }
+
+  function isKnownPipeOrBowl(tok, nextTok = '') {
+    const combined = nextTok ? `${tok} ${nextTok}` : tok;
+    if (pipesList.some(p => p.includes(tok) || p.includes(combined)) || bowlsList.some(b => b.includes(tok) || b.includes(combined))) return true;
+    if (SHISHA_SYNONYMS[tok] || (nextTok && SHISHA_SYNONYMS[combined])) return true;
+    return false;
+  }
+
+  // 2. Multi-Person Delimiter Detection (//, /, ;, \n, or structure-aware sequence)
   let rawSegments = [];
 
   if (origText.includes('//')) {
@@ -1155,15 +1182,26 @@ function matchNotesToForm(text) {
   } else if (origText.includes('/')) {
     rawSegments = origText.split(/\/+/);
   } else {
-    // Check if multiple names appear in continuous text (e.g. "marvin futr basti edition 6 gary darkside")
+    // Structure-Aware continuous text scan
     const words = lowerText.split(/\s+/).filter(Boolean);
     const foundIndices = [];
 
     for (let i = 0; i < words.length; i++) {
       const w = words[i].replace(/[:;,]/g, '');
-      const isKnownName = COMMON_PERSON_NAMES.includes(w);
-      if (isKnownName) {
+      const isKnownPerson = allKnownPersons.includes(w) || ['person 1', 'person 2', 'person 3', 'person 4'].includes(w);
+
+      if (isKnownPerson) {
         foundIndices.push({ index: i, name: w });
+      } else if (i > 0 && i < words.length - 1) {
+        // Hybrid Structure Guardrail: An unknown word is a person ONLY IF followed by a pipe or bowl, and is not itself known gear
+        const nextWord = words[i + 1].replace(/[:;,]/g, '');
+        const nextNextWord = (i + 2 < words.length) ? words[i + 2].replace(/[:;,]/g, '') : '';
+        const followedByGear = isKnownPipeOrBowl(nextWord, nextNextWord);
+        const isGearItself = isKnownGearToken(w);
+
+        if (followedByGear && !isGearItself && w.length >= 3) {
+          foundIndices.push({ index: i, name: w });
+        }
       }
     }
 
@@ -1190,7 +1228,7 @@ function matchNotesToForm(text) {
       const iName = getItemName(item).toLowerCase();
       if ((catalog.charcoal || []).some(c => getItemName(c).toLowerCase() === iName)) return false;
       return sLower.includes(iName.split(' ')[0]);
-    }) || COMMON_PERSON_NAMES.some(n => sLower.includes(n));
+    }) || allKnownPersons.some(n => sLower.includes(n));
 
     const isCharcoalOnly = !hasPersonOrGear && (cMatch || sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('blackcoco'));
     if (isCharcoalOnly) {
@@ -1408,17 +1446,17 @@ function matchNotesToForm(text) {
     }
   });
 
-  // OBS Stream Overlay Modal Listeners
-  const btnOpenObs = document.getElementById('btn-open-obs');
-  const obsModal = document.getElementById('obs-modal');
-  const btnCloseObsModal = document.getElementById('btn-close-obs-modal');
-  const btnCloseObs = document.getElementById('btn-close-obs');
-  const btnCopyObsCloud = document.getElementById('btn-copy-obs-cloud');
-  const btnCopyObsLocal = document.getElementById('btn-copy-obs-local');
-  const btnTestOverlayBrowser = document.getElementById('btn-test-overlay-browser');
+  function updateObsUrls() {
+    const chan = (state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const cloudInput = document.getElementById('obs-cloud-url');
+    if (cloudInput) {
+      cloudInput.value = `https://bazztee.github.io/shishawg-mod-setup-tool/overlay.html?channel=${chan}`;
+    }
+  }
 
   if (btnOpenObs && obsModal) {
     btnOpenObs.addEventListener('click', () => {
+      updateObsUrls();
       obsModal.classList.remove('hidden');
       if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');
     });
@@ -1445,7 +1483,8 @@ function matchNotesToForm(text) {
   }
   if (btnTestOverlayBrowser) {
     btnTestOverlayBrowser.addEventListener('click', () => {
-      ipcRenderer.invoke('app:open-external', 'http://localhost:18942/overlay');
+      const chan = (state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+      ipcRenderer.invoke('app:open-external', `https://bazztee.github.io/shishawg-mod-setup-tool/overlay.html?channel=${chan}`);
     });
   }
 
@@ -1746,6 +1785,7 @@ function getCategoryKeyForTab(tabId) {
     case 'tab-vases': return 'vases';
     case 'tab-hmds': return 'hmds';
     case 'tab-charcoal': return 'charcoal';
+    case 'tab-persons': return 'persons';
     case 'tab-tastings': return 'tastings';
     case 'tab-promos': return 'promos';
     default: return 'tobacco';

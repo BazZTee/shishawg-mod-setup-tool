@@ -136,14 +136,15 @@ async function initApp() {
   const firstNameInput = document.querySelector('.input-p-name');
   if (firstNameInput) firstNameInput.focus();
 
-  // Auto-sync community catalog from GitHub on startup
+  // Auto-sync community catalog from GitHub & HookahTools on startup
   setTimeout(async () => {
     try {
       const res = await ipcRenderer.invoke('db:sync-github');
-      if (res && res.addedCount > 0) {
+      if (res && res.success) {
         state.catalog = res.catalog;
         updateDatalists();
-        showToast(`${res.addedCount} neue Katalog-Einträge von GitHub geladen!`, 'success');
+        const tobaccoMsg = res.tobaccoCount ? `${res.tobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
+        showToast(`Katalog synchronisiert (${tobaccoMsg} & Hardware)!`, 'success');
       }
     } catch(e) {}
   }, 2000);
@@ -1776,18 +1777,15 @@ function setupEventListeners() {
       btnSyncGithubDb.textContent = '🔄 Abgleich läuft...';
       const res = await ipcRenderer.invoke('db:sync-github');
       btnSyncGithubDb.disabled = false;
-      btnSyncGithubDb.textContent = '🔄 GitHub Sync';
+      btnSyncGithubDb.textContent = '🔄 Sync (HookahTools + GitHub)';
       if (res && res.success) {
         state.catalog = res.catalog;
         updateDatalists();
         renderCatalogList();
-        if (res.addedCount > 0) {
-          showToast(`${res.addedCount} neue Katalog-Einträge geladen!`, 'success');
-        } else {
-          showToast('Katalog ist bereits auf dem neuesten Stand!', 'info');
-        }
+        const tobaccoMsg = res.tobaccoCount ? `${res.tobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
+        showToast(`Katalog synchronisiert (${tobaccoMsg} & Hardware)!`, 'success');
       } else {
-        showToast('Konnte Community-Katalog nicht abgleichen', 'error');
+        showToast('Konnte Katalog nicht abgleichen', 'error');
       }
     });
   }

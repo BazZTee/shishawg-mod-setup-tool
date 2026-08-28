@@ -6,9 +6,71 @@ const { app } = require('electron');
 const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
 const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
 
+const HOOKAHTOOLS_SUPABASE_HOST = 'qgusfuyfuwsdshsdruen.supabase.co';
+const HOOKAHTOOLS_SUPABASE_KEY = 'sb_publishable_XtRceZwP5FsZu2-GNuWkeQ_5AD_AU9y';
+
+function formatHookahToolsTobacco(brandName, line, flavorName) {
+  const b = (brandName || '').trim();
+  const l = (line || '').trim();
+  const n = (flavorName || '').trim();
+  if (!n) return '';
+
+  let prefix = b;
+  if (l && l.toLowerCase() !== 'main' && l.toLowerCase() !== 'standard' && l.toLowerCase() !== b.toLowerCase()) {
+    prefix = `${b} ${l}`.trim();
+  }
+
+  if (!prefix) return n;
+
+  if (n.toLowerCase().startsWith(prefix.toLowerCase() + ' - ')) {
+    return n;
+  }
+  if (n.toLowerCase().startsWith(prefix.toLowerCase())) {
+    const rest = n.slice(prefix.length).replace(/^[\s\-:]+/, '').trim();
+    return `${prefix} - ${rest || n}`;
+  }
+
+  return `${prefix} - ${n}`;
+}
+
+function fetchSupabaseEndpoint(pathStr) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: HOOKAHTOOLS_SUPABASE_HOST,
+      path: `/rest/v1/${pathStr}`,
+      method: 'GET',
+      headers: {
+        'apikey': HOOKAHTOOLS_SUPABASE_KEY,
+        'Authorization': `Bearer ${HOOKAHTOOLS_SUPABASE_KEY}`,
+        'User-Agent': 'ShishaWG-Mod-Setup-Tool'
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch (err) {
+            reject(err);
+          }
+        } else {
+          reject(new Error(`Supabase error status ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+
+    req.on('error', (err) => reject(err));
+    req.end();
+  });
+}
+
 class DatabaseService {
   constructor() {
     this.dbPath = path.join(app.getPath('userData'), 'setup_database.json');
+    this.hookahToolsTobaccoCachePath = path.join(app.getPath('userData'), 'hookahtools_tobacco_cache.json');
     this.defaultCatalog = {
       persons: [
         'Marvin',
@@ -87,18 +149,18 @@ class DatabaseService {
         'Locomotive HMD'
       ],
       tobacco: [
-        'Darkside Falling Star',
-        'Darkside Generis Raspberry',
-        'Darkside Hola',
-        'Darkside Superberry',
-        'Darkside Wild Forest',
+        'Darkside Base - Falling Star',
+        'Darkside Base - Generis Raspberry',
+        'Darkside Base - Hola',
+        'Darkside Base - Superberry',
+        'Darkside Base - Wild Forest',
         'MustH - Pynkman',
-        'Black Burn Haribo',
-        'Holster Ice Kaktuz',
-        'Nameless Black Nana',
-        "Trofimoff's Terror - Dark Plum",
-        'Trofimoff Like Zaghoul',
-        'Trofimoff Anejo'
+        'Blackburn - Haribo',
+        'Holster - Ice Kaktuz',
+        'Nameless - Black Nana',
+        "Trofimoffs Terror - Dark Plum",
+        'Trofimoffs Burley - Like Zaghoul',
+        'Trofimoffs Burley - Anejo'
       ],
       charcoal: [
         'Magic Cubes (Zauberwürfel) !kohle',
@@ -140,7 +202,7 @@ class DatabaseService {
             bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
             vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
             hmds: Array.isArray(parsed.hmds) ? parsed.hmds : this.defaultCatalog.hmds,
-            tobacco: Array.isArray(parsed.tobacco) ? parsed.tobacco : this.defaultCatalog.tobacco,
+            tobacco: Array.isArray(parsed.tobacco) && parsed.tobacco.length > 0 ? parsed.tobacco : this.defaultCatalog.tobacco,
             charcoal: Array.isArray(parsed.charcoal) ? parsed.charcoal : this.defaultCatalog.charcoal,
             persons: Array.isArray(parsed.persons) && parsed.persons.length > 0 ? parsed.persons : this.defaultCatalog.persons,
             tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
@@ -273,7 +335,76 @@ class DatabaseService {
     return { addedCount, catalog };
   }
 
+  async fetchHookahToolsTobacco() {
+    try {
+      const brands = await fetchSupabaseEndpoint('brands?select=id,name');
+      const brandMap = {};
+      if (Array.isArray(brands)) {
+        brands.forEach(b => {
+          if (b && b.id) {
+            brandMap[b.id] = (b.name || b.id).trim();
+          }
+        });
+      }
+
+      let allFlavors = [];
+      let offset = 0;
+      const limit = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const page = await fetchSupabaseEndpoint(`flavors?select=id,name,brand_id,line&order=name.asc&limit=${limit}&offset=${offset}`);
+        if (!Array.isArray(page) || page.length === 0) {
+          hasMore = false;
+        } else {
+          allFlavors = allFlavors.concat(page);
+          offset += limit;
+          if (page.length < limit) {
+            hasMore = false;
+          }
+        }
+      }
+
+      const formattedList = [];
+      for (const f of allFlavors) {
+        if (!f || !f.name) continue;
+        const brand = (f.brand_id && brandMap[f.brand_id]) ? brandMap[f.brand_id] : (f.brand_id || '');
+        const formatted = formatHookahToolsTobacco(brand, f.line, f.name);
+        if (formatted) {
+          formattedList.push(formatted);
+        }
+      }
+
+      const uniqueTobacco = [...new Set(formattedList)].sort((a, b) => a.localeCompare(b, 'de'));
+      if (uniqueTobacco.length > 0) {
+        try {
+          fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(uniqueTobacco, null, 2), 'utf-8');
+        } catch (e) {}
+        return uniqueTobacco;
+      }
+    } catch (err) {
+      console.error('Error fetching tobacco from HookahTools Supabase:', err);
+    }
+
+    // Fallback: local cache
+    try {
+      if (fs.existsSync(this.hookahToolsTobaccoCachePath)) {
+        const raw = fs.readFileSync(this.hookahToolsTobaccoCachePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+
+    return null;
+  }
+
   async syncWithGitHubCommunityCatalog() {
+    // 1. Fetch Tobacco from HookahTools Supabase
+    const hookahTobacco = await this.fetchHookahToolsTobacco();
+
+    // 2. Fetch Hardware categories from GitHub Gist
     return new Promise((resolve) => {
       const options = {
         hostname: 'api.github.com',
@@ -286,45 +417,52 @@ class DatabaseService {
       };
 
       const req = https.request(options, (res) => {
-        if (res.statusCode !== 200) {
-          return resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
-        }
-
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
           try {
-            const parsed = JSON.parse(body);
-            const gistFile = parsed.files && (parsed.files['shishawg_catalog.json'] || parsed.files[Object.keys(parsed.files)[0]]);
-            if (!gistFile || !gistFile.content) {
-              return resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
-            }
-
-            const remoteCatalog = JSON.parse(gistFile.content);
             const localCatalog = this.getCatalog();
             let addedCount = 0;
 
-            const categories = ['pipes', 'bowls', 'vases', 'hmds', 'tobacco', 'charcoal', 'tastings', 'promos'];
-            for (const cat of categories) {
-              if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
-                const cleanedList = remoteCatalog[cat]
-                  .map(item => {
-                    if (typeof item === 'object' && item !== null) return item;
-                    const str = (typeof item === 'string' ? item : (item.name || item)).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-                    return str;
-                  })
-                  .filter(Boolean);
-                cleanedList.sort((a, b) => {
-                  const nameA = typeof a === 'string' ? a : a.name;
-                  const nameB = typeof b === 'string' ? b : b.name;
-                  return nameA.localeCompare(nameB, 'de');
-                });
-                localCatalog[cat] = cleanedList;
+            if (res.statusCode === 200) {
+              const parsed = JSON.parse(body);
+              const gistFile = parsed.files && (parsed.files['shishawg_catalog.json'] || parsed.files[Object.keys(parsed.files)[0]]);
+              if (gistFile && gistFile.content) {
+                const remoteCatalog = JSON.parse(gistFile.content);
+                // Sync non-tobacco hardware categories from Gist
+                const categories = ['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'tastings', 'promos'];
+                for (const cat of categories) {
+                  if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
+                    const cleanedList = remoteCatalog[cat]
+                      .map(item => {
+                        if (typeof item === 'object' && item !== null) return item;
+                        const str = (typeof item === 'string' ? item : (item.name || item)).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+                        return str;
+                      })
+                      .filter(Boolean);
+                    cleanedList.sort((a, b) => {
+                      const nameA = typeof a === 'string' ? a : a.name;
+                      const nameB = typeof b === 'string' ? b : b.name;
+                      return nameA.localeCompare(nameB, 'de');
+                    });
+                    localCatalog[cat] = cleanedList;
+                  }
+                }
               }
             }
 
+            // Apply HookahTools tobacco
+            if (Array.isArray(hookahTobacco) && hookahTobacco.length > 0) {
+              localCatalog.tobacco = hookahTobacco;
+            }
+
             fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
-            resolve({ success: true, addedCount: 0, catalog: localCatalog });
+            resolve({
+              success: true,
+              addedCount: 0,
+              tobaccoCount: localCatalog.tobacco ? localCatalog.tobacco.length : 0,
+              catalog: localCatalog
+            });
           } catch (err) {
             resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
           }
@@ -332,7 +470,19 @@ class DatabaseService {
       });
 
       req.on('error', () => {
-        resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
+        const localCatalog = this.getCatalog();
+        if (Array.isArray(hookahTobacco) && hookahTobacco.length > 0) {
+          localCatalog.tobacco = hookahTobacco;
+          try {
+            fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
+          } catch (e) {}
+        }
+        resolve({
+          success: Array.isArray(hookahTobacco),
+          addedCount: 0,
+          tobaccoCount: localCatalog.tobacco ? localCatalog.tobacco.length : 0,
+          catalog: localCatalog
+        });
       });
 
       req.end();
@@ -341,10 +491,14 @@ class DatabaseService {
 
   async pushToGist(catalog) {
     return new Promise((resolve, reject) => {
+      const gistCatalog = { ...catalog };
+      // Do not push HookahTools tobacco list to GitHub Gist
+      delete gistCatalog.tobacco;
+
       const payload = JSON.stringify({
         files: {
           'shishawg_catalog.json': {
-            content: JSON.stringify(catalog, null, 2)
+            content: JSON.stringify(gistCatalog, null, 2)
           }
         }
       });

@@ -211,6 +211,19 @@ ipcMain.handle('twitch:fetch-setup', async (event, channel) => {
   }
 });
 
+ipcMain.handle('twitch:get-color', async () => {
+  return await twitchService.fetchUserChatColor();
+});
+
+ipcMain.handle('twitch:set-color', async (event, color) => {
+  if (color && twitchService.user) {
+    twitchService.user.color = color;
+    store.set('twitch_user', twitchService.user);
+    store.set('twitch_user_color', color);
+  }
+  return true;
+});
+
 // IPC Handlers for Database
 ipcMain.handle('db:get-catalog', async () => {
   return dbService.getCatalog();

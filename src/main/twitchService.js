@@ -104,6 +104,43 @@ class TwitchService {
     return null;
   }
 
+  parseIrcColor(msg) {
+    if (!msg) return null;
+    const m = msg.match(/color=(#[0-9A-Fa-f]{6})/);
+    if (m && m[1]) {
+      const color = m[1];
+      if (this.user && this.user.color !== color) {
+        this.user.color = color;
+        this.store.set('twitch_user', this.user);
+        this.sendToRenderer('twitch:color-updated', { color });
+      }
+      return color;
+    }
+    return null;
+  }
+
+  async fetchUserChatColor() {
+    if (!this.accessToken || !this.user || !this.user.id) return null;
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/chat/color?user_id=${this.user.id}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0 && data.data[0].color) {
+          this.user.color = data.data[0].color;
+          this.store.set('twitch_user', this.user);
+          this.sendToRenderer('twitch:color-updated', { color: this.user.color });
+          return this.user.color;
+        }
+      }
+    } catch(e) {}
+    return this.user ? this.user.color : null;
+  }
+
   startAuthServer(customClientId = null) {
     if (customClientId) {
       this.setClientId(customClientId);
@@ -240,7 +277,9 @@ class TwitchService {
           ws.send('PONG :tmi.twitch.tv');
         }
 
-        if (!hasSentCommand && (msg.includes('376') || msg.includes('JOIN'))) {
+        this.parseIrcColor(msg);
+
+        if (!hasSentCommand && (msg.includes('376') || msg.includes('JOIN') || msg.includes('USERSTATE'))) {
           hasSentCommand = true;
           ws.send(`PRIVMSG #${chan} :${message}`);
           setTimeout(() => {

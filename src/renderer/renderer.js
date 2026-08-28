@@ -211,6 +211,9 @@ function updateChannelBotTooltips() {
 
 function updateTwitchUI() {
   const previewModName = document.getElementById('preview-mod-name');
+  const userColorPicker = document.getElementById('user-color-picker');
+  const savedColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+
   if (state.twitchUser) {
     btnTwitchLogin.classList.add('hidden');
     twitchUserBadge.classList.remove('hidden');
@@ -219,12 +222,17 @@ function updateTwitchUI() {
     userAvatar.src = state.twitchUser.profile_image_url || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
     if (previewModName) {
       previewModName.textContent = `${name}:`;
+      previewModName.style.color = savedColor;
+    }
+    if (userColorPicker) {
+      userColorPicker.value = savedColor.startsWith('#') ? savedColor : '#FF7F00';
     }
   } else {
     btnTwitchLogin.classList.remove('hidden');
     twitchUserBadge.classList.add('hidden');
     if (previewModName) {
       previewModName.textContent = 'Mod:';
+      previewModName.style.color = savedColor;
     }
   }
 }
@@ -617,6 +625,8 @@ function generateCommandString() {
   if (previewModName) {
     const name = state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod';
     previewModName.textContent = `${name}:`;
+    const color = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+    previewModName.style.color = color;
   }
   if (previewChatText) {
     previewChatText.textContent = fullCommand;
@@ -975,6 +985,41 @@ function setupEventListeners() {
     twitchModal.classList.add('hidden');
     showToast(`Erfolgreich eingeloggt als ${user.display_name || user.login}!`, 'success');
   });
+
+  // User Chat Color Customization & Sync
+  const previewModName = document.getElementById('preview-mod-name');
+  const userColorPicker = document.getElementById('user-color-picker');
+
+  if (previewModName && userColorPicker) {
+    previewModName.style.cursor = 'pointer';
+    previewModName.addEventListener('click', () => {
+      userColorPicker.click();
+    });
+
+    userColorPicker.addEventListener('input', (e) => {
+      const newColor = e.target.value;
+      previewModName.style.color = newColor;
+      localStorage.setItem('swg_user_color', newColor);
+      ipcRenderer.invoke('twitch:set-color', newColor).catch(() => {});
+    });
+  }
+
+  ipcRenderer.on('twitch:color-updated', (event, { color }) => {
+    if (color) {
+      localStorage.setItem('swg_user_color', color);
+      if (previewModName) previewModName.style.color = color;
+      if (userColorPicker) userColorPicker.value = color;
+    }
+  });
+
+  // Query color from Twitch on startup
+  ipcRenderer.invoke('twitch:get-color').then(c => {
+    if (c) {
+      localStorage.setItem('swg_user_color', c);
+      if (previewModName) previewModName.style.color = c;
+      if (userColorPicker) userColorPicker.value = c;
+    }
+  }).catch(() => {});
 
   // Fetch Setup from Twitch Chat
   btnFetchChatSetup.addEventListener('click', async () => {

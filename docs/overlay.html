@@ -12,22 +12,22 @@
       background: transparent;
       font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       overflow: hidden;
-      padding: 20px;
+      padding: 18px;
     }
 
     .hud-card {
       display: inline-flex;
       flex-direction: column;
-      background: rgba(10, 15, 29, 0.92);
+      background: rgba(10, 15, 29, 0.94);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(0, 240, 255, 0.35);
+      border: 1px solid rgba(0, 240, 255, 0.4);
       border-left: 4px solid #00f0ff;
       border-radius: 14px;
-      padding: 14px 20px;
+      padding: 14px 22px;
       color: #ffffff;
-      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 240, 255, 0.2);
-      max-width: 760px;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.7), 0 0 25px rgba(0, 240, 255, 0.25);
+      max-width: 800px;
       opacity: 0;
       transform: translateY(-15px);
       transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
@@ -106,30 +106,23 @@
     const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
     let lastContent = '';
     let hideTimer = null;
+    const urlParams = new URLSearchParams(window.location.search);
+    const isPersistent = urlParams.get('persistent') === '1';
 
     function showOverlayTemporarily() {
       const card = document.getElementById('hud-card');
       card.classList.add('visible');
 
+      if (isPersistent) return;
+
       if (hideTimer) clearTimeout(hideTimer);
-      // Stay visible for 25 seconds, then fade out smoothly
+      // Stay visible for 30 seconds, then fade out smoothly
       hideTimer = setTimeout(() => {
         card.classList.remove('visible');
-      }, 25000);
+      }, 30000);
     }
 
     async function syncSetup() {
-      // 1. Try Local Server first (if available on same PC)
-      try {
-        const localRes = await fetch('http://127.0.0.1:18942/setup.json?' + Date.now(), { signal: AbortSignal.timeout(1500) });
-        if (localRes.ok) {
-          const data = await localRes.json();
-          handleNewData(data);
-          return;
-        }
-      } catch(e) {}
-
-      // 2. Fallback: Cloud GitHub Gist
       try {
         const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`);
         if (!res.ok) return;
@@ -149,7 +142,7 @@
       if (raw && raw !== lastContent) {
         lastContent = raw;
         const el = document.getElementById('hud-text');
-        // Format highlights
+        
         let formatted = raw
           .replace(/(\b[A-Za-z0-9äöüÄÖÜß-]+:)/g, '<span class="hud-name">$1</span>')
           .replace(/(\!(?:kohle|xkah|hookain|almassiva|shaman|blackcoco)[a-zA-Z0-9_-]*)/g, '<span class="hud-promo">$1</span>');
@@ -161,7 +154,6 @@
           document.getElementById('hud-time').textContent = `Aktualisiert um ${timeStr} Uhr`;
         }
 
-        // Trigger smooth fade-in and timer
         showOverlayTemporarily();
       }
     }

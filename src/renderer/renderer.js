@@ -954,33 +954,55 @@ function matchNotesToForm(text) {
 
   rawSegments = rawSegments.map(s => s.trim()).filter(Boolean);
 
+  // Global Charcoal Scanner
   let globalCharcoal = '';
-  let globalExtra = '';
-  const candidateSegments = [];
+  const isCharcoalWord = lowerText.includes('zauber') || lowerText.includes('cubes') || lowerText.includes('magic') || lowerText.includes('blackcoco') || lowerText.includes('kohle');
+  if (isCharcoalWord) {
+    const charcoalList = catalog.charcoal || [];
+    for (const c of charcoalList) {
+      const cName = getItemName(c);
+      const cLower = cName.toLowerCase();
+      if (lowerText.includes('zauber') && (cLower.includes('zauber') || cLower.includes('magic'))) { globalCharcoal = cName; break; }
+      if (lowerText.includes('magic') && cLower.includes('magic')) { globalCharcoal = cName; break; }
+      if (lowerText.includes('cubes') && cLower.includes('cubes')) { globalCharcoal = cName; break; }
+      if (lowerText.includes('blackcoco') && cLower.includes('black')) { globalCharcoal = cName; break; }
+    }
+    if (!globalCharcoal) {
+      const cMatch = findBestFuzzyMatch(lowerText, charcoalList, 0.65);
+      globalCharcoal = cMatch ? cMatch.name : (charcoalList[0] ? getItemName(charcoalList[0]) : 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)');
+    }
+  }
 
+  // Global Tasting Scanner
+  let globalExtra = '';
+  const isTastingWord = lowerText.includes('no aroma') || lowerText.includes('blind') || lowerText.includes('tasting');
+  if (isTastingWord) {
+    const tastingList = catalog.tastings || [];
+    if (lowerText.includes('no aroma')) {
+      const match = tastingList.find(t => getItemName(t).toLowerCase().includes('no aroma'));
+      globalExtra = match ? getItemName(match) : 'Trofimoffs No Aroma Tasting';
+    } else if (lowerText.includes('blind')) {
+      const match = tastingList.find(t => getItemName(t).toLowerCase().includes('blind'));
+      globalExtra = match ? getItemName(match) : 'Blind Tasting im Stream';
+    } else {
+      const tMatch = findBestFuzzyMatch(lowerText, tastingList, 0.65);
+      if (tMatch) globalExtra = tMatch.name;
+    }
+  }
+
+  // Filter out pure charcoal or tasting segments if delimited
+  const candidateSegments = [];
   for (const seg of rawSegments) {
     const sLower = seg.toLowerCase();
-    const isCharcoalKeyword = sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('magic') || sLower.includes('blackcoco') || sLower.includes('kohle');
-    const isTastingKeyword = sLower.includes('tasting') || sLower.includes('no aroma') || sLower.includes('blind');
-
-    const cMatch = isCharcoalKeyword ? findBestFuzzyMatch(seg, catalog.charcoal || [], 0.65) : null;
-    const tMatch = isTastingKeyword ? findBestFuzzyMatch(seg, catalog.tastings || [], 0.65) : null;
-
-    const hasPersonOrGear = Object.values(catalog).flat().some(item => {
+    const isPureCharcoal = (sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('magic') || sLower.includes('blackcoco')) && !Object.values(catalog).flat().some(item => {
       const iName = getItemName(item).toLowerCase();
       if ((catalog.charcoal || []).some(c => getItemName(c).toLowerCase() === iName)) return false;
-      if ((catalog.tastings || []).some(t => getItemName(t).toLowerCase() === iName)) return false;
       return sLower.includes(iName.split(' ')[0]);
-    }) || allKnownPersons.some(n => sLower.includes(n));
+    }) && !allKnownPersons.some(n => sLower.includes(n));
 
-    const isCharcoalOnly = !hasPersonOrGear && (cMatch || isCharcoalKeyword);
-    const isTastingOnly = !hasPersonOrGear && (tMatch || isTastingKeyword);
+    const isPureTasting = (sLower.includes('no aroma') || sLower.includes('blind') || sLower === 'tasting') && !allKnownPersons.some(n => sLower.includes(n));
 
-    if (isCharcoalOnly) {
-      globalCharcoal = cMatch ? cMatch.name : (sLower.includes('black') ? 'Black Coco 26mm' : (catalog.charcoal && catalog.charcoal[0] ? getItemName(catalog.charcoal[0]) : 'Magic Cubes (Zauberwürfel) !kohle'));
-    } else if (isTastingOnly) {
-      globalExtra = tMatch ? tMatch.name : 'Trofimoffs No Aroma Tasting';
-    } else {
+    if (!isPureCharcoal && !isPureTasting) {
       candidateSegments.push(seg);
     }
   }
@@ -1151,14 +1173,16 @@ function matchNotesToForm(text) {
   updatePersonCountLabel();
   state.persons = newPersons;
 
-  if (globalCharcoal && inputGlobalKohle) {
+  if (inputGlobalKohle) {
     inputGlobalKohle.value = globalCharcoal;
     const btn = inputGlobalKohle.parentElement ? inputGlobalKohle.parentElement.querySelector('.btn-clear-field') : null;
     if (btn) btn.classList.toggle('hidden', !globalCharcoal);
   }
 
-  if (globalExtra && inputGlobalExtra) {
+  if (inputGlobalExtra) {
     inputGlobalExtra.value = globalExtra;
+    const btn = inputGlobalExtra.parentElement ? inputGlobalExtra.parentElement.querySelector('.btn-clear-field') : null;
+    if (btn) btn.classList.toggle('hidden', !globalExtra);
   }
 
   renderPersonsGrid();

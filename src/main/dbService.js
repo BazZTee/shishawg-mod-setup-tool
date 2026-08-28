@@ -192,35 +192,133 @@ class DatabaseService {
   }
 
   getCatalog() {
+    let customTobacco = [];
+    let base = { ...this.defaultCatalog };
     try {
       if (fs.existsSync(this.dbPath)) {
         const raw = fs.readFileSync(this.dbPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          return {
+          base = {
             pipes: Array.isArray(parsed.pipes) ? parsed.pipes : this.defaultCatalog.pipes,
             bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
             vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
             hmds: Array.isArray(parsed.hmds) ? parsed.hmds : this.defaultCatalog.hmds,
-            tobacco: Array.isArray(parsed.tobacco) && parsed.tobacco.length > 0 ? parsed.tobacco : this.defaultCatalog.tobacco,
             charcoal: Array.isArray(parsed.charcoal) ? parsed.charcoal : this.defaultCatalog.charcoal,
             persons: Array.isArray(parsed.persons) && parsed.persons.length > 0 ? parsed.persons : this.defaultCatalog.persons,
             tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
             promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
           };
+          if (Array.isArray(parsed.customTobacco)) {
+            customTobacco = parsed.customTobacco;
+          } else if (Array.isArray(parsed.tobacco)) {
+            customTobacco = parsed.tobacco;
+          }
         }
       }
     } catch (err) {
       console.error('Error reading catalog:', err);
     }
-    return this.defaultCatalog;
+
+    if (!Array.isArray(customTobacco) || customTobacco.length === 0) {
+      customTobacco = this.defaultCatalog.customTobacco || [
+        'MustH - Pynkman',
+        'Blackburn - Haribo',
+        'Holster - Ice Kaktuz',
+        'Nameless - Black Nana',
+        "Trofimoffs Terror - Dark Plum",
+        'Trofimoffs Burley - Like Zaghoul',
+        'Trofimoffs Burley - Anejo'
+      ];
+    }
+
+    // Read HookahTools tobacco cache
+    let hookahTobacco = [];
+    try {
+      if (fs.existsSync(this.hookahToolsTobaccoCachePath)) {
+        const raw = fs.readFileSync(this.hookahToolsTobaccoCachePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          hookahTobacco = parsed;
+        }
+      }
+    } catch(e) {}
+
+    // Build unified tobacco list
+    // 1. Custom / Gist tobacco entries first (marked as source: 'gist', isCustom: true)
+    const combinedTobacco = [];
+    const seenNames = new Set();
+
+    for (const item of customTobacco) {
+      const name = (typeof item === 'string' ? item : item.name).trim();
+      if (!name) continue;
+      combinedTobacco.push({
+        name,
+        source: 'gist',
+        isCustom: true
+      });
+      seenNames.add(name.toLowerCase());
+    }
+
+    // 2. HookahTools tobacco entries (marked as source: 'hookahtools', isCustom: false)
+    for (const item of hookahTobacco) {
+      const name = (typeof item === 'string' ? item : item.name).trim();
+      if (!name || seenNames.has(name.toLowerCase())) continue;
+      combinedTobacco.push({
+        name,
+        source: 'hookahtools',
+        isCustom: false
+      });
+      seenNames.add(name.toLowerCase());
+    }
+
+    return {
+      ...base,
+      customTobacco,
+      hookahTobacco,
+      tobacco: combinedTobacco
+    };
+  }
+
+  saveCustomTobacco(customTobacco) {
+    try {
+      let currentData = {};
+      if (fs.existsSync(this.dbPath)) {
+        currentData = JSON.parse(fs.readFileSync(this.dbPath, 'utf-8') || '{}');
+      }
+      currentData.customTobacco = customTobacco;
+      currentData.tobacco = customTobacco;
+      fs.writeFileSync(this.dbPath, JSON.stringify(currentData, null, 2), 'utf-8');
+
+      // Push updated customTobacco to Gist
+      this.pushToGist(currentData).catch(() => {});
+      return true;
+    } catch(e) {
+      return false;
+    }
   }
 
   saveCatalog(catalog) {
     try {
-      fs.writeFileSync(this.dbPath, JSON.stringify(catalog, null, 2), 'utf-8');
-      // Push updated catalog to Gist in background
-      this.pushToGist(catalog).catch(() => {});
+      const customTobaccoList = Array.isArray(catalog.customTobacco)
+        ? catalog.customTobacco
+        : (Array.isArray(catalog.tobacco) ? catalog.tobacco.filter(t => typeof t === 'string' || t.isCustom).map(t => typeof t === 'string' ? t : t.name) : []);
+
+      const toSave = {
+        pipes: catalog.pipes,
+        bowls: catalog.bowls,
+        vases: catalog.vases,
+        hmds: catalog.hmds,
+        charcoal: catalog.charcoal,
+        persons: catalog.persons,
+        tastings: catalog.tastings,
+        promos: catalog.promos,
+        customTobacco: customTobaccoList,
+        tobacco: customTobaccoList
+      };
+
+      fs.writeFileSync(this.dbPath, JSON.stringify(toSave, null, 2), 'utf-8');
+      this.pushToGist(toSave).catch(() => {});
       return true;
     } catch (err) {
       console.error('Error saving catalog:', err);
@@ -230,12 +328,33 @@ class DatabaseService {
 
   addItem(category, item) {
     if (!item) return false;
-    const catalog = this.getCatalog();
-    if (!catalog[category]) catalog[category] = [];
-    
     let itemName = typeof item === 'string' ? item.trim() : item.name.trim();
     if (!itemName) return false;
 
+    if (category === 'tobacco' || category === 'customTobacco') {
+      let customTobacco = [];
+      try {
+        if (fs.existsSync(this.dbPath)) {
+          const raw = fs.readFileSync(this.dbPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
+          else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
+        }
+      } catch (e) {}
+
+      const exists = customTobacco.some(i => (typeof i === 'string' ? i : i.name) === itemName);
+      if (!exists) {
+        customTobacco.push(itemName);
+        customTobacco.sort((a, b) => a.localeCompare(b, 'de'));
+        this.saveCustomTobacco(customTobacco);
+        return true;
+      }
+      return false;
+    }
+
+    const catalog = this.getCatalog();
+    if (!catalog[category]) catalog[category] = [];
+    
     const exists = catalog[category].some(i => (typeof i === 'string' ? i : i.name) === itemName);
     if (!exists) {
       catalog[category].push(item);
@@ -251,10 +370,31 @@ class DatabaseService {
   }
 
   removeItem(category, item) {
+    const targetName = typeof item === 'string' ? item.trim() : (item.name || item).trim();
+    if (!targetName) return false;
+
+    if (category === 'tobacco' || category === 'customTobacco') {
+      let customTobacco = [];
+      try {
+        if (fs.existsSync(this.dbPath)) {
+          const raw = fs.readFileSync(this.dbPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
+          else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
+        }
+      } catch (e) {}
+
+      const filtered = customTobacco.filter(i => (typeof i === 'string' ? i : i.name).trim() !== targetName);
+      if (filtered.length !== customTobacco.length) {
+        this.saveCustomTobacco(filtered);
+        return true;
+      }
+      return false;
+    }
+
     const catalog = this.getCatalog();
     if (catalog[category]) {
-      const targetName = typeof item === 'string' ? item : (item.name || item);
-      catalog[category] = catalog[category].filter(i => (typeof i === 'string' ? i : i.name) !== targetName);
+      catalog[category] = catalog[category].filter(i => (typeof i === 'string' ? i : i.name).trim() !== targetName);
       this.saveCatalog(catalog);
       return true;
     }
@@ -263,10 +403,34 @@ class DatabaseService {
 
   editItem(category, oldItem, newItem) {
     if (!oldItem || !newItem) return false;
+    const oldName = typeof oldItem === 'string' ? oldItem.trim() : (oldItem.name || oldItem).trim();
+    const newName = typeof newItem === 'string' ? newItem.trim() : (newItem.name || newItem).trim();
+    if (!oldName || !newName) return false;
+
+    if (category === 'tobacco' || category === 'customTobacco') {
+      let customTobacco = [];
+      try {
+        if (fs.existsSync(this.dbPath)) {
+          const raw = fs.readFileSync(this.dbPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
+          else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
+        }
+      } catch (e) {}
+
+      const idx = customTobacco.findIndex(i => (typeof i === 'string' ? i : i.name).trim() === oldName);
+      if (idx !== -1) {
+        customTobacco[idx] = newName;
+        customTobacco.sort((a, b) => a.localeCompare(b, 'de'));
+        this.saveCustomTobacco(customTobacco);
+        return true;
+      }
+      return false;
+    }
+
     const catalog = this.getCatalog();
     if (catalog[category]) {
-      const oldName = typeof oldItem === 'string' ? oldItem : oldItem.name;
-      const idx = catalog[category].findIndex(i => (typeof i === 'string' ? i : i.name) === oldName);
+      const idx = catalog[category].findIndex(i => (typeof i === 'string' ? i : i.name).trim() === oldName);
       if (idx !== -1) {
         catalog[category][idx] = newItem;
         catalog[category].sort((a, b) => {
@@ -305,6 +469,11 @@ class DatabaseService {
       if (!val || typeof val !== 'string') return;
       const trimmed = val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
       if ((category === 'pipes' || category === 'bowls') && isTobaccoWord(trimmed)) return;
+      if (category === 'tobacco') {
+        this.addItem('tobacco', trimmed);
+        addedCount++;
+        return;
+      }
       if (!catalog[category]) catalog[category] = [];
       if (trimmed.length > 1 && !catalog[category].includes(trimmed)) {
         catalog[category].push(trimmed);
@@ -332,7 +501,7 @@ class DatabaseService {
     if (addedCount > 0) {
       this.saveCatalog(catalog);
     }
-    return { addedCount, catalog };
+    return { addedCount, catalog: this.getCatalog() };
   }
 
   async fetchHookahToolsTobacco() {
@@ -404,7 +573,7 @@ class DatabaseService {
     // 1. Fetch Tobacco from HookahTools Supabase
     const hookahTobacco = await this.fetchHookahToolsTobacco();
 
-    // 2. Fetch Hardware categories from GitHub Gist
+    // 2. Fetch Hardware & Custom Tobacco from GitHub Gist
     return new Promise((resolve) => {
       const options = {
         hostname: 'api.github.com',
@@ -421,15 +590,16 @@ class DatabaseService {
         res.on('data', chunk => body += chunk);
         res.on('end', () => {
           try {
-            const localCatalog = this.getCatalog();
-            let addedCount = 0;
+            let localData = {};
+            if (fs.existsSync(this.dbPath)) {
+              localData = JSON.parse(fs.readFileSync(this.dbPath, 'utf-8') || '{}');
+            }
 
             if (res.statusCode === 200) {
               const parsed = JSON.parse(body);
               const gistFile = parsed.files && (parsed.files['shishawg_catalog.json'] || parsed.files[Object.keys(parsed.files)[0]]);
               if (gistFile && gistFile.content) {
                 const remoteCatalog = JSON.parse(gistFile.content);
-                // Sync non-tobacco hardware categories from Gist
                 const categories = ['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'tastings', 'promos'];
                 for (const cat of categories) {
                   if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
@@ -445,23 +615,32 @@ class DatabaseService {
                       const nameB = typeof b === 'string' ? b : b.name;
                       return nameA.localeCompare(nameB, 'de');
                     });
-                    localCatalog[cat] = cleanedList;
+                    localData[cat] = cleanedList;
                   }
+                }
+
+                // Sync custom tobacco from Gist
+                if (Array.isArray(remoteCatalog.tobacco)) {
+                  const cleanedGistTobacco = remoteCatalog.tobacco
+                    .map(item => (typeof item === 'string' ? item : (item.name || '')).trim())
+                    .filter(Boolean);
+                  cleanedGistTobacco.sort((a, b) => a.localeCompare(b, 'de'));
+                  localData.customTobacco = cleanedGistTobacco;
+                  localData.tobacco = cleanedGistTobacco;
                 }
               }
             }
 
-            // Apply HookahTools tobacco
-            if (Array.isArray(hookahTobacco) && hookahTobacco.length > 0) {
-              localCatalog.tobacco = hookahTobacco;
-            }
+            fs.writeFileSync(this.dbPath, JSON.stringify(localData, null, 2), 'utf-8');
 
-            fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
+            const fullCatalog = this.getCatalog();
             resolve({
               success: true,
               addedCount: 0,
-              tobaccoCount: localCatalog.tobacco ? localCatalog.tobacco.length : 0,
-              catalog: localCatalog
+              customTobaccoCount: fullCatalog.customTobacco ? fullCatalog.customTobacco.length : 0,
+              hookahTobaccoCount: fullCatalog.hookahTobacco ? fullCatalog.hookahTobacco.length : 0,
+              tobaccoCount: fullCatalog.tobacco ? fullCatalog.tobacco.length : 0,
+              catalog: fullCatalog
             });
           } catch (err) {
             resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
@@ -470,18 +649,14 @@ class DatabaseService {
       });
 
       req.on('error', () => {
-        const localCatalog = this.getCatalog();
-        if (Array.isArray(hookahTobacco) && hookahTobacco.length > 0) {
-          localCatalog.tobacco = hookahTobacco;
-          try {
-            fs.writeFileSync(this.dbPath, JSON.stringify(localCatalog, null, 2), 'utf-8');
-          } catch (e) {}
-        }
+        const fullCatalog = this.getCatalog();
         resolve({
           success: Array.isArray(hookahTobacco),
           addedCount: 0,
-          tobaccoCount: localCatalog.tobacco ? localCatalog.tobacco.length : 0,
-          catalog: localCatalog
+          customTobaccoCount: fullCatalog.customTobacco ? fullCatalog.customTobacco.length : 0,
+          hookahTobaccoCount: fullCatalog.hookahTobacco ? fullCatalog.hookahTobacco.length : 0,
+          tobaccoCount: fullCatalog.tobacco ? fullCatalog.tobacco.length : 0,
+          catalog: fullCatalog
         });
       });
 
@@ -491,14 +666,25 @@ class DatabaseService {
 
   async pushToGist(catalog) {
     return new Promise((resolve, reject) => {
-      const gistCatalog = { ...catalog };
-      // Do not push HookahTools tobacco list to GitHub Gist
-      delete gistCatalog.tobacco;
+      const customTobaccoList = Array.isArray(catalog.customTobacco)
+        ? catalog.customTobacco
+        : (Array.isArray(catalog.tobacco) ? catalog.tobacco.filter(t => typeof t === 'string' || t.isCustom).map(t => typeof t === 'string' ? t : t.name) : []);
+
+      const gistPayload = {
+        pipes: catalog.pipes || [],
+        bowls: catalog.bowls || [],
+        vases: catalog.vases || [],
+        hmds: catalog.hmds || [],
+        charcoal: catalog.charcoal || [],
+        tastings: catalog.tastings || [],
+        promos: catalog.promos || [],
+        tobacco: customTobaccoList
+      };
 
       const payload = JSON.stringify({
         files: {
           'shishawg_catalog.json': {
-            content: JSON.stringify(gistCatalog, null, 2)
+            content: JSON.stringify(gistPayload, null, 2)
           }
         }
       });

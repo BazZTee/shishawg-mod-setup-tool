@@ -1992,8 +1992,18 @@ function renderCatalogList() {
   catalogListItems.innerHTML = items.map((item, idx) => {
     const itemName = typeof item === 'string' ? item : item.name;
     const isElectricItem = typeof item === 'object' && item.isElectric;
+    const isGistTobacco = catKey === 'tobacco' && (typeof item === 'object' ? (item.source === 'gist' || item.isCustom) : true);
+    const isHookahToolsTobacco = catKey === 'tobacco' && (typeof item === 'object' && item.source === 'hookahtools');
+
     let displayHtml = `<span>${escapeHtml(itemName)}${isElectricItem ? ' <span class="char-badge" style="color:var(--accent-cyan); margin-left:6px;">⚡ Elektro</span>' : ''}</span>`;
-    if (catKey === 'promos') {
+    
+    if (catKey === 'tobacco') {
+      if (isGistTobacco) {
+        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-gist" title="Eigene / Gist-Sorte (bearbeitbar & löschbar)">🟢 Custom / Gist</span></span>`;
+      } else if (isHookahToolsTobacco) {
+        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-ht" title="Automatisch von HookahTools.de synchronisiert">🌐 HookahTools</span></span>`;
+      }
+    } else if (catKey === 'promos') {
       const match = itemName.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
       if (match) {
         const code = match[1].trim();
@@ -2001,15 +2011,29 @@ function renderCatalogList() {
         displayHtml = `<span><strong class="promo-code">${escapeHtml(code)}</strong>${desc ? `<span class="promo-desc">(${escapeHtml(desc)})</span>` : ''}</span>`;
       }
     }
+
     const itemAttr = escapeHtml(typeof item === 'string' ? item : JSON.stringify(item));
+
+    // Action buttons: HookahTools items have NEITHER trash nor edit button
+    let actionsHtml = '';
+    if (catKey === 'tobacco' && isHookahToolsTobacco) {
+      actionsHtml = `<span class="ht-sync-info" title="Automatisch von HookahTools.de synchronisiert">🌐 Synchronisiert</span>`;
+    } else {
+      actionsHtml = `
+        <div class="catalog-actions">
+          <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${itemAttr}" title="Bearbeiten">✏️</button>
+          <button class="btn-icon btn-delete-item" data-item="${itemAttr}" title="Löschen">🗑️</button>
+        </div>
+      `;
+    }
+
+    const itemClass = (catKey === 'tobacco' && isGistTobacco) ? 'catalog-item item-source-gist catalog-item-fade' : 'catalog-item catalog-item-fade';
+
     return `
-      <div class="catalog-item catalog-item-fade" id="catalog-item-${idx}">
+      <div class="${itemClass}" id="catalog-item-${idx}">
         <div class="item-view" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
           ${displayHtml}
-          <div class="catalog-actions">
-            <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${itemAttr}" title="Bearbeiten">✏️</button>
-            <button class="btn-icon btn-delete-item" data-item="${itemAttr}" title="Löschen">🗑️</button>
-          </div>
+          ${actionsHtml}
         </div>
       </div>
     `;

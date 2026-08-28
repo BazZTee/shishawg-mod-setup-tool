@@ -2,8 +2,19 @@ const { app, BrowserWindow, ipcMain, clipboard, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const TwitchService = require('./twitchService');
 const DatabaseService = require('./dbService');
+
+// State for Live OBS Overlay
+let latestLiveSetup = {
+  commandText: '!setup Aktuell wird kein Setup geraucht',
+  persons: [],
+  kohle: '',
+  extra: '',
+  updatedAt: new Date().toISOString()
+};
+let obsServer = null;
 
 // Simple File Store fallback for settings
 class SimpleStore {
@@ -267,3 +278,182 @@ ipcMain.handle('app:open-external', async (event, url) => {
   shell.openExternal(url);
   return { success: true };
 });
+
+// OBS Overlay Server & Export
+function startObsServer() {
+  if (obsServer) return;
+  const PORT = 18942;
+
+  obsServer = http.createServer((req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+    const url = req.url.split('?')[0];
+
+    if (url === '/setup.json' || url === '/api/setup') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(latestLiveSetup));
+      return;
+    }
+
+    if (url === '/current_setup.txt' || url === '/text') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(latestLiveSetup.commandText || '');
+      return;
+    }
+
+    // Default: Return the HUD Overlay HTML
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(getOverlayHtml());
+  });
+
+  obsServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`OBS Overlay Server running at http://localhost:${PORT}/overlay`);
+  });
+
+  obsServer.on('error', (err) => {
+    console.log('OBS Server error (port likely in use):', err.message);
+  });
+}
+
+function getOverlayHtml() {
+  return `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>ShishaWG Stream Overlay</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: transparent;
+      font-family: 'Outfit', -apple-system, sans-serif;
+      overflow: hidden;
+      padding: 16px;
+    }
+    .hud-card {
+      display: inline-flex;
+      flex-direction: column;
+      background: rgba(10, 15, 29, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-left: 4px solid #00f0ff;
+      border-radius: 12px;
+      padding: 12px 18px;
+      color: #ffffff;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 240, 255, 0.15);
+      max-width: 650px;
+      transition: all 0.3s ease;
+    }
+    .hud-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .hud-badge {
+      background: linear-gradient(135deg, #00f0ff, #7928ca);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .hud-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+    }
+    .hud-content {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.4;
+      color: #f8fafc;
+    }
+    .hud-highlight {
+      color: #00f0ff;
+      font-weight: 700;
+    }
+    .hud-kohle {
+      color: #a855f7;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud-card" id="hud-card">
+    <div class="hud-header">
+      <span class="hud-badge">💨 STREAM SETUP</span>
+      <span class="hud-title">ShishaWG Live</span>
+    </div>
+    <div class="hud-content" id="hud-text">Lade Setup...</div>
+  </div>
+
+  <script>
+    let lastText = '';
+    async function fetchSetup() {
+      try {
+        const res = await fetch('/setup.json?' + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          let raw = (data.commandText || '').replace(/^!setup\\s+/i, '').replace(/^!editsetup\\s+/i, '');
+          if (raw !== lastText) {
+            lastText = raw;
+            const el = document.getElementById('hud-text');
+            // Highlight names and keywords
+            let formatted = raw
+              .replace(/(\\b[A-Za-z0-9äöüÄÖÜß-]+:)/g, '<span class="hud-highlight">$1</span>')
+              .replace(/(\\!(?:kohle|xkah|hookain|almassiva|shaman|blackcoco)[a-zA-Z0-9_-]*)/g, '<span class="hud-kohle">$1</span>');
+            el.innerHTML = formatted;
+          }
+        }
+      } catch(e) {}
+    }
+    fetchSetup();
+    setInterval(fetchSetup, 2500);
+  </script>
+</body>
+</html>`;
+}
+
+// Start OBS Server on startup
+app.whenReady().then(() => {
+  startObsServer();
+});
+
+ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
+  latestLiveSetup = {
+    updatedAt: new Date().toISOString(),
+    ...setupPayload
+  };
+
+  // Write local current_setup.txt file
+  const textFilePath = path.join(app.getPath('userData'), 'current_setup.txt');
+  try {
+    fs.writeFileSync(textFilePath, setupPayload.commandText || '', 'utf-8');
+  } catch(e) {}
+
+  // Publish to GitHub Gist for cloud access
+  dbService.publishLiveSetupToGist(setupPayload).catch(() => {});
+
+  return {
+    success: true,
+    localUrl: 'http://localhost:18942/overlay',
+    textFilePath,
+    gistUrl: 'https://gist.githubusercontent.com/raw/111d0abf0b0e66e2ca635c3aa8d05eb7/current_setup.json'
+  };
+});
+
+ipcMain.handle('obs:get-info', async () => {
+  const textFilePath = path.join(app.getPath('userData'), 'current_setup.txt');
+  return {
+    localUrl: 'http://localhost:18942/overlay',
+    textFilePath,
+    gistUrl: 'https://gist.github.com/111d0abf0b0e66e2ca635c3aa8d05eb7'
+  };
+});
+

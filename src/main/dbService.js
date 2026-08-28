@@ -310,6 +310,40 @@ class DatabaseService {
       req.end();
     });
   }
+
+  async publishLiveSetupToGist(setupPayload) {
+    return new Promise((resolve) => {
+      const payload = JSON.stringify({
+        files: {
+          'current_setup.json': {
+            content: JSON.stringify({
+              updatedAt: new Date().toISOString(),
+              ...setupPayload
+            }, null, 2)
+          }
+        }
+      });
+
+      const options = {
+        hostname: 'api.github.com',
+        path: `/gists/${GIST_ID}`,
+        method: 'PATCH',
+        headers: {
+          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+          'Authorization': `token ${GIST_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        resolve(res.statusCode === 200);
+      });
+      req.on('error', () => resolve(false));
+      req.write(payload);
+      req.end();
+    });
+  }
 }
 
 module.exports = DatabaseService;

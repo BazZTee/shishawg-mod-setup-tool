@@ -603,6 +603,24 @@ function generateCommandString() {
 
   commandOutput.value = fullCommand;
 
+  // Update Authentic Twitch-Chat Live-Preview
+  const previewBotName = document.getElementById('preview-bot-name');
+  const previewChatText = document.getElementById('preview-chat-text');
+  if (previewBotName) {
+    previewBotName.textContent = `@${(state.targetBot || 'marvedbot').trim()}:`;
+  }
+  if (previewChatText) {
+    previewChatText.textContent = fullCommand.replace(/^!editsetup/i, '!setup');
+  }
+
+  // Live Sync to OBS Overlay Server & Cloud Gist
+  ipcRenderer.invoke('obs:publish-setup', {
+    commandText: fullCommand,
+    persons: state.persons,
+    kohle,
+    extra
+  }).catch(() => {});
+
   const len = fullCommand.length;
   if (commandLengthBadge) {
     if (len > 500) {
@@ -1056,162 +1074,149 @@ function matchNotesToForm(text) {
   }
 
   const catalog = state.catalog || {};
-  let updated = false;
-
-  if (!state.persons[0]) {
-    state.persons[0] = { name: 'Marvin', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
-  }
-  const p = state.persons[0];
   const origText = text.trim();
-  const lowerText = origText.toLowerCase();
-  const tokens = lowerText.split(/[\s,./\\;:+&|//]+/).filter(t => t.length > 0);
+  const rawSegments = origText.split(/(?:\/{2,}|\n+)/).map(s => s.trim()).filter(Boolean);
 
   const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
 
-  // 1. Name Scanner: Check first word or prefix before ':'
-  let matchedName = p.name || 'Marvin';
-  const firstTok = tokens[0];
-  if (firstTok) {
-    if (['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'tasting'].includes(firstTok)) {
-      matchedName = capitalize(firstTok);
-    } else if (origText.includes(':')) {
-      matchedName = capitalize(origText.split(':')[0].trim());
+  let globalCharcoal = '';
+  const candidateSegments = [];
+
+  for (const seg of rawSegments) {
+    const sLower = seg.toLowerCase();
+    const cMatch = findBestFuzzyMatch(seg, catalog.charcoal || [], 0.70);
+    const isCharcoalOnly = (cMatch || sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('blackcoco')) && !sLower.includes('futr') && !sLower.includes('breeze') && !sLower.includes('cosmo');
+    if (isCharcoalOnly) {
+      globalCharcoal = cMatch ? cMatch.name : (sLower.includes('black') ? 'Black Coco 26mm' : 'Magic Cubes (Zauberwürfel) !kohle');
     } else {
-      const isKnownShishaTerm = Object.values(catalog).flat().some(item => getItemName(item).toLowerCase().includes(firstTok)) || !!SHISHA_SYNONYMS[firstTok];
-      if (!isKnownShishaTerm && firstTok.length >= 3) {
+      candidateSegments.push(seg);
+    }
+  }
+
+  const segmentsToProcess = candidateSegments.length > 0 ? candidateSegments : [origText];
+  const newPersons = [];
+
+  for (let idx = 0; idx < segmentsToProcess.length; idx++) {
+    const seg = segmentsToProcess[idx];
+    const lowerText = seg.toLowerCase();
+    const tokens = lowerText.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
+
+    // 1. Name Scanner
+    let matchedName = `Person ${idx + 1}`;
+    const firstTok = tokens[0];
+    if (firstTok) {
+      if (['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'tasting'].includes(firstTok)) {
         matchedName = capitalize(firstTok);
-      }
-    }
-  }
-  if (p.name !== matchedName) {
-    p.name = matchedName;
-    updated = true;
-  }
-
-  // Helper: Token & 2-Token Window Category Scanner
-  function scanCategory(catList) {
-    if (!catList || catList.length === 0) return null;
-
-    // A. Check 2-token windows
-    for (let i = 0; i < tokens.length - 1; i++) {
-      const window2 = `${tokens[i]} ${tokens[i + 1]}`;
-      const syn = SHISHA_SYNONYMS[window2];
-      if (syn && catList.some(item => getItemName(item) === syn)) {
-        const found = catList.find(item => getItemName(item) === syn);
-        return { name: syn, item: found };
-      }
-      const m2 = findBestFuzzyMatch(window2, catList, 0.70);
-      if (m2) return m2;
-    }
-
-    // B. Check 1-token
-    for (const tok of tokens) {
-      if (tok.length < 3) continue;
-      const syn = SHISHA_SYNONYMS[tok];
-      if (syn && catList.some(item => getItemName(item) === syn)) {
-        const found = catList.find(item => getItemName(item) === syn);
-        return { name: syn, item: found };
-      }
-      for (const item of catList) {
-        const iName = getItemName(item);
-        const iTokens = iName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2);
-        if (iTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
-          return { name: iName, item };
+      } else if (seg.includes(':')) {
+        matchedName = capitalize(seg.split(':')[0].trim());
+      } else {
+        const isKnownShishaTerm = Object.values(catalog).flat().some(item => getItemName(item).toLowerCase().includes(firstTok)) || !!SHISHA_SYNONYMS[firstTok];
+        if (!isKnownShishaTerm && firstTok.length >= 3) {
+          matchedName = capitalize(firstTok);
         }
       }
-      const m1 = findBestFuzzyMatch(tok, catList, 0.72);
-      if (m1) return m1;
     }
-    return null;
-  }
 
-  // 2. Pipe Scanner
-  let matchedPipe = '';
-  const pipeMatch = scanCategory(catalog.pipes || []);
-  if (pipeMatch) matchedPipe = pipeMatch.name;
-  if (p.pipe !== matchedPipe) {
-    p.pipe = matchedPipe;
-    updated = true;
-  }
-
-  // 3. Bowl / Kopf Scanner
-  let matchedBowl = '';
-  let isElectric = false;
-  if (lowerText.includes('xkah') || lowerText.includes('xk-ah') || lowerText.includes('xk ah') || lowerText.includes('xklite') || lowerText.includes('xkpro')) {
-    matchedBowl = (lowerText.includes('pro') || lowerText.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
-    isElectric = true;
-  } else {
-    const bowlMatch = scanCategory(catalog.bowls || []);
-    if (bowlMatch) {
-      matchedBowl = bowlMatch.name;
-      if (bowlMatch.item && bowlMatch.item.isElectric) isElectric = true;
+    function scanCategory(catList) {
+      if (!catList || catList.length === 0) return null;
+      for (let i = 0; i < tokens.length - 1; i++) {
+        const window2 = `${tokens[i]} ${tokens[i + 1]}`;
+        const syn = SHISHA_SYNONYMS[window2];
+        if (syn && catList.some(item => getItemName(item) === syn)) {
+          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
+        }
+        const m2 = findBestFuzzyMatch(window2, catList, 0.70);
+        if (m2) return m2;
+      }
+      for (const tok of tokens) {
+        if (tok.length < 3) continue;
+        const syn = SHISHA_SYNONYMS[tok];
+        if (syn && catList.some(item => getItemName(item) === syn)) {
+          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
+        }
+        for (const item of catList) {
+          const iName = getItemName(item);
+          const iTokens = iName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2);
+          if (iTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
+            return { name: iName, item };
+          }
+        }
+        const m1 = findBestFuzzyMatch(tok, catList, 0.72);
+        if (m1) return m1;
+      }
+      return null;
     }
-  }
-  if (p.bowl !== matchedBowl) {
-    p.bowl = matchedBowl;
-    updated = true;
-  }
-  if (p.isElectric !== isElectric) {
-    p.isElectric = isElectric;
-    updated = true;
-  }
 
-  // 4. HMD Scanner (Disabled if electric)
-  let matchedHmd = '';
-  if (!isElectric) {
-    const hmdMatch = scanCategory(catalog.hmds || []);
-    if (hmdMatch) matchedHmd = hmdMatch.name;
-  }
-  if (p.hmd !== matchedHmd) {
-    p.hmd = matchedHmd;
-    updated = true;
-  }
+    const pipeMatch = scanCategory(catalog.pipes || []);
+    const pipe = pipeMatch ? pipeMatch.name : '';
 
-  // 5. Vessel / Glas Scanner
-  let matchedVessel = '';
-  const vesselMatch = scanCategory(catalog.vases || []);
-  if (vesselMatch) matchedVessel = vesselMatch.name;
-  if (p.vessel !== matchedVessel) {
-    p.vessel = matchedVessel;
-    updated = true;
-  }
-
-  // 6. Tobacco Scanner (Scans all tokens for tobacco flavor matches)
-  const matchedTobaccos = [];
-  for (const item of catalog.tobacco || []) {
-    const tName = getItemName(item);
-    const tTokens = tName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2 && w !== 'tobacco');
-    for (const tok of tokens) {
-      if (tok.length > 2 && tTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
-        if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
+    let bowl = '';
+    let isElectric = false;
+    if (lowerText.includes('xkah') || lowerText.includes('xk-ah') || lowerText.includes('xk ah') || lowerText.includes('xklite') || lowerText.includes('xkpro')) {
+      bowl = (lowerText.includes('pro') || lowerText.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
+      isElectric = true;
+    } else {
+      const bowlMatch = scanCategory(catalog.bowls || []);
+      if (bowlMatch) {
+        bowl = bowlMatch.name;
+        if (bowlMatch.item && bowlMatch.item.isElectric) isElectric = true;
       }
     }
-  }
-  const formattedTobaccos = matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''];
-  if (JSON.stringify(p.tobaccos) !== JSON.stringify(formattedTobaccos)) {
-    p.tobaccos = formattedTobaccos;
-    updated = true;
+
+    let hmd = '';
+    if (!isElectric) {
+      const hmdMatch = scanCategory(catalog.hmds || []);
+      if (hmdMatch) hmd = hmdMatch.name;
+    }
+
+    const vesselMatch = scanCategory(catalog.vases || []);
+    const vessel = vesselMatch ? vesselMatch.name : '';
+
+    const matchedTobaccos = [];
+    for (const item of catalog.tobacco || []) {
+      const tName = getItemName(item);
+      const tTokens = tName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2 && w !== 'tobacco');
+      for (const tok of tokens) {
+        if (tok.length > 2 && tTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
+          if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
+        }
+      }
+    }
+
+    // Check charcoal if not found globally
+    if (!globalCharcoal) {
+      const cMatch = scanCategory(catalog.charcoal || []);
+      if (cMatch) {
+        globalCharcoal = cMatch.name;
+      } else if (lowerText.includes('zauber') || lowerText.includes('magic') || lowerText.includes('cubes')) {
+        globalCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
+      }
+    }
+
+    newPersons.push({
+      name: matchedName,
+      pipe,
+      bowl,
+      hmd,
+      vessel,
+      vesselColor: '',
+      tobaccos: matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''],
+      isElectric
+    });
   }
 
-  // 7. Charcoal Scanner
-  let matchedCharcoal = '';
-  const charcoalMatch = scanCategory(catalog.charcoal || []);
-  if (charcoalMatch) {
-    matchedCharcoal = charcoalMatch.name;
-  } else if (lowerText.includes('zauber') || lowerText.includes('magic') || lowerText.includes('cubes')) {
-    matchedCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
-  }
-  if (inputGlobalKohle && inputGlobalKohle.value !== matchedCharcoal) {
-    inputGlobalKohle.value = matchedCharcoal;
+  state.personCount = Math.min(10, Math.max(1, newPersons.length));
+  updatePersonCountLabel();
+  state.persons = newPersons;
+
+  if (globalCharcoal && inputGlobalKohle) {
+    inputGlobalKohle.value = globalCharcoal;
     const btn = inputGlobalKohle.parentElement ? inputGlobalKohle.parentElement.querySelector('.btn-clear-field') : null;
-    if (btn) btn.classList.toggle('hidden', !matchedCharcoal);
-    updated = true;
+    if (btn) btn.classList.toggle('hidden', !globalCharcoal);
   }
 
-  if (updated) {
-    renderPersonsGrid();
-    generateCommandString();
-  }
+  renderPersonsGrid();
+  generateCommandString();
 }
 
   // Clearable Input Field Listeners (1-Click Clear Button ✕)
@@ -1246,7 +1251,7 @@ function matchNotesToForm(text) {
     btnHamburgerMenu.addEventListener('click', (e) => {
       e.stopPropagation();
       hamburgerDropdownMenu.classList.toggle('hidden');
-      importDropdownMenu.classList.add('hidden');
+      if (importDropdownMenu) importDropdownMenu.classList.add('hidden');
     });
   }
 
@@ -1266,20 +1271,82 @@ function matchNotesToForm(text) {
     });
   }
 
-  // Ctrl+Enter keyboard shortcut to send
+  // Power-User Hotkeys (Ctrl+N, Ctrl+L, Ctrl+Enter, Ctrl+Shift+C)
   document.addEventListener('keydown', (e) => {
+    // Ctrl+N -> Focus notes textarea
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N') && !e.shiftKey) {
+      e.preventDefault();
+      if (notesCard && notesCard.classList.contains('hidden') && btnToggleNotes) {
+        btnToggleNotes.click();
+      }
+      if (notesTextarea) {
+        notesTextarea.focus();
+        notesTextarea.select();
+      }
+    }
+    // Ctrl+L -> Reset all
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'L') && !e.shiftKey) {
+      e.preventDefault();
+      if (btnResetAll) btnResetAll.click();
+    }
+    // Ctrl+Shift+C -> Copy command
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'c' || e.key === 'C')) {
+      e.preventDefault();
+      if (btnCopy) btnCopy.click();
+    }
+    // Ctrl+Enter -> Send to chat
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      btnSendChat.click();
+      if (btnSendChat) btnSendChat.click();
     }
   });
+
+  // OBS Stream Overlay Modal Listeners
+  const btnOpenObs = document.getElementById('btn-open-obs');
+  const obsModal = document.getElementById('obs-modal');
+  const btnCloseObsModal = document.getElementById('btn-close-obs-modal');
+  const btnCloseObs = document.getElementById('btn-close-obs');
+  const btnCopyObsCloud = document.getElementById('btn-copy-obs-cloud');
+  const btnCopyObsLocal = document.getElementById('btn-copy-obs-local');
+  const btnTestOverlayBrowser = document.getElementById('btn-test-overlay-browser');
+
+  if (btnOpenObs && obsModal) {
+    btnOpenObs.addEventListener('click', () => {
+      obsModal.classList.remove('hidden');
+      if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');
+    });
+  }
+  if (btnCloseObsModal && obsModal) {
+    btnCloseObsModal.addEventListener('click', () => obsModal.classList.add('hidden'));
+  }
+  if (btnCloseObs && obsModal) {
+    btnCloseObs.addEventListener('click', () => obsModal.classList.add('hidden'));
+  }
+  if (btnCopyObsCloud) {
+    btnCopyObsCloud.addEventListener('click', async () => {
+      const url = document.getElementById('obs-cloud-url').value;
+      await ipcRenderer.invoke('app:copy-clipboard', url);
+      showToast('Cloud OBS-URL in Zwischenablage kopiert!', 'success');
+    });
+  }
+  if (btnCopyObsLocal) {
+    btnCopyObsLocal.addEventListener('click', async () => {
+      const url = document.getElementById('obs-local-url').value;
+      await ipcRenderer.invoke('app:copy-clipboard', url);
+      showToast('Lokale OBS-URL in Zwischenablage kopiert!', 'success');
+    });
+  }
+  if (btnTestOverlayBrowser) {
+    btnTestOverlayBrowser.addEventListener('click', () => {
+      ipcRenderer.invoke('app:open-external', 'http://localhost:18942/overlay');
+    });
+  }
 
   // Onboarding Hint — show once on first ever launch
   const onboardingHint = document.getElementById('onboarding-hint');
   const btnDismissOnboarding = document.getElementById('btn-dismiss-onboarding');
   if (onboardingHint && !localStorage.getItem('swg_onboarding_done')) {
     onboardingHint.classList.remove('hidden');
-    // Auto-dismiss after 8 seconds
     const onboardingTimer = setTimeout(() => {
       onboardingHint.classList.add('hidden');
       localStorage.setItem('swg_onboarding_done', '1');
@@ -1293,7 +1360,7 @@ function matchNotesToForm(text) {
     }
   }
 
-  // Close all dropdowns when clicking outside (but NOT when clicking inside inputs in hamburger)
+  // Close all dropdowns when clicking outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.dropdown-wrapper')) {
       if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');
@@ -1302,7 +1369,6 @@ function matchNotesToForm(text) {
   });
 
   // Reset Form
-
   btnResetAll.addEventListener('click', () => {
     state.personCount = 1;
     updatePersonCountLabel();
@@ -1357,6 +1423,7 @@ function matchNotesToForm(text) {
     targetBotInput.addEventListener('change', () => {
       state.targetBot = targetBotInput.value.trim().toLowerCase() || 'marvedbot';
       updateChannelBotTooltips();
+      generateCommandString();
       showToast(`Bot-Name zum Auslesen auf @${state.targetBot} gesetzt`, 'success');
     });
   }

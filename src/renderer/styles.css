@@ -1355,4 +1355,70 @@ textarea#command-output {
   border-color: rgba(0, 153, 255, 0.3);
 }
 
+/* Authentic Twitch Chat Live-Preview */
+.twitch-chat-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-left: 3px solid #9146ff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  margin-bottom: 8px;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
+}
+
+.twitch-msg-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.twitch-badge-mod {
+  background: #00AD03;
+  color: #ffffff;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.twitch-badge-bot {
+  background: #772ce8;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.twitch-username {
+  color: #a970ff;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.twitch-msg-body {
+  color: #efeff1;
+  word-break: break-word;
+  flex: 1;
+}
+
+/* OBS Modal Link Boxes */
+.obs-link-box {
+  background: var(--bg-card-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+}
+
 .hidden { display: none !important; }

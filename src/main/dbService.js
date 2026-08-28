@@ -36,27 +36,38 @@ class DatabaseService {
         'Paul'
       ],
       pipes: [
+        'Aeon Edition 4',
+        'Aeon Edition 6',
+        'Alpha Hookah X Stratos',
+        'Amotion Flash Bang',
         'Amotion Futr',
         'Amotion Pedal',
-        'Amotion Flash Bang',
+        'Amotion Valve',
+        'Conceptic Smart',
+        'Darkside Intro',
+        'Maklaud Odysee',
+        'Moze Breeze Pro',
         'Moze Breeze Two',
         'Moze Varity',
-        'Vyro Specter',
         'Ocean Hookah Kaif',
-        'Almani Orient',
-        'Aeon Edition 4'
+        'Union Hookah Fibonacci',
+        'Vyro Specter',
+        'VZ Custom Mini'
       ],
       bowls: [
-        { name: 'XKAH Lite', isElectric: true },
-        { name: 'XKAH Pro', isElectric: true },
         'Cosmo Bowl',
+        'Cosmo Bowl Shot',
+        'Darkside Shot',
         'Hookain LitBowl',
-        'Vandenberg V1',
         'Kalifa Bowl',
+        'Moon Phunnel',
         'Oblako M Phunnel',
         'Solaris Bowl',
+        'Vandenberg V1',
+        'Voskurimsya Mumiya Bowl',
         'Vosun Phunnel',
-        'Moon Phunnel'
+        { name: 'XKAH Lite', isElectric: true },
+        { name: 'XKAH Pro', isElectric: true }
       ],
       vases: [
         'Caesar Crystal Rock',
@@ -67,6 +78,7 @@ class DatabaseService {
         'Crystal Drop Vase'
       ],
       hmds: [
+        'ONMO Edelstahl HMD',
         'ONMO HMD',
         'Na Grani',
         'Kaloud Lotus I+ 2.0',
@@ -75,35 +87,29 @@ class DatabaseService {
         'Locomotive HMD'
       ],
       tobacco: [
-        'Darkside Shot',
-        'Trofimoff Like Zaghoul',
-        'Trofimoff Anejo',
-        'Trofimoffs No Aroma Tasting',
+        'Darkside Falling Star',
+        'Darkside Generis Raspberry',
+        'Darkside Hola',
+        'Darkside Superberry',
+        'Darkside Wild Forest',
+        'MustH - Pynkman',
         'Black Burn Haribo',
-        'Musthave Pinkman',
-        'Fog Your Life Lemon',
         'Holster Ice Kaktuz',
         'Nameless Black Nana',
-        "O's Tobacco African Queen",
-        'Al Massiva Handgemacht & Illegal'
+        "Trofimoff's Terror - Dark Plum",
+        'Trofimoff Like Zaghoul',
+        'Trofimoff Anejo'
       ],
       charcoal: [
         'Magic Cubes (Zauberwürfel) !kohle',
         'Black Coco 26mm',
-        'Shaman 26mm',
-        'One Nation 26mm',
-        'Cocodice 27mm'
+        'One Nation 26mm'
       ],
       tastings: [
-        'Trofimoffs No Aroma Tasting',
-        'Darkside Shot Tasting',
-        'Holster Ice Kaktuz Tasting',
-        'Blind Tasting im Stream'
+        'Trofimoffs No Aroma Tasting'
       ],
       promos: [
-        '!kohle (Magic Cubes Zauberwürfel)',
-        '!xk (Sichert euch den neuen XK Kopf)',
-        '!tasting (No Aroma Tasting im Stream)'
+        'Code SHISHAWG10 für 10% Rabatt'
       ]
     };
     this.init();
@@ -120,28 +126,6 @@ class DatabaseService {
   }
 
   sanitizeCatalog(catalog) {
-    if (!catalog || typeof catalog !== 'object') return catalog;
-    const TOBACCO_FILTER = [
-      'darkside', 'musthave', 'musth', 'pinkman', 'pynkman', 'black burn', 'burn', 'haribo',
-      'holster', 'kaktuz', 'ice kaktuz', 'trofimoff', 'trofimoffs', 'zaghoul', 'anejo',
-      'nameless', 'black nana', 'al massiva', 'massiva', 'handgemacht', 'tangiers',
-      'fumari', 'social smoke', 'adalya', 'love 66', 'african queen', 'os tobacco',
-      'fog your life', 'hookain', 'blaze', 'maridan', 'tingle tangle', 'revoshi', 'chaos',
-      'superberry', 'intro', 'shot', 'falling star', 'wild forest', 'bounty hunter'
-    ];
-
-    const isTobaccoWord = (val) => {
-      if (!val) return false;
-      const str = (typeof val === 'string' ? val : val.name || '').toLowerCase().trim();
-      return TOBACCO_FILTER.some(term => str === term || str.startsWith(term + ' ') || str.includes('darkside') || str.includes('musthave') || str.includes('trofimoff'));
-    };
-
-    if (Array.isArray(catalog.pipes)) {
-      catalog.pipes = catalog.pipes.filter(p => !isTobaccoWord(p));
-    }
-    if (Array.isArray(catalog.bowls)) {
-      catalog.bowls = catalog.bowls.filter(b => !isTobaccoWord(b));
-    }
     return catalog;
   }
 
@@ -151,7 +135,7 @@ class DatabaseService {
         const raw = fs.readFileSync(this.dbPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          const catalog = {
+          return {
             pipes: Array.isArray(parsed.pipes) ? parsed.pipes : this.defaultCatalog.pipes,
             bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
             vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
@@ -162,13 +146,12 @@ class DatabaseService {
             tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
             promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
           };
-          return this.sanitizeCatalog(catalog);
         }
       }
     } catch (err) {
       console.error('Error reading catalog:', err);
     }
-    return this.sanitizeCatalog(this.defaultCatalog);
+    return this.defaultCatalog;
   }
 
   saveCatalog(catalog) {

@@ -1014,6 +1014,7 @@ function matchNotesToForm(text) {
     const seg = segmentsToProcess[idx];
     const sLower = seg.toLowerCase();
     const tokens = sLower.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
+    const usedIndices = new Set();
 
     // 1. Name Scanner
     let matchedName = `Person ${idx + 1}`;
@@ -1021,15 +1022,21 @@ function matchNotesToForm(text) {
     if (firstTok) {
       if (allKnownPersons.includes(firstTok)) {
         matchedName = capitalize(firstTok);
+        usedIndices.add(0);
       } else if (seg.includes(':')) {
         matchedName = capitalize(seg.split(':')[0].trim());
       }
     }
 
-    // 2. Hardware Gear Scanners
+    // Step 1: Hardware Gear Scanners (Highest score selection & unambiguous brand tokens)
     function scanCategory(catList) {
       if (!catList || catList.length === 0) return null;
+      let best = null;
+      let highestScore = 0;
+
+      // 1. Two-word windows
       for (let i = 0; i < tokens.length - 1; i++) {
+        if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
         const window2 = `${tokens[i]} ${tokens[i + 1]}`;
         const syn = SHISHA_SYNONYMS[window2];
         if (syn) {
@@ -1037,26 +1044,54 @@ function matchNotesToForm(text) {
             const iName = getItemName(item).toLowerCase();
             return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
           });
-          if (match) return { name: getItemName(match), item: match };
+          if (match) {
+            const score = 1.0;
+            if (score > highestScore) {
+              highestScore = score;
+              best = { name: getItemName(match), item: match, indices: [i, i + 1] };
+            }
+          }
         }
         const m2 = findBestFuzzyMatch(window2, catList, 0.70);
-        if (m2) return m2;
+        if (m2 && m2.score > highestScore) {
+          highestScore = m2.score;
+          best = { name: m2.name, item: m2.item, indices: [i, i + 1] };
+        }
       }
+
+      // 2. Single tokens
       for (let i = 0; i < tokens.length; i++) {
+        if (usedIndices.has(i)) continue;
         const tok = tokens[i];
         if (tok.length < 2) continue;
+        // Generic brand names alone without distinctive model token cannot match hardware
+        if (tok === 'dark' || tok === 'darkside') continue;
+
         const syn = SHISHA_SYNONYMS[tok];
         if (syn) {
           const match = catList.find(item => {
             const iName = getItemName(item).toLowerCase();
             return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
           });
-          if (match) return { name: getItemName(match), item: match };
+          if (match) {
+            const score = 0.95;
+            if (score > highestScore) {
+              highestScore = score;
+              best = { name: getItemName(match), item: match, indices: [i] };
+            }
+          }
         }
         const m1 = findBestFuzzyMatch(tok, catList, 0.70);
-        if (m1) return m1;
+        if (m1 && m1.score > highestScore) {
+          highestScore = m1.score;
+          best = { name: m1.name, item: m1.item, indices: [i] };
+        }
       }
-      return null;
+
+      if (best && best.indices) {
+        best.indices.forEach(idx => usedIndices.add(idx));
+      }
+      return best;
     }
 
     const pipeMatch = scanCategory(catalog.pipes || []);
@@ -1065,7 +1100,7 @@ function matchNotesToForm(text) {
     let bowl = '';
     let isElectric = false;
     if (sLower.includes('xkah') || sLower.includes('xk-ah') || sLower.includes('xk ah') || sLower.includes('xklite') || sLower.includes('xkpro')) {
-      bowl = (sLower.includes('pro') || sLower.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
+      bowl = (sLower.includes('pro') || sLower.includes('xkpro')) ? (catalog.bowls && catalog.bowls.some(b => getItemName(b).includes('Pro')) ? 'XKAH Pro E-Kopf & E-HMD' : 'XKAH Pro') : (catalog.bowls && catalog.bowls.some(b => getItemName(b).includes('LITE')) ? 'XKAH LITE E-Kopf & E-HMD' : 'XKAH Lite');
       isElectric = true;
     } else {
       const bowlMatch = scanCategory(catalog.bowls || []);
@@ -1084,73 +1119,54 @@ function matchNotesToForm(text) {
     const vesselMatch = scanCategory(catalog.vases || []);
     const vessel = vesselMatch ? vesselMatch.name : '';
 
-    // 3. Tobacco Extraction (excludes tokens already claimed by matched pipe/bowl/hmd)
+    // Step 2: Multi-Word Tobacco Scanning (2-word & 3-word phrases on remaining tokens)
     const matchedTobaccos = [];
-    const usedIndices = new Set();
-
-    const claimedTokens = [];
-    if (pipe) claimedTokens.push(...pipe.toLowerCase().split(/[\s-]+/));
-    if (bowl) claimedTokens.push(...bowl.toLowerCase().split(/[\s-]+/));
-    if (hmd) claimedTokens.push(...hmd.toLowerCase().split(/[\s-]+/));
-
-    for (let i = 0; i < tokens.length; i++) {
-      if (claimedTokens.some(ct => ct === tokens[i])) {
-        usedIndices.add(i);
-      }
-    }
-
-    // Check 3-word tobacco windows
     for (let i = 0; i <= tokens.length - 3; i++) {
       if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
       const w3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
       const syn = SHISHA_SYNONYMS[w3];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
         matchedTobaccos.push(syn);
-        usedIndices.add(i);
-        usedIndices.add(i + 1);
-        usedIndices.add(i + 2);
+        usedIndices.add(i); usedIndices.add(i + 1); usedIndices.add(i + 2);
         continue;
       }
-      const m = findBestFuzzyMatch(w3, catalog.tobacco || [], 0.78);
+      const m = findBestFuzzyMatch(w3, catalog.tobacco || [], 0.75);
       if (m) {
         matchedTobaccos.push(m.name);
-        usedIndices.add(i);
-        usedIndices.add(i + 1);
-        usedIndices.add(i + 2);
+        usedIndices.add(i); usedIndices.add(i + 1); usedIndices.add(i + 2);
       }
     }
 
-    // Check 2-word tobacco windows
     for (let i = 0; i <= tokens.length - 2; i++) {
       if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
       const w2 = `${tokens[i]} ${tokens[i + 1]}`;
       const syn = SHISHA_SYNONYMS[w2];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
         matchedTobaccos.push(syn);
-        usedIndices.add(i);
-        usedIndices.add(i + 1);
+        usedIndices.add(i); usedIndices.add(i + 1);
         continue;
       }
       const m = findBestFuzzyMatch(w2, catalog.tobacco || [], 0.75);
       if (m) {
         matchedTobaccos.push(m.name);
-        usedIndices.add(i);
-        usedIndices.add(i + 1);
+        usedIndices.add(i); usedIndices.add(i + 1);
       }
     }
 
-    // Check single tobacco tokens
+    // Step 3: Single-Token Tobacco Scanning for remaining unreserved tokens
     for (let i = 0; i < tokens.length; i++) {
       if (usedIndices.has(i)) continue;
       const tok = tokens[i];
       if (tok.length < 3) continue;
+      if (tok === 'dark' || tok === 'shot' || tok === 'intro') continue;
+
       const syn = SHISHA_SYNONYMS[tok];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
         if (!matchedTobaccos.includes(syn)) matchedTobaccos.push(syn);
         usedIndices.add(i);
         continue;
       }
-      const m = findBestFuzzyMatch(tok, catalog.tobacco || [], 0.78);
+      const m = findBestFuzzyMatch(tok, catalog.tobacco || [], 0.70);
       if (m && !matchedTobaccos.includes(m.name)) {
         matchedTobaccos.push(m.name);
         usedIndices.add(i);
@@ -1682,8 +1698,24 @@ function setupEventListeners() {
     });
   }
 
+  let notesDebounceTimer = null;
   if (notesTextarea) {
     notesTextarea.addEventListener('input', () => {
+      if (notesDebounceTimer) clearTimeout(notesDebounceTimer);
+      notesDebounceTimer = setTimeout(() => {
+        matchNotesToForm(notesTextarea.value);
+      }, 500);
+    });
+
+    notesTextarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (notesDebounceTimer) clearTimeout(notesDebounceTimer);
+        matchNotesToForm(notesTextarea.value);
+      }
+    });
+
+    notesTextarea.addEventListener('blur', () => {
+      if (notesDebounceTimer) clearTimeout(notesDebounceTimer);
       matchNotesToForm(notesTextarea.value);
     });
   }

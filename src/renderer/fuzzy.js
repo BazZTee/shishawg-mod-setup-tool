@@ -105,10 +105,10 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
     // 3. Substring inclusion (scaled by length ratio)
     if (nLower.includes(qClean)) {
       const ratio = qClean.length / nLower.length;
-      score = Math.max(score, 0.65 + ratio * 0.35);
+      score = Math.max(score, 0.55 + ratio * 0.45);
     } else if (qClean.includes(nLower)) {
       const ratio = nLower.length / qClean.length;
-      score = Math.max(score, 0.65 + ratio * 0.35);
+      score = Math.max(score, 0.55 + ratio * 0.45);
     }
 
     // 4. Token-based matching

@@ -87,7 +87,7 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
   let bestMatch = null;
   let highestScore = 0;
 
-  const qTokens = qClean.split(/[\s,./\\-]+/).filter(t => t.length > 1);
+  const qTokens = qClean.split(/[\s,./\\-]+/).filter(t => t.length > 0);
 
   for (const entry of list) {
     const name = getItemName(entry);
@@ -112,7 +112,7 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
     }
 
     // 4. Token-based matching
-    const nTokens = nLower.split(/[\s,./\\-]+/).filter(t => t.length > 1);
+    const nTokens = nLower.split(/[\s,./\\-]+/).filter(t => t.length > 0);
     let matchedTokenCount = 0;
 
     for (const qt of qTokens) {
@@ -217,20 +217,31 @@ const SHISHA_SYNONYMS = {
   'futer': 'Amotion Futr',
   'emotion': 'Amotion Futr',
   'flashbang': 'Amotion Flash Bang',
+  'edition 6': 'Aeon Edition 6',
+  'edition 4': 'Aeon Edition 4',
   'breeze': 'Moze Breeze Two',
+  'breeze 2': 'Moze Breeze Two',
   'breeze2': 'Moze Breeze Two',
   'varity': 'Moze Varity',
   'specter': 'Vyro Specter',
   'cosmo': 'Cosmo Bowl',
-  'vosku': 'Voskurymsia Mumia',
-  'mumia': 'Voskurymsia Mumia',
+  'vosku': 'Voskurimsya Mumiya Bowl',
+  'voskuri': 'Voskurimsya Mumiya Bowl',
+  'voskurimsya': 'Voskurimsya Mumiya Bowl',
+  'voskorymsea': 'Voskurimsya Mumiya Bowl',
+  'mumiya': 'Voskurimsya Mumiya Bowl',
+  'mumia': 'Voskurimsya Mumiya Bowl',
   'litbowl': 'Hookain LitBowl',
   'lit bowl': 'Hookain LitBowl',
-  'onmo': 'ONMO HMD',
+  'onmo': 'ONMO Edelstahl HMD',
+  'onmoi': 'ONMO Edelstahl HMD',
+  'onmoe': 'ONMO Edelstahl HMD',
   'nagrani': 'Na Grani',
   'na grani': 'Na Grani',
   'kaloud': 'Kaloud Lotus I+ 2.0',
   'lotus': 'Kaloud Lotus I+ 2.0',
+  'pinkman': 'MustH - Pynkman',
+  'pynkman': 'MustH - Pynkman',
   'zauber': 'Magic Cubes (Zauberwürfel) !kohle',
   'zauberwürfel': 'Magic Cubes (Zauberwürfel) !kohle',
   'zauberwuerfel': 'Magic Cubes (Zauberwürfel) !kohle',

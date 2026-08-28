@@ -999,27 +999,28 @@ function matchNotesToForm(text) {
       for (let i = 0; i < tokens.length - 1; i++) {
         const window2 = `${tokens[i]} ${tokens[i + 1]}`;
         const syn = SHISHA_SYNONYMS[window2];
-        if (syn && catList.some(item => getItemName(item) === syn)) {
-          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
+        if (syn) {
+          const match = catList.find(item => {
+            const iName = getItemName(item).toLowerCase();
+            return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
+          });
+          if (match) return { name: getItemName(match), item: match };
         }
-        const m2 = findBestFuzzyMatch(window2, catList, 0.75);
+        const m2 = findBestFuzzyMatch(window2, catList, 0.70);
         if (m2) return m2;
       }
       for (let i = 0; i < tokens.length; i++) {
         const tok = tokens[i];
-        if (tok.length < 3) continue;
+        if (tok.length < 2) continue;
         const syn = SHISHA_SYNONYMS[tok];
-        if (syn && catList.some(item => getItemName(item) === syn)) {
-          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
+        if (syn) {
+          const match = catList.find(item => {
+            const iName = getItemName(item).toLowerCase();
+            return iName === syn.toLowerCase() || iName.includes(syn.toLowerCase()) || syn.toLowerCase().includes(iName);
+          });
+          if (match) return { name: getItemName(match), item: match };
         }
-        for (const item of catList) {
-          const iName = getItemName(item);
-          const iTokens = iName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2);
-          if (iTokens.some(it => it === tok || similarityScore(it, tok) >= 0.82)) {
-            return { name: iName, item };
-          }
-        }
-        const m1 = findBestFuzzyMatch(tok, catList, 0.78);
+        const m1 = findBestFuzzyMatch(tok, catList, 0.70);
         if (m1) return m1;
       }
       return null;

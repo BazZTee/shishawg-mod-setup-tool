@@ -1265,7 +1265,7 @@ function matchNotesToForm(text) {
     }
   }
 
-  // Close all dropdowns when clicking outside
+  // Close all dropdowns when clicking outside (but NOT when clicking inside inputs in hamburger)
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.dropdown-wrapper')) {
       if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');

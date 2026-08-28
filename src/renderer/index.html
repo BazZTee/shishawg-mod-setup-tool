@@ -20,23 +20,6 @@
       </div>
 
       <div class="header-actions">
-        <!-- Target Channel Selector -->
-        <div class="channel-selector">
-          <label for="target-channel-input">Ziel-Kanal:</label>
-          <div class="channel-input-wrapper">
-            <span class="prefix">#</span>
-            <input type="text" id="target-channel-input" value="marved" placeholder="marved" title="Twitch-Kanal in den gesendet/gelesen wird">
-          </div>
-        </div>
-
-        <div class="channel-selector">
-          <label for="target-bot-input">Bot-Name:</label>
-          <div class="channel-input-wrapper">
-            <span class="prefix">🤖</span>
-            <input type="text" id="target-bot-input" value="marvedbot" placeholder="marvedbot" title="Twitch-Bot Username zum Auslesen">
-          </div>
-        </div>
-
         <!-- Twitch User Profile / Login -->
         <div class="twitch-auth-container" id="twitch-auth-container">
           <button id="btn-twitch-login" class="btn btn-twitch">
@@ -115,9 +98,21 @@
                 <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M12 3C7.58 3 4 4.79 4 7s3.58 4 8 4 8-1.79 8-4M4 9v4c0 2.21 3.58 4 8 4s8-1.79 8-4V9c0 2.21-3.58 4-8 4s-8-1.79-8-4m0 6v4c0 2.21 3.58 4 8 4s8-1.79 8-4v-4c0 2.21-3.58 4-8 4s-8-1.79-8-4z"/></svg>
                 🗄️ Datenbank / Verzeichnis
               </button>
-              <button id="btn-check-updates" class="dropdown-item" title="Klicken, um auf Updates von GitHub zu prüfen">
-                🔄 Auf Updates prüfen <span id="app-version-tag" class="version-tag-inline"></span>
-              </button>
+              <div class="hamburger-divider"></div>
+              <div class="hamburger-field-row">
+                <label>🎯 Ziel-Kanal:</label>
+                <div class="channel-input-wrapper">
+                  <span class="prefix">#</span>
+                  <input type="text" id="target-channel-input" value="marved" placeholder="marved" title="Twitch-Kanal">
+                </div>
+              </div>
+              <div class="hamburger-field-row">
+                <label>🤖 Bot-Name:</label>
+                <div class="channel-input-wrapper">
+                  <span class="prefix">@</span>
+                  <input type="text" id="target-bot-input" value="marvedbot" placeholder="marvedbot" title="Bot Username">
+                </div>
+              </div>
             </div>
           </div>
         </div>

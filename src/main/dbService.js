@@ -119,13 +119,39 @@ class DatabaseService {
     }
   }
 
+  sanitizeCatalog(catalog) {
+    if (!catalog || typeof catalog !== 'object') return catalog;
+    const TOBACCO_FILTER = [
+      'darkside', 'musthave', 'musth', 'pinkman', 'pynkman', 'black burn', 'burn', 'haribo',
+      'holster', 'kaktuz', 'ice kaktuz', 'trofimoff', 'trofimoffs', 'zaghoul', 'anejo',
+      'nameless', 'black nana', 'al massiva', 'massiva', 'handgemacht', 'tangiers',
+      'fumari', 'social smoke', 'adalya', 'love 66', 'african queen', 'os tobacco',
+      'fog your life', 'hookain', 'blaze', 'maridan', 'tingle tangle', 'revoshi', 'chaos',
+      'superberry', 'intro', 'shot', 'falling star', 'wild forest', 'bounty hunter'
+    ];
+
+    const isTobaccoWord = (val) => {
+      if (!val) return false;
+      const str = (typeof val === 'string' ? val : val.name || '').toLowerCase().trim();
+      return TOBACCO_FILTER.some(term => str === term || str.startsWith(term + ' ') || str.includes('darkside') || str.includes('musthave') || str.includes('trofimoff'));
+    };
+
+    if (Array.isArray(catalog.pipes)) {
+      catalog.pipes = catalog.pipes.filter(p => !isTobaccoWord(p));
+    }
+    if (Array.isArray(catalog.bowls)) {
+      catalog.bowls = catalog.bowls.filter(b => !isTobaccoWord(b));
+    }
+    return catalog;
+  }
+
   getCatalog() {
     try {
       if (fs.existsSync(this.dbPath)) {
         const raw = fs.readFileSync(this.dbPath, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
-          return {
+          const catalog = {
             pipes: Array.isArray(parsed.pipes) ? parsed.pipes : this.defaultCatalog.pipes,
             bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
             vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
@@ -136,12 +162,13 @@ class DatabaseService {
             tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
             promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
           };
+          return this.sanitizeCatalog(catalog);
         }
       }
     } catch (err) {
       console.error('Error reading catalog:', err);
     }
-    return this.defaultCatalog;
+    return this.sanitizeCatalog(this.defaultCatalog);
   }
 
   saveCatalog(catalog) {
@@ -214,9 +241,25 @@ class DatabaseService {
     let addedCount = 0;
     const catalog = this.getCatalog();
 
+    const TOBACCO_FILTER = [
+      'darkside', 'musthave', 'musth', 'pinkman', 'pynkman', 'black burn', 'burn', 'haribo',
+      'holster', 'kaktuz', 'ice kaktuz', 'trofimoff', 'trofimoffs', 'zaghoul', 'anejo',
+      'nameless', 'black nana', 'al massiva', 'massiva', 'handgemacht', 'tangiers',
+      'fumari', 'social smoke', 'adalya', 'love 66', 'african queen', 'os tobacco',
+      'fog your life', 'hookain', 'blaze', 'maridan', 'tingle tangle', 'revoshi', 'chaos',
+      'superberry', 'intro', 'shot', 'falling star', 'wild forest', 'bounty hunter'
+    ];
+
+    const isTobaccoWord = (val) => {
+      if (!val) return false;
+      const str = val.toLowerCase().trim();
+      return TOBACCO_FILTER.some(term => str === term || str.startsWith(term + ' ') || str.includes('darkside') || str.includes('musthave') || str.includes('trofimoff'));
+    };
+
     const addIfNew = (category, val) => {
       if (!val || typeof val !== 'string') return;
       const trimmed = val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if ((category === 'pipes' || category === 'bowls') && isTobaccoWord(trimmed)) return;
       if (!catalog[category]) catalog[category] = [];
       if (trimmed.length > 1 && !catalog[category].includes(trimmed)) {
         catalog[category].push(trimmed);

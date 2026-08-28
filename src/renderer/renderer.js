@@ -882,6 +882,7 @@ const COMMON_PERSON_NAMES = [
   'niklas', 'tim', 'alex', 'chris', 'jan', 'max', 'sven', 'leon', 'robin',
   'nils', 'lukas', 'jonas', 'paul', 'finn', 'elias', 'noah', 'luis', 'david', 'simon',
   'hannes', 'erik', 'marc', 'lars', 'julian', 'flo', 'stefan', 'micha', 'christian',
+  'hasty', 'hastydj', 'bazztee', 'bazzteedj',
   'person 1', 'person 2', 'person 3', 'person 4', 'person 5', 'person 6'
 ];
 
@@ -1039,14 +1040,18 @@ function matchNotesToForm(text) {
 
     // 1. Name Scanner
     let matchedName = `Person ${idx + 1}`;
-    const firstTok = tokens[0];
-    if (firstTok) {
-      if (allKnownPersons.includes(firstTok)) {
-        matchedName = capitalize(firstTok);
-        usedIndices.add(0);
-      } else if (seg.includes(':')) {
-        matchedName = capitalize(seg.split(':')[0].trim());
+    if (seg.includes(':')) {
+      const colonPrefix = seg.split(':')[0].trim();
+      if (colonPrefix.length > 0) {
+        matchedName = capitalize(colonPrefix);
+        const prefixTokens = colonPrefix.toLowerCase().split(/[\s,./\\;:+&|]+/).filter(Boolean);
+        for (let i = 0; i < prefixTokens.length && i < tokens.length; i++) {
+          usedIndices.add(i);
+        }
       }
+    } else if (tokens[0] && allKnownPersons.includes(tokens[0])) {
+      matchedName = capitalize(tokens[0]);
+      usedIndices.add(0);
     }
 
     // Auto-fill Person 1 name with 'Marvin' if not explicitly given another name
@@ -1170,10 +1175,13 @@ function matchNotesToForm(text) {
     const vesselMatch = scanCategory(catalog.vases || []);
     const vessel = vesselMatch ? vesselMatch.name : '';
 
+    const isPersonTok = (tok) => allKnownPersons.includes(tok) || (matchedName && matchedName.toLowerCase() === tok);
+
     // Step 2: Multi-Word Tobacco Scanning (2-word & 3-word phrases on remaining tokens)
     const matchedTobaccos = [];
     for (let i = 0; i <= tokens.length - 3; i++) {
       if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
+      if (isPersonTok(tokens[i]) || isPersonTok(tokens[i + 1]) || isPersonTok(tokens[i + 2])) continue;
       const w3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
       const syn = SHISHA_SYNONYMS[w3];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
@@ -1190,6 +1198,7 @@ function matchNotesToForm(text) {
 
     for (let i = 0; i <= tokens.length - 2; i++) {
       if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
+      if (isPersonTok(tokens[i]) || isPersonTok(tokens[i + 1])) continue;
       const w2 = `${tokens[i]} ${tokens[i + 1]}`;
       const syn = SHISHA_SYNONYMS[w2];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
@@ -1209,7 +1218,8 @@ function matchNotesToForm(text) {
       'dark', 'shot', 'intro', 'aeon', 'edition', 'breeze', 'varity', 'futr', 'pedal',
       'flashbang', 'flash', 'bang', 'specter', 'fibonacci', 'cosmo', 'mumiya', 'mumia', 'vosku', 'litbowl',
       'onmo', 'nagrani', 'kaloud', 'lotus', 'cubes', 'magic', 'zauber', 'xkah', 'smart', 'stratos',
-      'ocean', 'kaif', 'solaris', 'vandenberg', 'oblako', 'moon', 'alpha'
+      'ocean', 'kaif', 'solaris', 'vandenberg', 'oblako', 'moon', 'alpha',
+      ...allKnownPersons
     ]);
 
     for (let i = 0; i < tokens.length; i++) {
@@ -1217,6 +1227,7 @@ function matchNotesToForm(text) {
       const tok = tokens[i];
       if (tok.length < 3) continue;
       if (HARDWARE_ONLY_TOKENS.has(tok)) continue;
+      if (isPersonTok(tok)) continue;
 
       const syn = SHISHA_SYNONYMS[tok];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {

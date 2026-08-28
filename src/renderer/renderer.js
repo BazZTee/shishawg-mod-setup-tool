@@ -576,6 +576,29 @@ function generateCommandString() {
     }
   }
 
+  const hasNonElectricPerson = state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return !p.isElectric && !bName.includes('xkah') && !bName.includes('elektr') && !bName.includes('imoto') && !bName.includes('e-kopf');
+  });
+
+  const isMixedSetup = state.personCount > 1 && state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return p.isElectric || bName.includes('xkah') || bName.includes('elektr') || bName.includes('imoto') || bName.includes('e-kopf');
+  }) && hasNonElectricPerson;
+
+  let kohle = hasNonElectricPerson ? (inputGlobalKohle ? inputGlobalKohle.value : '').trim() : '';
+  let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
+
+  if (promoText) {
+    if (promoTarget === 'kohle') {
+      kohle = kohle ? `${kohle} ${promoText}` : promoText;
+    } else if (promoTarget === 'extra') {
+      extra = extra ? `${extra} ${promoText}` : promoText;
+    }
+  }
+
   const parts = [];
 
   for (let i = 0; i < state.personCount; i++) {
@@ -601,7 +624,7 @@ function generateCommandString() {
 
     let bowlVal = (p.bowl || '').trim();
     let hmdVal = (p.hmd || '').trim();
-    const isElec = !!p.isElectric || bowlVal.toLowerCase().includes('xkah') || bowlVal.toLowerCase().includes('elektr');
+    const isElec = !!p.isElectric || bowlVal.toLowerCase().includes('xkah') || bowlVal.toLowerCase().includes('elektr') || bowlVal.toLowerCase().includes('imoto') || bowlVal.toLowerCase().includes('e-kopf');
 
     if (promoText) {
       if (promoTarget === 'pipe' && pipeVal) pipeVal = `${pipeVal} ${promoText}`;
@@ -630,6 +653,11 @@ function generateCommandString() {
       personSegments.push(tobStr);
     }
 
+    // If mixed setup (traditional + electric), place the charcoal on the traditional setup!
+    if (isMixedSetup && !isElec && kohle) {
+      personSegments.push(kohle);
+    }
+
     if (personSegments.length > 0 || pName) {
       let personStr = '';
       if (state.personCount > 1 && pName) {
@@ -643,27 +671,11 @@ function generateCommandString() {
 
   let fullCommand = `!editsetup ${parts.join(' // ')}`;
 
-  const hasNonElectricPerson = state.persons.slice(0, state.personCount).some(p => {
-    if (!p) return false;
-    const bName = (p.bowl || '').toLowerCase();
-    return !p.isElectric && !bName.includes('xkah') && !bName.includes('elektr');
-  });
+  const globalParts = [];
+  if (kohle && !isMixedSetup) globalParts.push(kohle);
+  if (extra) globalParts.push(extra);
 
-  let kohle = hasNonElectricPerson ? (inputGlobalKohle ? inputGlobalKohle.value : '').trim() : '';
-  let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
-
-  if (promoText) {
-    if (promoTarget === 'kohle') {
-      kohle = kohle ? `${kohle} ${promoText}` : promoText;
-    } else if (promoTarget === 'extra') {
-      extra = extra ? `${extra} ${promoText}` : promoText;
-    }
-  }
-
-  if (kohle || extra) {
-    const globalParts = [];
-    if (kohle) globalParts.push(kohle);
-    if (extra) globalParts.push(extra);
+  if (globalParts.length > 0) {
     fullCommand += ` // ${globalParts.join(' // ')} //`;
   } else if (parts.length > 0) {
     fullCommand += ' //';

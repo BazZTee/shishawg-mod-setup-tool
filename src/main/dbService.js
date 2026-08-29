@@ -71,6 +71,7 @@ class DatabaseService {
   constructor() {
     this.dbPath = path.join(app.getPath('userData'), 'setup_database.json');
     this.hookahToolsTobaccoCachePath = path.join(app.getPath('userData'), 'hookahtools_tobacco_cache.json');
+    this.hookahToolsSnapshotPath = path.join(__dirname, 'hookahtools_tobacco_snapshot.json');
     this.defaultCatalog = {
       persons: [
         'Marvin',
@@ -187,8 +188,54 @@ class DatabaseService {
     }
   }
 
-  sanitizeCatalog(catalog) {
-    return catalog;
+  getHookahToolsCacheData() {
+    const result = {
+      meta: {
+        totalCount: 0,
+        latestId: '',
+        latestUpdatedAt: '',
+        lastChecked: ''
+      },
+      flavors: []
+    };
+
+    // 1. Try local cache in userData
+    try {
+      if (fs.existsSync(this.hookahToolsTobaccoCachePath)) {
+        const raw = fs.readFileSync(this.hookahToolsTobaccoCachePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed)) {
+            result.flavors = parsed;
+            result.meta.totalCount = parsed.length;
+          } else if (Array.isArray(parsed.flavors)) {
+            result.flavors = parsed.flavors;
+            result.meta = parsed.meta || result.meta;
+          }
+        }
+      }
+    } catch(e) {}
+
+    // 2. If userData cache is empty, fall back to bundled snapshot
+    if (result.flavors.length === 0) {
+      try {
+        if (fs.existsSync(this.hookahToolsSnapshotPath)) {
+          const raw = fs.readFileSync(this.hookahToolsSnapshotPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed)) {
+              result.flavors = parsed;
+              result.meta.totalCount = parsed.length;
+            } else if (Array.isArray(parsed.flavors)) {
+              result.flavors = parsed.flavors;
+              result.meta = parsed.meta || result.meta;
+            }
+          }
+        }
+      } catch(e) {}
+    }
+
+    return result;
   }
 
   getCatalog() {
@@ -232,17 +279,9 @@ class DatabaseService {
       ];
     }
 
-    // Read HookahTools tobacco cache
-    let hookahTobacco = [];
-    try {
-      if (fs.existsSync(this.hookahToolsTobaccoCachePath)) {
-        const raw = fs.readFileSync(this.hookahToolsTobaccoCachePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          hookahTobacco = parsed;
-        }
-      }
-    } catch(e) {}
+    // Read HookahTools tobacco cache (smart local cache / bundled snapshot)
+    const hookahData = this.getHookahToolsCacheData();
+    const hookahTobacco = hookahData.flavors || [];
 
     // Build unified tobacco list
     // 1. Custom / Gist tobacco entries first (marked as source: 'gist', isCustom: true)
@@ -511,8 +550,92 @@ class DatabaseService {
     return { addedCount, catalog: this.getCatalog() };
   }
 
-  async fetchHookahToolsTobacco() {
+  async fetchHookahToolsMetadata() {
+    return new Promise((resolve) => {
+      const options = {
+        hostname: HOOKAHTOOLS_SUPABASE_HOST,
+        path: '/rest/v1/flavors?select=id,updated_at&order=updated_at.desc&limit=1',
+        method: 'GET',
+        headers: {
+          'apikey': HOOKAHTOOLS_SUPABASE_KEY,
+          'Authorization': `Bearer ${HOOKAHTOOLS_SUPABASE_KEY}`,
+          'Prefer': 'count=exact',
+          'User-Agent': 'ShishaWG-Mod-Setup-Tool'
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            let totalCount = 0;
+            const range = res.headers['content-range'];
+            if (range) {
+              const match = range.match(/\/(\d+|\*)$/);
+              if (match && match[1] !== '*') {
+                totalCount = parseInt(match[1], 10);
+              }
+            }
+            const parsed = JSON.parse(body || '[]');
+            const latest = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
+            resolve({
+              success: true,
+              totalCount,
+              latestId: latest ? latest.id : '',
+              latestUpdatedAt: latest ? latest.updated_at : ''
+            });
+          } catch(e) {
+            resolve({ success: false, totalCount: 0, latestId: '', latestUpdatedAt: '' });
+          }
+        });
+      });
+
+      req.on('error', () => {
+        resolve({ success: false, totalCount: 0, latestId: '', latestUpdatedAt: '' });
+      });
+
+      req.end();
+    });
+  }
+
+  async fetchHookahToolsTobacco(force = false) {
+    const localCache = this.getHookahToolsCacheData();
+
+    // 1. Smart Check: If not forced and we have cached items, check remote count first (~150 Bytes request)
+    if (!force && localCache.flavors && localCache.flavors.length > 0) {
+      try {
+        const meta = await this.fetchHookahToolsMetadata();
+        if (meta.success) {
+          const isSameCount = meta.totalCount > 0 && meta.totalCount === localCache.meta.totalCount;
+          const isSameLatest = !meta.latestUpdatedAt || (meta.latestUpdatedAt === localCache.meta.latestUpdatedAt);
+
+          if (isSameCount && isSameLatest) {
+            console.log(`[HookahTools SmartCache] Database is up to date (${meta.totalCount} flavors). Skipping full download.`);
+            try {
+              const updatedCache = {
+                meta: {
+                  ...localCache.meta,
+                  lastChecked: new Date().toISOString()
+                },
+                flavors: localCache.flavors
+              };
+              fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(updatedCache, null, 2), 'utf-8');
+            } catch(e) {}
+
+            return localCache.flavors;
+          } else {
+            console.log(`[HookahTools SmartCache] Changes detected (Remote: ${meta.totalCount} vs Cached: ${localCache.meta.totalCount}). Fetching updates...`);
+          }
+        }
+      } catch (err) {
+        console.warn('[HookahTools SmartCache] Metadata check failed, using local cache:', err.message);
+        return localCache.flavors;
+      }
+    }
+
     try {
+      console.log('[HookahTools] Performing full catalog download from Supabase...');
       const brands = await fetchSupabaseEndpoint('brands?select=id,name');
       const brandMap = {};
       if (Array.isArray(brands)) {
@@ -553,8 +676,19 @@ class DatabaseService {
 
       const uniqueTobacco = [...new Set(formattedList)].sort((a, b) => a.localeCompare(b, 'de'));
       if (uniqueTobacco.length > 0) {
+        const meta = await this.fetchHookahToolsMetadata();
+        const cachePayload = {
+          meta: {
+            totalCount: meta.totalCount || allFlavors.length,
+            latestId: meta.latestId || '',
+            latestUpdatedAt: meta.latestUpdatedAt || '',
+            lastChecked: new Date().toISOString()
+          },
+          flavors: uniqueTobacco
+        };
+
         try {
-          fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(uniqueTobacco, null, 2), 'utf-8');
+          fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(cachePayload, null, 2), 'utf-8');
         } catch (e) {}
         return uniqueTobacco;
       }
@@ -563,17 +697,7 @@ class DatabaseService {
     }
 
     // Fallback: local cache
-    try {
-      if (fs.existsSync(this.hookahToolsTobaccoCachePath)) {
-        const raw = fs.readFileSync(this.hookahToolsTobaccoCachePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch (e) {}
-
-    return null;
+    return localCache.flavors && localCache.flavors.length > 0 ? localCache.flavors : null;
   }
 
   async syncWithGitHubCommunityCatalog() {

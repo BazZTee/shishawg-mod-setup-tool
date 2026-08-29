@@ -71,6 +71,7 @@ class DatabaseService {
   constructor() {
     this.dbPath = path.join(app.getPath('userData'), 'setup_database.json');
     this.hookahToolsTobaccoCachePath = path.join(app.getPath('userData'), 'hookahtools_tobacco_cache.json');
+    this.hookahToolsBrandsCachePath = path.join(app.getPath('userData'), 'hookahtools_brands_cache.json');
     this.hookahToolsSnapshotPath = path.join(__dirname, 'hookahtools_tobacco_snapshot.json');
     this.defaultCatalog = {
       persons: [
@@ -599,10 +600,38 @@ class DatabaseService {
     });
   }
 
+  async getBrandMap(forceRefresh = false) {
+    let brandMap = {};
+    if (!forceRefresh) {
+      try {
+        if (fs.existsSync(this.hookahToolsBrandsCachePath)) {
+          const raw = fs.readFileSync(this.hookahToolsBrandsCachePath, 'utf-8');
+          brandMap = JSON.parse(raw) || {};
+        }
+      } catch(e) {}
+    }
+
+    if (Object.keys(brandMap).length === 0 || forceRefresh) {
+      try {
+        const brands = await fetchSupabaseEndpoint('brands?select=id,name');
+        if (Array.isArray(brands)) {
+          brands.forEach(b => {
+            if (b && b.id) brandMap[b.id] = (b.name || b.id).trim();
+          });
+          try {
+            fs.writeFileSync(this.hookahToolsBrandsCachePath, JSON.stringify(brandMap, null, 2), 'utf-8');
+          } catch(e) {}
+        }
+      } catch(e) {}
+    }
+
+    return brandMap;
+  }
+
   async fetchHookahToolsTobacco(force = false) {
     const localCache = this.getHookahToolsCacheData();
 
-    // 1. Smart Check: If not forced and we have cached items, check remote count first (~150 Bytes request)
+    // 1. Smart Check & Delta-Sync
     if (!force && localCache.flavors && localCache.flavors.length > 0) {
       try {
         const meta = await this.fetchHookahToolsMetadata();
@@ -610,8 +639,9 @@ class DatabaseService {
           const isSameCount = meta.totalCount > 0 && meta.totalCount === localCache.meta.totalCount;
           const isSameLatest = !meta.latestUpdatedAt || (meta.latestUpdatedAt === localCache.meta.latestUpdatedAt);
 
+          // CASE 1: No changes at all -> 0 rows downloaded (~150 Bytes check)
           if (isSameCount && isSameLatest) {
-            console.log(`[HookahTools SmartCache] Database is up to date (${meta.totalCount} flavors). Skipping full download.`);
+            console.log(`[HookahTools SmartCache] Database is up to date (${meta.totalCount} flavors). Skipping download.`);
             try {
               const updatedCache = {
                 meta: {
@@ -624,27 +654,63 @@ class DatabaseService {
             } catch(e) {}
 
             return localCache.flavors;
-          } else {
-            console.log(`[HookahTools SmartCache] Changes detected (Remote: ${meta.totalCount} vs Cached: ${localCache.meta.totalCount}). Fetching updates...`);
           }
+
+          // CASE 2: New items added -> DELTA SYNC (Only download new/updated items where updated_at > cachedLatestUpdatedAt)
+          const isAdditionsOnly = meta.totalCount >= localCache.meta.totalCount && localCache.meta.latestUpdatedAt;
+          if (isAdditionsOnly) {
+            console.log(`[HookahTools DeltaSync] Fetching only new flavors added since ${localCache.meta.latestUpdatedAt}...`);
+            const deltaFlavors = await fetchSupabaseEndpoint(`flavors?select=id,name,brand_id,line,updated_at&updated_at=gt.${encodeURIComponent(localCache.meta.latestUpdatedAt)}&order=updated_at.asc`);
+
+            if (Array.isArray(deltaFlavors) && deltaFlavors.length > 0) {
+              const brandMap = await this.getBrandMap();
+              const newFormatted = [];
+              for (const f of deltaFlavors) {
+                if (!f || !f.name) continue;
+                let brand = (f.brand_id && brandMap[f.brand_id]) ? brandMap[f.brand_id] : (f.brand_id || '');
+                if (!brand && f.brand_id) {
+                  const refreshedBrands = await this.getBrandMap(true);
+                  brand = (f.brand_id && refreshedBrands[f.brand_id]) ? refreshedBrands[f.brand_id] : f.brand_id;
+                }
+                const formatted = formatHookahToolsTobacco(brand, f.line, f.name);
+                if (formatted) newFormatted.push(formatted);
+              }
+
+              const mergedSet = new Set([...localCache.flavors, ...newFormatted]);
+              const mergedList = Array.from(mergedSet).sort((a, b) => a.localeCompare(b, 'de'));
+
+              const updatedCache = {
+                meta: {
+                  totalCount: meta.totalCount || mergedList.length,
+                  latestId: meta.latestId || localCache.meta.latestId,
+                  latestUpdatedAt: meta.latestUpdatedAt || localCache.meta.latestUpdatedAt,
+                  lastChecked: new Date().toISOString()
+                },
+                flavors: mergedList
+              };
+
+              try {
+                fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(updatedCache, null, 2), 'utf-8');
+              } catch(e) {}
+
+              console.log(`[HookahTools DeltaSync] Added ${newFormatted.length} new flavor(s). Total: ${mergedList.length}.`);
+              return mergedList;
+            }
+          }
+
+          // CASE 3: Items deleted (meta.totalCount < localCache.meta.totalCount) -> Prune & Full refresh
+          console.log(`[HookahTools PruneSync] Remote count (${meta.totalCount}) is less than local (${localCache.meta.totalCount}). Performing prune sync...`);
         }
       } catch (err) {
-        console.warn('[HookahTools SmartCache] Metadata check failed, using local cache:', err.message);
+        console.warn('[HookahTools SmartCache] Metadata/Delta check failed, using local cache:', err.message);
         return localCache.flavors;
       }
     }
 
+    // Full catalog download fallback (Initial download, force sync, or pruning deleted items)
     try {
       console.log('[HookahTools] Performing full catalog download from Supabase...');
-      const brands = await fetchSupabaseEndpoint('brands?select=id,name');
-      const brandMap = {};
-      if (Array.isArray(brands)) {
-        brands.forEach(b => {
-          if (b && b.id) {
-            brandMap[b.id] = (b.name || b.id).trim();
-          }
-        });
-      }
+      const brandMap = await this.getBrandMap(true);
 
       let allFlavors = [];
       let offset = 0;
@@ -696,7 +762,6 @@ class DatabaseService {
       console.error('Error fetching tobacco from HookahTools Supabase:', err);
     }
 
-    // Fallback: local cache
     return localCache.flavors && localCache.flavors.length > 0 ? localCache.flavors : null;
   }
 

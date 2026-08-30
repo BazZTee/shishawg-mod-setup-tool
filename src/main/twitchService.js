@@ -678,11 +678,8 @@ class TwitchService {
 
   startGiveawayListener(keyword, channel = this.targetChannel) {
     this.stopGiveawayListener();
-    if (!this.accessToken || !this.user) {
-      return { success: false, error: 'Nicht mit Twitch eingeloggt' };
-    }
 
-    const chan = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
     const cleanKeyword = (keyword || '!join').toLowerCase().trim();
 
     try {
@@ -692,54 +689,74 @@ class TwitchService {
 
       this.giveawayWs.on('open', () => {
         this.giveawayWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-        this.giveawayWs.send(`PASS oauth:${this.accessToken}`);
-        this.giveawayWs.send(`NICK ${this.user.login.toLowerCase()}`);
+        const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+        this.giveawayWs.send(`NICK ${nick}`);
         this.giveawayWs.send(`JOIN #${chan}`);
       });
 
       this.giveawayWs.on('message', (data) => {
-        const raw = data.toString();
-        if (raw.startsWith('PING')) {
-          if (this.giveawayWs) this.giveawayWs.send('PONG :tmi.twitch.tv');
-          return;
-        }
+        const rawLines = data.toString().split(/\r\n|\r|\n/);
+        for (const line of rawLines) {
+          const raw = line.trim();
+          if (!raw) continue;
 
-        if (raw.includes('PRIVMSG')) {
-          let tags = {};
-          let msgBody = raw;
-          if (raw.startsWith('@')) {
-            const parts = raw.split(' :');
-            const rawTags = parts[0].substring(1).split(';');
-            rawTags.forEach(t => {
-              const [k, v] = t.split('=');
-              tags[k] = v || '';
-            });
-            msgBody = raw.substring(parts[0].length + 1);
+          if (raw.startsWith('PING')) {
+            if (this.giveawayWs && this.giveawayWs.readyState === WebSocket.OPEN) {
+              this.giveawayWs.send('PONG :tmi.twitch.tv');
+            }
+            continue;
           }
 
-          const privmsgMatch = msgBody.match(/:([^!]+)![^@]+@[^\s]+\s+PRIVMSG\s+#\w+\s+:(.+)/);
-          if (privmsgMatch) {
-            const login = privmsgMatch[1].toLowerCase();
-            let text = privmsgMatch[2].replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().toLowerCase();
+          if (raw.includes('PRIVMSG')) {
+            let tags = {};
+            let rest = raw;
 
-            if (text === this.giveawayKeyword || text.startsWith(this.giveawayKeyword + ' ')) {
-              const displayName = tags['display-name'] || privmsgMatch[1];
-              const color = tags['color'] || '#00f0ff';
-              const badges = tags['badges'] || '';
-              const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
-              const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
+            if (rest.startsWith('@')) {
+              const spaceIdx = rest.indexOf(' ');
+              if (spaceIdx > 0) {
+                const tagStr = rest.substring(1, spaceIdx);
+                rest = rest.substring(spaceIdx + 1);
+                tagStr.split(';').forEach(kv => {
+                  const eqIdx = kv.indexOf('=');
+                  if (eqIdx > 0) {
+                    tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
+                  }
+                });
+              }
+            }
 
-              const participant = {
-                login,
-                displayName,
-                color,
-                isMod,
-                isSub,
-                timestamp: Date.now()
-              };
+            const privIdx = rest.indexOf(' PRIVMSG ');
+            if (privIdx > 0) {
+              let senderPart = rest.substring(0, privIdx);
+              if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
+              const exclIdx = senderPart.indexOf('!');
+              const login = (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
 
-              this.giveawayParticipants.set(login, participant);
-              this.sendToRenderer('giveaway:new-participant', participant);
+              const colonIdx = rest.indexOf(' :', privIdx);
+              if (colonIdx > 0 && login) {
+                const text = rest.substring(colonIdx + 2).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().toLowerCase();
+                const kw = this.giveawayKeyword;
+
+                if (text === kw || text.startsWith(kw + ' ') || text.includes(kw)) {
+                  const displayName = tags['display-name'] || login;
+                  const color = tags['color'] || '#00f0ff';
+                  const badges = tags['badges'] || '';
+                  const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
+                  const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
+
+                  const participant = {
+                    login,
+                    displayName,
+                    color,
+                    isMod,
+                    isSub,
+                    timestamp: Date.now()
+                  };
+
+                  this.giveawayParticipants.set(login, participant);
+                  this.sendToRenderer('giveaway:new-participant', participant);
+                }
+              }
             }
           }
         }

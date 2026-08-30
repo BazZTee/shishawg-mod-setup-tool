@@ -2829,6 +2829,85 @@ textarea#command-output {
   cursor: pointer;
 }
 
+/* Giveaway Chat Announcement Toggle */
+.gw-chat-toggle-card {
+  margin-top: 10px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 240, 255, 0.04);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.gw-chat-toggle-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.gw-chat-toggle-title {
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: #ffffff;
+}
+
+.gw-chat-toggle-desc {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.gw-toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.gw-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.gw-toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #334155;
+  transition: 0.3s;
+  border-radius: 22px;
+}
+
+.gw-toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.gw-toggle-switch input:checked + .gw-toggle-slider {
+  background-color: #00f0ff;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+}
+
+.gw-toggle-switch input:checked + .gw-toggle-slider:before {
+  transform: translateX(18px);
+  background-color: #0b0f19;
+}
+
 .giveaway-action-bar {
   display: flex;
   gap: 8px;

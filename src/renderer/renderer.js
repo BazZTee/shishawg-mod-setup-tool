@@ -3589,6 +3589,7 @@ const chkGwExcludeBots = document.getElementById('chk-gw-exclude-bots');
 const chkGwExcludeMods = document.getElementById('chk-gw-exclude-mods');
 const chkGwExcludeWatchlist = document.getElementById('chk-gw-exclude-watchlist');
 const chkGwExcludePrevWinners = document.getElementById('chk-gw-exclude-prev-winners');
+const chkGwSendChat = document.getElementById('chk-gw-send-chat');
 
 // Buttons
 const btnStartGiveaway = document.getElementById('btn-start-giveaway');
@@ -3749,16 +3750,21 @@ async function startGiveawayRegistration() {
 
   renderParticipantsPool();
 
-  // Automatically post start announcement in Twitch chat
-  const startMsg = giveawayState.mode === 'keyword'
-    ? `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Schreibt ${giveawayState.keyword} in den Chat, um teilzunehmen!`
-    : `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Alle aktiven Chatter sind im Lostopf!`;
+  // Automatically post start announcement in Twitch chat (if enabled)
+  const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+  if (sendChat) {
+    const startMsg = giveawayState.mode === 'keyword'
+      ? `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Schreibt ${giveawayState.keyword} in den Chat, um teilzunehmen!`
+      : `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Alle aktiven Chatter sind im Lostopf!`;
 
-  try {
-    await ipcRenderer.invoke('twitch:send-chat', { message: startMsg, channel });
-    showToast('Giveaway gestartet & Start-Ansage automatisch im Chat gepostet!', 'success');
-  } catch(e) {
-    showToast('Giveaway gestartet!', 'success');
+    try {
+      await ipcRenderer.invoke('twitch:send-chat', { message: startMsg, channel });
+      showToast('Giveaway gestartet & Start-Ansage automatisch im Chat gepostet!', 'success');
+    } catch(e) {
+      showToast('Giveaway gestartet!', 'success');
+    }
+  } else {
+    showToast('Giveaway gestartet (Stiller Test-Modus – keine Chat-Ansage).', 'info');
   }
 }
 
@@ -3770,12 +3776,15 @@ async function stopGiveawayRegistration(notifyChat = true) {
   if (btnStopGiveaway) btnStopGiveaway.classList.add('hidden');
   updateGiveawayStatus('closed');
 
-  if (notifyChat) {
+  const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+  if (notifyChat && sendChat) {
     const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
     try {
       await ipcRenderer.invoke('twitch:send-chat', { message: '🔒 Die Giveaway-Registrierung ist beendet! Der Gewinner wird jetzt ermittelt...', channel });
     } catch(e) {}
     showToast('Giveaway-Registrierung geschlossen & Chat informiert.', 'info');
+  } else if (notifyChat) {
+    showToast('Giveaway-Registrierung geschlossen (Stiller Modus).', 'info');
   }
 }
 
@@ -3859,25 +3868,30 @@ async function drawGiveawayWinner() {
         btnDrawWinner.textContent = '🎲 GEWINNER AUSLOSEN';
       }
 
-      // Automatically announce winner with link in Twitch chat
-      const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-      let claimBaseUrl = 'https://bazztree.github.io/shishawg-mod-setup-tool/claim.html';
-      try {
-        const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
-        if (cfg && cfg.claimUrl && cfg.claimUrl.trim()) {
-          claimBaseUrl = cfg.claimUrl.trim();
+      // Announce winner in Twitch chat (if enabled)
+      const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+      if (sendChat) {
+        const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        let claimBaseUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
+        try {
+          const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
+          if (cfg && cfg.claimUrl && cfg.claimUrl.trim()) {
+            claimBaseUrl = cfg.claimUrl.trim();
+          }
+        } catch(e) {}
+
+        const sep = claimBaseUrl.includes('?') ? '&' : '?';
+        const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}`;
+        const winChatMsg = `🎉 Glückwunsch @${winnerObj.username}! Du hast "${winnerObj.prize}" gewonnen! 🎁 Bitte trage deine Versandadresse direkt hier ein: ${link}`;
+
+        try {
+          await ipcRenderer.invoke('twitch:send-chat', { message: winChatMsg, channel });
+          showToast(`🎉 Gewinner ausgelost & live im Twitch-Chat verkündet: @${winnerObj.displayName}!`, 'success');
+        } catch(e) {
+          showToast(`🎉 Gewinner ausgelost: ${winnerObj.displayName}!`, 'success');
         }
-      } catch(e) {}
-
-      const sep = claimBaseUrl.includes('?') ? '&' : '?';
-      const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}`;
-      const winChatMsg = `🎉 Glückwunsch @${winnerObj.username}! Du hast "${winnerObj.prize}" gewonnen! 🎁 Bitte trage deine Versandadresse direkt hier ein: ${link}`;
-
-      try {
-        await ipcRenderer.invoke('twitch:send-chat', { message: winChatMsg, channel });
-        showToast(`🎉 Gewinner ausgelost & live im Twitch-Chat verkündet: @${winnerObj.displayName}!`, 'success');
-      } catch(e) {
-        showToast(`🎉 Gewinner ausgelost: ${winnerObj.displayName}!`, 'success');
+      } else {
+        showToast(`🎉 Gewinner ausgelost (Stiller Modus): @${winnerObj.displayName}!`, 'success');
       }
     }
   }, 90);
@@ -4065,6 +4079,18 @@ function setupGiveawaysListeners() {
     });
   }
 
+  // Chat Announcement Toggle
+  if (chkGwSendChat) {
+    chkGwSendChat.addEventListener('change', () => {
+      if (btnStartGiveaway) {
+        btnStartGiveaway.textContent = chkGwSendChat.checked
+          ? '▶️ Giveaway starten & Chat informieren'
+          : '▶️ Giveaway starten (Stiller Test-Modus)';
+      }
+      showToast(chkGwSendChat.checked ? '📢 Twitch-Chat Benachrichtigungen aktiviert' : '🔇 Stiller Test-Modus aktiv (keine Chat-Nachrichten)', 'info');
+    });
+  }
+
   // Start Giveaway
   if (btnStartGiveaway) {
     btnStartGiveaway.addEventListener('click', startGiveawayRegistration);
@@ -4073,21 +4099,6 @@ function setupGiveawaysListeners() {
   // Stop Giveaway
   if (btnStopGiveaway) {
     btnStopGiveaway.addEventListener('click', stopGiveawayRegistration);
-  }
-
-  // Announce Giveaway Start in Chat
-  if (btnAnnounceGiveaway) {
-    btnAnnounceGiveaway.addEventListener('click', async () => {
-      const prize = inputGiveawayPrize ? inputGiveawayPrize.value.trim() : giveawayState.prize;
-      const kw = inputGiveawayKeyword ? inputGiveawayKeyword.value.trim() : '!join';
-      const msg = `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Schreibt ${kw} in den Chat, um teilzunehmen!`;
-      try {
-        await ipcRenderer.invoke('twitch:send-chat-message', msg);
-        showToast('Start-Ansage in den Twitch-Chat gesendet!', 'success');
-      } catch(e) {
-        showToast('Fehler beim Senden in den Twitch-Chat', 'error');
-      }
-    });
   }
 
   // Clear Participants
@@ -4281,14 +4292,21 @@ function setupGiveawaysListeners() {
     });
   }
 
+  // Filter changes update pool immediately
+  [chkGwExcludeBots, chkGwExcludeMods, chkGwExcludeWatchlist, chkGwExcludePrevWinners].forEach(chk => {
+    if (chk) {
+      chk.addEventListener('change', () => {
+        renderParticipantsPool();
+      });
+    }
+  });
+
   // Incoming Participant from Twitch IRC Listener
   ipcRenderer.on('giveaway:new-participant', (event, participant) => {
     if (!giveawayState.isActive) return;
     if (!participant || !participant.login) return;
 
-    if (!isParticipantExcluded(participant)) {
-      giveawayState.participants.set(participant.login.toLowerCase(), participant);
-      renderParticipantsPool();
-    }
+    giveawayState.participants.set(participant.login.toLowerCase(), participant);
+    renderParticipantsPool();
   });
 }

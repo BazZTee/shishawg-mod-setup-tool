@@ -732,6 +732,18 @@
                   </div>
                 </div>
 
+                <!-- Chat Announcement Toggle (Silent Test Mode Option) -->
+                <div class="gw-chat-toggle-card">
+                  <div class="gw-chat-toggle-info">
+                    <span class="gw-chat-toggle-title">📢 Twitch-Chat Benachrichtigungen</span>
+                    <span class="gw-chat-toggle-desc">Start-Ansage, Abschluss &amp; Gewinner-Link im Chat posten</span>
+                  </div>
+                  <label class="gw-toggle-switch" title="Aktivieren um Chat-Ansagen zu senden, deaktivieren für stillen Test-Modus">
+                    <input type="checkbox" id="chk-gw-send-chat" checked>
+                    <span class="gw-toggle-slider"></span>
+                  </label>
+                </div>
+
                 <!-- Start / Stop Action Bar (Automatic Chat Announcement) -->
                 <div class="giveaway-action-bar">
                   <button id="btn-start-giveaway" class="btn btn-success" style="flex:1; height:42px; font-weight:700;">
@@ -1043,7 +1055,7 @@
           </div>
           <div class="form-group">
             <label style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Gewinner-Adressformular Basis-URL:</label>
-            <input type="text" id="input-giveaway-claim-url" placeholder="https://bazztree.github.io/shishawg-mod-setup-tool/claim.html" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px;">
+            <input type="text" id="input-giveaway-claim-url" placeholder="https://bazztee.github.io/shishawg-mod-setup-tool/claim.html" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px;">
             <small style="color:var(--text-muted); font-size:0.75rem; margin-top:3px; display:block;">Standard: GitHub Pages Claim-Portal (oder eigener Link / Telegram-Bot Link).</small>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">

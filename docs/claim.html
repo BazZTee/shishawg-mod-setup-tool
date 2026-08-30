@@ -440,7 +440,7 @@
         const gResp = await fetch(`https://api.github.com/gists/${GIST_ID}?_t=${Date.now()}`, {
           headers: {
             'Authorization': `token ${GIST_TOKEN}`,
-            'Cache-Control': 'no-cache'
+            'Accept': 'application/vnd.github.v3+json'
           }
         });
         let winners = [];
@@ -471,6 +471,7 @@
           method: 'PATCH',
           headers: {
             'Authorization': `token ${GIST_TOKEN}`,
+            'Accept': 'application/vnd.github.v3+json',
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({

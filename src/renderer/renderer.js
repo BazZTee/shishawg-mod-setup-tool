@@ -234,7 +234,7 @@ function showView(targetViewId) {
   if (targetViewId === 'view-giveaways') {
     loadGiveawayWinnersHistory();
     if (!giveawaySyncInterval) {
-      giveawaySyncInterval = setInterval(loadGiveawayWinnersHistory, 5000);
+      giveawaySyncInterval = setInterval(loadGiveawayWinnersHistory, 2500);
     }
   } else {
     if (giveawaySyncInterval) {
@@ -3972,12 +3972,28 @@ function renderAddressReview(winner) {
 }
 
 async function loadGiveawayWinnersHistory() {
-  if (!winnersHistoryTbody) return;
   try {
     const res = await ipcRenderer.invoke('giveaway:get-winners');
     if (res && res.success && Array.isArray(res.winners)) {
       giveawayState.winnersHistory = res.winners;
       renderWinnersHistory(res.winners);
+
+      // Auto-update the active winner form if an address was submitted
+      if (giveawayState.currentWinner) {
+        const updated = res.winners.find(w => w.id === giveawayState.currentWinner.id || (w.username && w.username.toLowerCase() === giveawayState.currentWinner.username.toLowerCase()));
+        if (updated) {
+          const hadNoAddress = !giveawayState.currentWinner.address || !giveawayState.currentWinner.address.street;
+          const nowHasAddress = updated.address && updated.address.street;
+          
+          giveawayState.currentWinner = updated;
+          renderAddressReview(updated);
+
+          if (hadNoAddress && nowHasAddress) {
+            playNotificationSound();
+            showToast(`📥 Lieferadresse für @${updated.displayName || updated.username} eingegangen!`, 'success');
+          }
+        }
+      }
     }
   } catch(e) {}
 }

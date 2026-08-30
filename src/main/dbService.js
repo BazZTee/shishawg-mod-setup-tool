@@ -988,16 +988,18 @@ class DatabaseService {
     });
   }
 
-  // Fetch raw Gist JSON string
+  // Fetch raw Gist JSON string (with cache busting for instant real-time sync)
   fetchGistRaw() {
     return new Promise((resolve) => {
       const options = {
         hostname: 'api.github.com',
-        path: `/gists/${GIST_ID}`,
+        path: `/gists/${GIST_ID}?_t=${Date.now()}`,
         method: 'GET',
         headers: {
           'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${GIST_TOKEN}`
+          'Authorization': `token ${GIST_TOKEN}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
         }
       };
       const req = https.request(options, (res) => {

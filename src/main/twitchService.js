@@ -243,6 +243,303 @@ class TwitchService {
     this.sendToRenderer('twitch:logout', {});
   }
 
+  async checkStreamStatus(channel = this.targetChannel) {
+    const chan = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    if (!this.accessToken || !this.clientId) {
+      return { success: false, channel: chan, live: false, message: 'Nicht mit Twitch verbunden' };
+    }
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(chan)}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          const stream = data.data[0];
+          return {
+            success: true,
+            channel: chan,
+            live: true,
+            viewer_count: stream.viewer_count,
+            title: stream.title,
+            game_name: stream.game_name,
+            started_at: stream.started_at
+          };
+        } else {
+          return {
+            success: true,
+            channel: chan,
+            live: false
+          };
+        }
+      }
+    } catch (err) {
+      console.error('Check stream status error:', err);
+    }
+    return { success: false, channel: chan, live: false };
+  }
+
+  async getBroadcasterId(channelName = this.targetChannel) {
+    const cleanName = (channelName || 'marved').toLowerCase().replace('#', '').trim();
+    if (!this.accessToken || !this.clientId) return null;
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(cleanName)}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          return data.data[0].id;
+        }
+      }
+    } catch(e) {
+      console.error('Error fetching broadcaster ID:', e);
+    }
+    return null;
+  }
+
+  async getUserInfo(login) {
+    if (!login) return null;
+    const cleanName = login.toLowerCase().replace('#', '').trim();
+    if (!this.accessToken || !this.clientId) return null;
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(cleanName)}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          return data.data[0];
+        }
+      }
+    } catch(e) {
+      console.error('Error fetching user info for', cleanName, e);
+    }
+    return null;
+  }
+
+  async getChannelInformation(channel = this.targetChannel) {
+    const cleanName = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId) return { success: false, error: 'Kanal nicht gefunden' };
+
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          const info = data.data[0];
+          return {
+            success: true,
+            broadcaster_id: info.broadcaster_id,
+            broadcaster_name: info.broadcaster_name,
+            game_name: info.game_name,
+            game_id: info.game_id,
+            title: info.title,
+            tags: info.tags || []
+          };
+        }
+      }
+    } catch(e) {
+      console.error('Error fetching channel information:', e);
+    }
+    return { success: false, error: 'Konnte Kanalinformationen nicht laden' };
+  }
+
+  async searchCategories(query) {
+    if (!query || query.trim().length < 2) return [];
+    if (!this.accessToken || !this.clientId) return [];
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/search/categories?query=${encodeURIComponent(query.trim())}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data) {
+          return data.data.map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            box_art_url: (cat.box_art_url || '').replace('{width}', '100').replace('{height}', '133')
+          }));
+        }
+      }
+    } catch(e) {
+      console.error('Error searching categories:', e);
+    }
+    return [];
+  }
+
+  async searchChannels(query) {
+    if (!query || query.trim().length < 2) return [];
+    if (!this.accessToken || !this.clientId) return [];
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/search/channels?query=${encodeURIComponent(query.trim())}`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data) {
+          return data.data.map(ch => ({
+            id: ch.id,
+            display_name: ch.display_name,
+            broadcaster_login: ch.broadcaster_login,
+            game_name: ch.game_name,
+            is_live: ch.is_live,
+            thumbnail_url: ch.thumbnail_url || '',
+            title: ch.title || ''
+          }));
+        }
+      }
+    } catch(e) {
+      console.error('Error searching channels:', e);
+    }
+    return [];
+  }
+
+  async createClip(channel = this.targetChannel) {
+    const cleanName = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId) throw new Error('Kanal nicht gefunden.');
+
+    const res = await fetch(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId
+      }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        const clip = data.data[0];
+        return {
+          success: true,
+          clip_id: clip.id,
+          edit_url: clip.edit_url,
+          clip_url: `https://clips.twitch.tv/${clip.id}`
+        };
+      }
+    }
+    const errText = await res.text();
+    throw new Error(`Clip konnte nicht erstellt werden (${res.status}): ${errText}`);
+  }
+
+  async setStreamTitle(title, channel = this.targetChannel) {
+    const cleanTitle = (title || '').trim();
+    if (!cleanTitle) throw new Error('Bitte gib einen Streamtitel ein.');
+    
+    // Send bot chat command !settitle
+    await this.sendChatMessage(`!settitle ${cleanTitle}`, channel);
+    return { success: true, title: cleanTitle };
+  }
+
+  async setStreamGame(gameName, channel = this.targetChannel) {
+    const cleanGame = (gameName || '').trim();
+    if (!cleanGame) throw new Error('Bitte wähle eine Spiel-Kategorie.');
+
+    // Send bot chat command !setgame
+    await this.sendChatMessage(`!setgame ${cleanGame}`, channel);
+    return { success: true, game: cleanGame };
+  }
+
+  async startRaid(targetUser, channel = this.targetChannel) {
+    const cleanTarget = (targetUser || '').toLowerCase().replace('@', '').replace('#', '').trim();
+    if (!cleanTarget) throw new Error('Bitte wähle einen Zielkanal für den Raid.');
+    await this.sendChatMessage(`/raid ${cleanTarget}`, channel);
+    return { success: true, target: cleanTarget };
+  }
+
+  async cancelRaid(channel = this.targetChannel) {
+    await this.sendChatMessage('/unraid', channel);
+    return { success: true };
+  }
+
+  async createStreamMarker(description = '', channel = this.targetChannel) {
+    const cleanName = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId) throw new Error('Kanal nicht gefunden.');
+
+    const res = await fetch('https://api.twitch.tv/helix/streams/markers', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        user_id: broadcasterId,
+        description: (description || 'Marker').substring(0, 140)
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        const marker = data.data[0];
+        return {
+          success: true,
+          id: marker.id,
+          created_at: marker.created_at,
+          description: marker.description,
+          position_seconds: marker.position_seconds || 0
+        };
+      }
+    }
+
+    const errText = await res.text();
+    throw new Error(`Twitch-Marker konnte nicht gesetzt werden: ${errText || res.statusText}`);
+  }
+
+  async getChatters(channel = this.targetChannel) {
+    const cleanName = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId || !this.user) return { total: 0, chatters: [] };
+
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${this.user.id}&first=100`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          total: data.total || 0,
+          chatters: (data.data || []).map(c => ({
+            id: c.user_id,
+            login: c.user_login,
+            name: c.user_name
+          }))
+        };
+      }
+    } catch(e) {
+      console.error('Error fetching chatters:', e);
+    }
+    return { total: 0, chatters: [] };
+  }
+
   async sendChatMessage(message, channel = this.targetChannel) {
     if (!this.accessToken || !this.user) {
       throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
@@ -377,6 +674,92 @@ class TwitchService {
         }
       });
     });
+  }
+
+  startGiveawayListener(keyword, channel = this.targetChannel) {
+    this.stopGiveawayListener();
+    if (!this.accessToken || !this.user) {
+      return { success: false, error: 'Nicht mit Twitch eingeloggt' };
+    }
+
+    const chan = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const cleanKeyword = (keyword || '!join').toLowerCase().trim();
+
+    try {
+      this.giveawayWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+      this.giveawayKeyword = cleanKeyword;
+      this.giveawayParticipants = new Map();
+
+      this.giveawayWs.on('open', () => {
+        this.giveawayWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+        this.giveawayWs.send(`PASS oauth:${this.accessToken}`);
+        this.giveawayWs.send(`NICK ${this.user.login.toLowerCase()}`);
+        this.giveawayWs.send(`JOIN #${chan}`);
+      });
+
+      this.giveawayWs.on('message', (data) => {
+        const raw = data.toString();
+        if (raw.startsWith('PING')) {
+          if (this.giveawayWs) this.giveawayWs.send('PONG :tmi.twitch.tv');
+          return;
+        }
+
+        if (raw.includes('PRIVMSG')) {
+          let tags = {};
+          let msgBody = raw;
+          if (raw.startsWith('@')) {
+            const parts = raw.split(' :');
+            const rawTags = parts[0].substring(1).split(';');
+            rawTags.forEach(t => {
+              const [k, v] = t.split('=');
+              tags[k] = v || '';
+            });
+            msgBody = raw.substring(parts[0].length + 1);
+          }
+
+          const privmsgMatch = msgBody.match(/:([^!]+)![^@]+@[^\s]+\s+PRIVMSG\s+#\w+\s+:(.+)/);
+          if (privmsgMatch) {
+            const login = privmsgMatch[1].toLowerCase();
+            let text = privmsgMatch[2].replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().toLowerCase();
+
+            if (text === this.giveawayKeyword || text.startsWith(this.giveawayKeyword + ' ')) {
+              const displayName = tags['display-name'] || privmsgMatch[1];
+              const color = tags['color'] || '#00f0ff';
+              const badges = tags['badges'] || '';
+              const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
+              const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
+
+              const participant = {
+                login,
+                displayName,
+                color,
+                isMod,
+                isSub,
+                timestamp: Date.now()
+              };
+
+              this.giveawayParticipants.set(login, participant);
+              this.sendToRenderer('giveaway:new-participant', participant);
+            }
+          }
+        }
+      });
+
+      this.giveawayWs.on('error', () => {});
+      return { success: true, keyword: cleanKeyword, channel: chan };
+    } catch(e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  stopGiveawayListener() {
+    if (this.giveawayWs) {
+      try {
+        this.giveawayWs.close();
+      } catch(e) {}
+      this.giveawayWs = null;
+    }
+    return { success: true };
   }
 
   sendToRenderer(channel, payload) {

@@ -86,6 +86,10 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
+  mainWindow.on('focus', () => {
+    if (mainWindow) mainWindow.flashFrame(false);
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -122,8 +126,14 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
+    const errMsg = err ? (err.message || String(err)) : '';
+    // Silently ignore missing app-update.yml in portable/test/dev builds
+    if (errMsg.includes('app-update.yml') || errMsg.includes('ENOENT') || errMsg.includes('dev-app-update.yml')) {
+      console.warn('AutoUpdater: update config not found (portable/test build mode).');
+      return;
+    }
     if (mainWindow) {
-      mainWindow.webContents.send('updater:error', err ? err.message : 'Fehler beim Update-Prüfen');
+      mainWindow.webContents.send('updater:error', errMsg || 'Fehler beim Update-Prüfen');
     }
   });
 }
@@ -193,12 +203,34 @@ ipcMain.handle('twitch:set-channel', async (event, channel) => {
   return { success: true, channel: twitchService.targetChannel };
 });
 
-ipcMain.handle('twitch:send-chat', async (event, { message, channel }) => {
+ipcMain.handle('twitch:send-chat', async (event, payload) => {
   try {
+    const message = typeof payload === 'string' ? payload : (payload && payload.message);
+    const channel = typeof payload === 'object' ? payload.channel : undefined;
     const res = await twitchService.sendChatMessage(message, channel);
     return { success: true, res };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:send-chat-message', async (event, payload) => {
+  try {
+    const message = typeof payload === 'string' ? payload : (payload && payload.message);
+    const channel = typeof payload === 'object' ? payload.channel : undefined;
+    const res = await twitchService.sendChatMessage(message, channel);
+    return { success: true, res };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:get-user-info', async (event, login) => {
+  try {
+    const user = await twitchService.getUserInfo(login);
+    return { success: !!user, user };
+  } catch(e) {
+    return { success: false, error: e.message };
   }
 });
 
@@ -222,6 +254,216 @@ ipcMain.handle('twitch:set-color', async (event, color) => {
     store.set('twitch_user_color', color);
   }
   return true;
+});
+
+ipcMain.handle('twitch:check-stream-status', async (event, channel) => {
+  return await twitchService.checkStreamStatus(channel);
+});
+
+ipcMain.handle('twitch:get-channel-info', async (event, channel) => {
+  return await twitchService.getChannelInformation(channel);
+});
+
+ipcMain.handle('twitch:search-categories', async (event, query) => {
+  return await twitchService.searchCategories(query);
+});
+
+ipcMain.handle('twitch:search-channels', async (event, query) => {
+  return await twitchService.searchChannels(query);
+});
+
+ipcMain.handle('twitch:set-title', async (event, { title, channel }) => {
+  try {
+    return await twitchService.setStreamTitle(title, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:set-game', async (event, { game, channel }) => {
+  try {
+    return await twitchService.setStreamGame(game, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:create-clip', async (event, channel) => {
+  try {
+    return await twitchService.createClip(channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:start-raid', async (event, { target, channel }) => {
+  try {
+    return await twitchService.startRaid(target, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:cancel-raid', async (event, channel) => {
+  try {
+    return await twitchService.cancelRaid(channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:create-stream-marker', async (event, { description, channel }) => {
+  try {
+    return await twitchService.createStreamMarker(description, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:get-chatters', async (event, channel) => {
+  return await twitchService.getChatters(channel);
+});
+
+// Mod-Chat IPC Handlers
+ipcMain.handle('modchat:get-messages', async () => {
+  try {
+    const msgs = await dbService.getModChatMessages();
+    return { success: true, messages: msgs };
+  } catch(e) {
+    return { success: false, messages: [], error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:send-message', async (event, messageObj) => {
+  try {
+    const msgs = await dbService.sendModChatMessage(messageObj);
+    return { success: true, messages: msgs };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:clear-messages', async () => {
+  try {
+    await dbService.clearModChatMessages();
+    return { success: true, messages: [] };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('app:notify-background', async () => {
+  if (mainWindow && !mainWindow.isFocused()) {
+    mainWindow.flashFrame(true);
+  }
+  return true;
+});
+
+// Watchlist IPC Handlers
+ipcMain.handle('watchlist:get', async () => {
+  try {
+    const list = await dbService.getWatchlist();
+    return { success: true, list };
+  } catch(e) {
+    return { success: false, list: [] };
+  }
+});
+
+ipcMain.handle('watchlist:save', async (event, list) => {
+  try {
+    await dbService.saveWatchlist(list);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Stream Markers (Session Cache)
+ipcMain.handle('markers:get', async () => {
+  return { success: true, markers: dbService.getStreamMarkers() };
+});
+
+ipcMain.handle('markers:save', async (event, markers) => {
+  dbService.saveStreamMarkers(markers);
+  return { success: true };
+});
+
+// Giveaway IPC Handlers
+ipcMain.handle('giveaway:start-listener', async (event, { keyword, channel }) => {
+  return twitchService.startGiveawayListener(keyword, channel);
+});
+
+ipcMain.handle('giveaway:stop-listener', async () => {
+  return twitchService.stopGiveawayListener();
+});
+
+ipcMain.handle('giveaway:get-winners', async () => {
+  try {
+    const winners = await dbService.getGiveawayWinners();
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, winners: [], error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
+  try {
+    const winners = await dbService.saveGiveawayWinner(winnerObj);
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
+  try {
+    const winners = await dbService.updateGiveawayWinner(id, updates);
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:delete-winner', async (event, id) => {
+  try {
+    const winners = await dbService.deleteGiveawayWinner(id);
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId }) => {
+  try {
+    const cfg = await dbService.getTelegramConfig();
+    const token = botToken || cfg.botToken || store.get('telegram_bot_token', '');
+    const chat = chatId || cfg.chatId || store.get('telegram_chat_id', '');
+    if (!token || !chat) {
+      return { success: false, error: 'Telegram Bot Token oder Chat-ID nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
+    }
+    return await dbService.sendTelegramMessage(text, token, chat);
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:save-telegram-config', async (event, { botToken, chatId, claimUrl }) => {
+  const cleanToken = (botToken || '').trim();
+  const cleanChat = (chatId || '').trim();
+  const cleanClaimUrl = (claimUrl || '').trim();
+  store.set('telegram_bot_token', cleanToken);
+  store.set('telegram_chat_id', cleanChat);
+  store.set('giveaway_claim_url', cleanClaimUrl);
+  await dbService.saveTelegramConfig({ botToken: cleanToken, chatId: cleanChat, claimUrl: cleanClaimUrl });
+  return { success: true };
+});
+
+ipcMain.handle('giveaway:get-telegram-config', async () => {
+  const cfg = await dbService.getTelegramConfig();
+  const botToken = cfg.botToken || store.get('telegram_bot_token', '');
+  const chatId = cfg.chatId || store.get('telegram_chat_id', '');
+  const claimUrl = cfg.claimUrl || store.get('giveaway_claim_url', '');
+  return { botToken, chatId, claimUrl };
 });
 
 // IPC Handlers for Database
@@ -260,7 +502,11 @@ ipcMain.handle('updater:check', async () => {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, result };
   } catch (err) {
-    return { success: false, error: err.message };
+    const errMsg = err ? (err.message || String(err)) : '';
+    if (errMsg.includes('app-update.yml') || errMsg.includes('ENOENT')) {
+      return { success: false, error: 'Keine Update-Konfiguration im Test/Portable-Modus' };
+    }
+    return { success: false, error: errMsg };
   }
 });
 

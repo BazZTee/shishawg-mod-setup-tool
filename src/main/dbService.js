@@ -987,6 +987,352 @@ class DatabaseService {
       req.end();
     });
   }
+
+  // Fetch raw Gist JSON string
+  fetchGistRaw() {
+    return new Promise((resolve) => {
+      const options = {
+        hostname: 'api.github.com',
+        path: `/gists/${GIST_ID}`,
+        method: 'GET',
+        headers: {
+          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+          'Authorization': `token ${GIST_TOKEN}`
+        }
+      };
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            resolve(body);
+          } else {
+            resolve(null);
+          }
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.end();
+    });
+  }
+
+  // Mod-Chat Messages
+  async getModChatMessages() {
+    const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
+    let localMsgs = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        localMsgs = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    // Fetch latest from Gist
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['mod_chat_messages.json'];
+        if (f && f.content) {
+          const remoteMsgs = JSON.parse(f.content);
+          if (Array.isArray(remoteMsgs)) {
+            // Merge unique messages by id
+            const map = new Map();
+            localMsgs.forEach(m => map.set(m.id, m));
+            remoteMsgs.forEach(m => map.set(m.id, m));
+            const merged = Array.from(map.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-100);
+            fs.writeFileSync(localFile, JSON.stringify(merged, null, 2), 'utf-8');
+            return merged;
+          }
+        }
+      }
+    } catch(e) {}
+
+    return localMsgs;
+  }
+
+  async sendModChatMessage(msgObj) {
+    const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
+    let msgs = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        msgs = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    msgs.push(msgObj);
+    msgs = msgs.slice(-100); // keep last 100 messages
+
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(msgs, null, 2), 'utf-8');
+    } catch(e) {}
+
+    // Push to Gist asynchronously
+    this.pushFileToGist('mod_chat_messages.json', JSON.stringify(msgs, null, 2)).catch(() => {});
+    return msgs;
+  }
+
+  async clearModChatMessages() {
+    const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify([], null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('mod_chat_messages.json', JSON.stringify([], null, 2)).catch(() => {});
+    return [];
+  }
+
+  // Watchlist
+  async getWatchlist() {
+    const localFile = path.join(app.getPath('userData'), 'mod_watchlist.json');
+    let localList = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        localList = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['mod_watchlist.json'];
+        if (f && f.content) {
+          const remoteList = JSON.parse(f.content);
+          if (Array.isArray(remoteList)) {
+            fs.writeFileSync(localFile, JSON.stringify(remoteList, null, 2), 'utf-8');
+            return remoteList;
+          }
+        }
+      }
+    } catch(e) {}
+
+    return localList;
+  }
+
+  async saveWatchlist(list) {
+    const localFile = path.join(app.getPath('userData'), 'mod_watchlist.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('mod_watchlist.json', JSON.stringify(list, null, 2)).catch(() => {});
+    return list;
+  }
+
+  // Stream Markers (Session Cache)
+  getStreamMarkers() {
+    const localFile = path.join(app.getPath('userData'), 'stream_markers.json');
+    try {
+      if (fs.existsSync(localFile)) {
+        return JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+    return [];
+  }
+
+  saveStreamMarkers(markers) {
+    const localFile = path.join(app.getPath('userData'), 'stream_markers.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(markers, null, 2), 'utf-8');
+    } catch(e) {}
+    return markers;
+  }
+
+  // Giveaway Winners & DSGVO Address Database
+  async getGiveawayWinners() {
+    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
+    let localList = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        localList = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['giveaway_winners.json'];
+        if (f && f.content) {
+          const remoteList = JSON.parse(f.content);
+          if (Array.isArray(remoteList)) {
+            fs.writeFileSync(localFile, JSON.stringify(remoteList, null, 2), 'utf-8');
+            return remoteList;
+          }
+        }
+      }
+    } catch(e) {}
+
+    return localList;
+  }
+
+  async saveGiveawayWinner(winnerObj) {
+    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
+    let list = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        list = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    const idx = list.findIndex(w => w.id === winnerObj.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...winnerObj };
+    } else {
+      list.unshift(winnerObj);
+    }
+
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('giveaway_winners.json', JSON.stringify(list, null, 2)).catch(() => {});
+    return list;
+  }
+
+  async updateGiveawayWinner(id, updates) {
+    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
+    let list = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        list = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    const idx = list.findIndex(w => w.id === id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...updates };
+      try {
+        fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
+      } catch(e) {}
+      this.pushFileToGist('giveaway_winners.json', JSON.stringify(list, null, 2)).catch(() => {});
+    }
+    return list;
+  }
+
+  async deleteGiveawayWinner(id) {
+    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
+    let list = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        list = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    list = list.filter(w => w.id !== id);
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('giveaway_winners.json', JSON.stringify(list, null, 2)).catch(() => {});
+    return list;
+  }
+
+  // Telegram Bot Dispatch
+  sendTelegramMessage(text, botToken, chatId) {
+    return new Promise((resolve) => {
+      if (!botToken || !chatId || !text) {
+        resolve({ success: false, error: 'Telegram Bot Token oder Chat-ID fehlt' });
+        return;
+      }
+
+      const payload = JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: 'HTML'
+      });
+
+      const options = {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/sendMessage`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+
+      const req = https.request(options, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(body);
+            if (data.ok) {
+              resolve({ success: true, messageId: data.result ? data.result.message_id : null });
+            } else {
+              resolve({ success: false, error: data.description || 'Telegram API Fehler' });
+            }
+          } catch(e) {
+            resolve({ success: res.statusCode === 200, error: body });
+          }
+        });
+      });
+
+      req.on('error', (err) => resolve({ success: false, error: err.message }));
+      req.write(payload);
+      req.end();
+    });
+  }
+
+  // Telegram & Giveaway Portal Config (Synced across all mods via Gist)
+  async getTelegramConfig() {
+    const localFile = path.join(app.getPath('userData'), 'telegram_config.json');
+    let cfg = { botToken: '', chatId: '', claimUrl: '' };
+    try {
+      if (fs.existsSync(localFile)) {
+        cfg = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['telegram_config.json'];
+        if (f && f.content) {
+          const remoteCfg = JSON.parse(f.content);
+          if (remoteCfg) {
+            cfg = { ...cfg, ...remoteCfg };
+            fs.writeFileSync(localFile, JSON.stringify(cfg, null, 2), 'utf-8');
+          }
+        }
+      }
+    } catch(e) {}
+
+    return cfg;
+  }
+
+  async saveTelegramConfig(cfg) {
+    const localFile = path.join(app.getPath('userData'), 'telegram_config.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(cfg, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('telegram_config.json', JSON.stringify(cfg, null, 2)).catch(() => {});
+    return cfg;
+  }
+
+  // Helper for pushing arbitrary files to Gist
+  pushFileToGist(filename, content) {
+    return new Promise((resolve) => {
+      const payload = JSON.stringify({
+        files: {
+          [filename]: { content }
+        }
+      });
+      const options = {
+        hostname: 'api.github.com',
+        path: `/gists/${GIST_ID}`,
+        method: 'PATCH',
+        headers: {
+          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+          'Authorization': `token ${GIST_TOKEN}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+      const req = https.request(options, (res) => resolve(res.statusCode === 200));
+      req.on('error', () => resolve(false));
+      req.write(payload);
+      req.end();
+    });
+  }
 }
 
 module.exports = DatabaseService;

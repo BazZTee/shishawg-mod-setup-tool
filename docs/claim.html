@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>ShishaWG – Giveaway Gewinner-Portal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0b0f19;
+      background: radial-gradient(circle at 50% 20%, #17233f 0%, #080c14 100%);
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 20px;
+      padding: 32px 28px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(0, 240, 255, 0.15);
+      text-align: center;
+    }
+
+    .header-icon {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      display: inline-block;
+      animation: bounce 2s infinite;
+    }
+
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 0.95rem;
+      margin-bottom: 24px;
+    }
+
+    .prize-card {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.1), rgba(121, 40, 202, 0.15));
+      border: 1px solid rgba(0, 240, 255, 0.35);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+
+    .prize-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #00f0ff;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .prize-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .winner-target {
+      margin-top: 8px;
+      font-size: 0.85rem;
+      color: #cbd5e1;
+    }
+
+    .winner-target strong {
+      color: #00f0ff;
+    }
+
+    .auth-section {
+      margin-bottom: 20px;
+    }
+
+    .btn-twitch {
+      background: #9146ff;
+      background: linear-gradient(135deg, #9146ff 0%, #772ce8 100%);
+      color: #ffffff;
+      border: none;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      width: 100%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 4px 18px rgba(145, 70, 255, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .btn-twitch:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(145, 70, 255, 0.6);
+    }
+
+    .verified-badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      padding: 12px 16px;
+      border-radius: 10px;
+      color: #34d399;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    .verified-badge img {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 2px solid #34d399;
+    }
+
+    .error-box {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      padding: 14px;
+      border-radius: 10px;
+      color: #f87171;
+      font-size: 0.88rem;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    input, select {
+      width: 100%;
+      background: rgba(10, 15, 29, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: #fff;
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: #00f0ff;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1.5fr;
+      gap: 12px;
+    }
+
+    .btn-submit {
+      background: linear-gradient(135deg, #00f0ff 0%, #0070f3 100%);
+      color: #000;
+      font-weight: 800;
+      border: none;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 1rem;
+      width: 100%;
+      cursor: pointer;
+      margin-top: 10px;
+      box-shadow: 0 4px 20px rgba(0, 240, 255, 0.35);
+      transition: all 0.2s;
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 26px rgba(0, 240, 255, 0.55);
+    }
+
+    .success-screen {
+      padding: 20px 0;
+    }
+
+    .success-icon {
+      font-size: 4rem;
+      margin-bottom: 12px;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="header-icon">🎁</div>
+    <h1>Glückwunsch zum Gewinn!</h1>
+    <p class="subtitle">ShishaWG Live-Stream Giveaway Adressübermittlung</p>
+
+    <!-- PRIZE CARD -->
+    <div class="prize-card">
+      <div class="prize-label">Dein Gewinn:</div>
+      <div id="disp-prize" class="prize-title">Shisha Paket</div>
+      <div class="winner-target">Ausgelost für: <strong id="disp-winner-name">@Zuschauer</strong></div>
+    </div>
+
+    <!-- ERROR NOTIFICATION -->
+    <div id="error-box" class="error-box hidden"></div>
+
+    <!-- STEP 1: AUTHENTICATION VIA TWITCH OAUTH -->
+    <div id="auth-section" class="auth-section">
+      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:14px; line-height:1.4;">
+        🔒 Um Missbrauch zu verhindern, logge dich bitte kurz mit deinem Twitch-Account ein. Nur der ausgeloste Gewinner kann das Formular absenden.
+      </p>
+      <button id="btn-login-twitch" class="btn-twitch">
+        <svg style="width:20px;height:20px;fill:currentColor" viewBox="0 0 24 24"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
+        Mit Twitch einloggen &amp; Identität prüfen
+      </button>
+    </div>
+
+    <!-- STEP 2: VERIFIED USER & ADDRESS FORM -->
+    <div id="form-section" class="hidden">
+      <div id="verified-badge" class="verified-badge">
+        <img id="verified-avatar" src="" alt="Avatar">
+        <div>
+          <div>Identität bestätigt!</div>
+          <div style="font-size:0.8rem; color:#cbd5e1;">Eingeloggt als: <strong id="verified-login" style="color:#34d399;">@User</strong></div>
+        </div>
+      </div>
+
+      <form id="address-form">
+        <div class="form-group">
+          <label>Vor- &amp; Nachname:</label>
+          <input type="text" id="in-fullname" placeholder="Max Mustermann" required>
+        </div>
+
+        <div class="form-group">
+          <label>Straße &amp; Hausnummer:</label>
+          <input type="text" id="in-street" placeholder="Musterstraße 12" required>
+        </div>
+
+        <div class="grid-3">
+          <div class="form-group">
+            <label>PLZ:</label>
+            <input type="text" id="in-zip" placeholder="12345" required>
+          </div>
+          <div class="form-group">
+            <label>Stadt / Ort:</label>
+            <input type="text" id="in-city" placeholder="Berlin" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Land:</label>
+          <select id="in-country">
+            <option value="Deutschland" selected>Deutschland</option>
+            <option value="Österreich">Österreich</option>
+            <option value="Schweiz">Schweiz</option>
+            <option value="Luxemburg">Luxemburg</option>
+          </select>
+        </div>
+
+        <button type="submit" id="btn-submit-address" class="btn-submit">
+          📦 Adresse sicher übermitteln
+        </button>
+      </form>
+    </div>
+
+    <!-- STEP 3: SUCCESS CONFIRMATION -->
+    <div id="success-section" class="success-screen hidden">
+      <div class="success-icon">✅</div>
+      <h2 style="font-size:1.5rem; margin-bottom:8px; color:#34d399;">Adresse erfolgreich übermittelt!</h2>
+      <p style="font-size:0.9rem; color:#94a3b8; line-height:1.5;">
+        Deine Versanddaten wurden sicher an die Moderatoren der ShishaWG übergeben. Die Daten werden nach dem Versand DSGVO-konform gelöscht.
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const CLIENT_ID = '440sjk1dkut7ltxkf7b3p267dekbpu';
+    const GIST_ID = '07d57c2a7a40bbf9da781c1c411eeeb3';
+    const GIST_TOKEN = 'ghp_N8nL6Q5eJzJ9j0k4gN0P6q7R3t4U5v8W9xY1';
+
+    const params = new URLSearchParams(window.location.search);
+    const winId = params.get('id') || ('gw-' + Date.now());
+    const targetUser = (params.get('user') || '').toLowerCase().trim();
+    const prize = params.get('prize') || 'Shisha Paket';
+
+    document.getElementById('disp-prize').textContent = prize;
+    document.getElementById('disp-winner-name').textContent = targetUser ? ('@' + targetUser) : '@Gewinner';
+
+    const hash = window.location.hash.substring(1);
+    const hashParams = new URLSearchParams(hash);
+    const accessToken = hashParams.get('access_token');
+
+    const authSection = document.getElementById('auth-section');
+    const formSection = document.getElementById('form-section');
+    const successSection = document.getElementById('success-section');
+    const errorBox = document.getElementById('error-box');
+
+    document.getElementById('btn-login-twitch').addEventListener('click', () => {
+      const redirectUri = window.location.origin + window.location.pathname + window.location.search;
+      const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=user:read:email`;
+      window.location.href = authUrl;
+    });
+
+    if (accessToken) {
+      verifyTwitchUser(accessToken);
+    }
+
+    async function verifyTwitchUser(token) {
+      try {
+        const resp = await fetch('https://api.twitch.tv/helix/users', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Client-Id': CLIENT_ID
+          }
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.data && data.data.length > 0) {
+            const user = data.data[0];
+            const loggedInLogin = user.login.toLowerCase();
+
+            if (targetUser && loggedInLogin !== targetUser) {
+              errorBox.classList.remove('hidden');
+              errorBox.innerHTML = `⛔ <strong>Zugriff verweigert!</strong><br>Du bist als <strong>@${user.display_name}</strong> eingeloggt. Dieser Gewinn ist jedoch für <strong>@${targetUser}</strong> hinterlegt.`;
+              return;
+            }
+
+            authSection.classList.add('hidden');
+            formSection.classList.remove('hidden');
+            document.getElementById('verified-avatar').src = user.profile_image_url || '';
+            document.getElementById('verified-login').textContent = '@' + user.display_name;
+          }
+        } else {
+          errorBox.classList.remove('hidden');
+          errorBox.textContent = 'Fehler bei der Twitch-Identitätsprüfung. Bitte versuche es erneut.';
+        }
+      } catch(e) {
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = 'Verbindungsfehler zu Twitch: ' + e.message;
+      }
+    }
+
+    document.getElementById('address-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btn-submit-address');
+      btn.disabled = true;
+      btn.textContent = 'Übermittle Daten...';
+
+      const addressData = {
+        fullName: document.getElementById('in-fullname').value.trim(),
+        street: document.getElementById('in-street').value.trim(),
+        zip: document.getElementById('in-zip').value.trim(),
+        city: document.getElementById('in-city').value.trim(),
+        country: document.getElementById('in-country').value,
+        submittedAt: Date.now()
+      };
+
+      try {
+        const gResp = await fetch(`https://api.github.com/gists/${GIST_ID}`);
+        let winners = [];
+        if (gResp.ok) {
+          const gData = await gResp.json();
+          if (gData.files && gData.files['giveaway_winners.json']) {
+            winners = JSON.parse(gData.files['giveaway_winners.json'].content || '[]');
+          }
+        }
+
+        const idx = winners.findIndex(w => w.id === winId || (targetUser && w.username.toLowerCase() === targetUser));
+        if (idx >= 0) {
+          winners[idx].address = addressData;
+          winners[idx].status = 'address_received';
+        } else {
+          winners.unshift({
+            id: winId,
+            username: targetUser || 'gewinner',
+            displayName: targetUser || 'Gewinner',
+            prize: prize,
+            timestamp: Date.now(),
+            status: 'address_received',
+            address: addressData
+          });
+        }
+
+        await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `token ${GIST_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            files: {
+              'giveaway_winners.json': { content: JSON.stringify(winners, null, 2) }
+            }
+          })
+        });
+
+        formSection.classList.add('hidden');
+        successSection.classList.remove('hidden');
+      } catch(err) {
+        alert('Fehler beim Speichern der Adresse. Bitte wende dich an einen Mod im Chat.');
+        btn.disabled = false;
+        btn.textContent = '📦 Adresse sicher übermitteln';
+      }
+    });
+  </script>
+</body>
+</html>

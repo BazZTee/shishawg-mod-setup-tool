@@ -93,6 +93,68 @@
       color: #00f0ff;
     }
 
+    .auth-section {
+      margin-bottom: 20px;
+    }
+
+    .btn-twitch {
+      background: #9146ff;
+      background: linear-gradient(135deg, #9146ff 0%, #772ce8 100%);
+      color: #ffffff;
+      border: none;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      width: 100%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      box-shadow: 0 4px 18px rgba(145, 70, 255, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .btn-twitch:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(145, 70, 255, 0.6);
+    }
+
+    .verified-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      padding: 12px 16px;
+      border-radius: 10px;
+      color: #34d399;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-align: left;
+      margin-bottom: 20px;
+    }
+
+    .verified-badge img {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 2px solid #34d399;
+    }
+
+    .error-box {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      padding: 16px;
+      border-radius: 10px;
+      color: #f87171;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      text-align: left;
+      line-height: 1.45;
+    }
+
     .form-group {
       text-align: left;
       margin-bottom: 14px;
@@ -181,11 +243,30 @@
       <div class="winner-target">Ausgelost für: <strong id="disp-winner-name">@Zuschauer</strong></div>
     </div>
 
-    <!-- ADDRESS FORM -->
-    <div id="form-section">
-      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:16px; text-align:left; line-height:1.4;">
-        Bitte trage hier deine Lieferadresse ein. Die Daten werden verschlüsselt an die ShishaWG-Moderatoren übertragen und nach dem Versand DSGVO-konform gelöscht:
+    <!-- ERROR NOTIFICATION -->
+    <div id="error-box" class="error-box hidden"></div>
+
+    <!-- STEP 1: AUTHENTICATION VIA TWITCH OAUTH -->
+    <div id="auth-section" class="auth-section">
+      <p style="font-size:0.88rem; color:#94a3b8; margin-bottom:16px; line-height:1.45;">
+        🔒 <strong>Authentifizierung erforderlich:</strong><br>
+        Bitte logge dich mit deinem Twitch-Account ein. Das Formular wird nur freigeschaltet, wenn du der rechtmäßige Gewinner (<strong id="auth-target-name" style="color:#00f0ff;">@Gewinner</strong>) bist.
       </p>
+      <button id="btn-login-twitch" class="btn-twitch">
+        <svg style="width:22px;height:22px;fill:currentColor" viewBox="0 0 24 24"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
+        Mit Twitch einloggen &amp; Identität bestätigen
+      </button>
+    </div>
+
+    <!-- STEP 2: VERIFIED USER & ADDRESS FORM -->
+    <div id="form-section" class="hidden">
+      <div id="verified-badge" class="verified-badge">
+        <img id="verified-avatar" src="" alt="Avatar">
+        <div>
+          <div style="font-size:0.95rem;">✅ Identität bestätigt!</div>
+          <div style="font-size:0.8rem; color:#cbd5e1;">Eingeloggt als: <strong id="verified-login" style="color:#34d399;">@User</strong></div>
+        </div>
+      </div>
 
       <form id="address-form">
         <div class="form-group">
@@ -225,7 +306,7 @@
       </form>
     </div>
 
-    <!-- SUCCESS CONFIRMATION -->
+    <!-- STEP 3: SUCCESS CONFIRMATION -->
     <div id="success-section" class="success-screen hidden">
       <div class="success-icon">✅</div>
       <h2 style="font-size:1.5rem; margin-bottom:8px; color:#34d399;">Adresse erfolgreich übermittelt!</h2>
@@ -239,22 +320,107 @@
   </div>
 
   <script>
+    const CLIENT_ID = '440sjk1dkut7ltxkf7b3p267dekbpu';
     const GIST_ID = '07d57c2a7a40bbf9da781c1c411eeeb3';
     const GIST_TOKEN = 'ghp_N8nL6Q5eJzJ9j0k4gN0P6q7R3t4U5v8W9xY1';
 
-    const params = new URLSearchParams(window.location.search);
-    const winId = params.get('id') || ('gw-' + Date.now());
-    const targetUser = (params.get('user') || '').replace(/^@/, '').trim();
-    const prize = params.get('prize') || 'Shisha Paket';
+    // Parse URL params or OAuth state
+    let params = new URLSearchParams(window.location.search);
+    let winId = params.get('id') || '';
+    let targetUser = (params.get('user') || '').replace(/^@/, '').toLowerCase().trim();
+    let prize = params.get('prize') || 'Shisha Paket';
+
+    // Check OAuth hash redirect
+    const hash = window.location.hash.substring(1);
+    const hashParams = new URLSearchParams(hash);
+    const accessToken = hashParams.get('access_token');
+    const stateParam = hashParams.get('state');
+
+    if (stateParam) {
+      try {
+        const stateObj = JSON.parse(decodeURIComponent(stateParam));
+        if (stateObj.id) winId = stateObj.id;
+        if (stateObj.user) targetUser = stateObj.user.toLowerCase().trim();
+        if (stateObj.prize) prize = stateObj.prize;
+      } catch(e) {}
+    }
+
+    if (!winId) winId = 'gw-' + Date.now();
 
     document.getElementById('disp-prize').textContent = prize;
     document.getElementById('disp-winner-name').textContent = targetUser ? ('@' + targetUser) : '@Gewinner';
+    document.getElementById('auth-target-name').textContent = targetUser ? ('@' + targetUser) : '@Gewinner';
 
+    const authSection = document.getElementById('auth-section');
     const formSection = document.getElementById('form-section');
     const successSection = document.getElementById('success-section');
+    const errorBox = document.getElementById('error-box');
 
+    let verifiedUser = null;
+
+    // Login button click
+    document.getElementById('btn-login-twitch').addEventListener('click', () => {
+      const redirectUri = window.location.origin + window.location.pathname;
+      const stateObj = { id: winId, user: targetUser, prize: prize };
+      const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=&state=${encodeURIComponent(JSON.stringify(stateObj))}`;
+      window.location.href = authUrl;
+    });
+
+    // If token present in URL hash, verify identity with Twitch Helix
+    if (accessToken) {
+      verifyTwitchUser(accessToken);
+    }
+
+    async function verifyTwitchUser(token) {
+      try {
+        const resp = await fetch('https://api.twitch.tv/helix/users', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Client-Id': CLIENT_ID
+          }
+        });
+
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.data && data.data.length > 0) {
+            const user = data.data[0];
+            const loggedInLogin = (user.login || '').toLowerCase();
+
+            // Strict Validation: logged in account MUST match targetUser
+            if (targetUser && loggedInLogin !== targetUser) {
+              errorBox.classList.remove('hidden');
+              errorBox.innerHTML = `⛔ <strong>Zugriff verweigert!</strong><br>` +
+                                   `Du bist mit dem Twitch-Account <strong>@${user.display_name}</strong> eingeloggt.<br>` +
+                                   `Dieser Gewinn ist jedoch exklusiv für <strong>@${targetUser}</strong> hinterlegt.`;
+              authSection.classList.add('hidden');
+              return;
+            }
+
+            // Success: Unlock form
+            verifiedUser = user;
+            authSection.classList.add('hidden');
+            formSection.classList.remove('hidden');
+            document.getElementById('verified-avatar').src = user.profile_image_url || '';
+            document.getElementById('verified-login').textContent = '@' + user.display_name;
+          }
+        } else {
+          errorBox.classList.remove('hidden');
+          errorBox.textContent = 'Fehler bei der Twitch-Identitätsprüfung. Bitte versuche es erneut.';
+        }
+      } catch(e) {
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = 'Verbindungsfehler zu Twitch: ' + e.message;
+      }
+    }
+
+    // Submit form
     document.getElementById('address-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!verifiedUser && targetUser) {
+        alert('Bitte verifiziere dich zuerst über Twitch!');
+        return;
+      }
+
       const btn = document.getElementById('btn-submit-address');
       btn.disabled = true;
       btn.textContent = 'Übermittle Daten...';
@@ -265,6 +431,8 @@
         zip: document.getElementById('in-zip').value.trim(),
         city: document.getElementById('in-city').value.trim(),
         country: document.getElementById('in-country').value,
+        verifiedTwitchLogin: verifiedUser ? verifiedUser.login : targetUser,
+        verifiedTwitchId: verifiedUser ? verifiedUser.id : '',
         submittedAt: Date.now()
       };
 
@@ -278,15 +446,15 @@
           }
         }
 
-        const idx = winners.findIndex(w => w.id === winId || (targetUser && (w.username || '').toLowerCase() === targetUser.toLowerCase()));
+        const idx = winners.findIndex(w => w.id === winId || (targetUser && (w.username || '').toLowerCase() === targetUser));
         if (idx >= 0) {
           winners[idx].address = addressData;
           winners[idx].status = 'address_received';
         } else {
           winners.unshift({
             id: winId,
-            username: targetUser || 'gewinner',
-            displayName: targetUser || 'Gewinner',
+            username: targetUser || (verifiedUser ? verifiedUser.login : 'gewinner'),
+            displayName: (verifiedUser ? verifiedUser.display_name : targetUser) || 'Gewinner',
             prize: prize,
             timestamp: Date.now(),
             status: 'address_received',

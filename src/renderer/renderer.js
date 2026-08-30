@@ -3881,7 +3881,7 @@ async function drawGiveawayWinner() {
         } catch(e) {}
 
         const sep = claimBaseUrl.includes('?') ? '&' : '?';
-        const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}`;
+        const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}&v=${Date.now()}`;
         const winChatMsg = `🎉 Glückwunsch @${winnerObj.username}! Du hast "${winnerObj.prize}" gewonnen! 🎁 Bitte trage deine Versandadresse direkt hier ein: ${link}`;
 
         try {

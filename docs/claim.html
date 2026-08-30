@@ -439,7 +439,7 @@
       try {
         const gResp = await fetch(`https://api.github.com/gists/${GIST_ID}?_t=${Date.now()}`, {
           headers: {
-            'Authorization': `token ${GIST_TOKEN}`,
+            'Authorization': `Bearer ${GIST_TOKEN}`,
             'Accept': 'application/vnd.github.v3+json'
           }
         });
@@ -470,7 +470,7 @@
         const patchResp = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
           method: 'PATCH',
           headers: {
-            'Authorization': `token ${GIST_TOKEN}`,
+            'Authorization': `Bearer ${GIST_TOKEN}`,
             'Accept': 'application/vnd.github.v3+json',
             'Content-Type': 'application/json'
           },

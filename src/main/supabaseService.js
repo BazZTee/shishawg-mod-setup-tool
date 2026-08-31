@@ -1,11 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODE3NjE2MywiZXhwIjoyMTAzNzUyMTYzfQ.MbwS0KXB78PjWq1dHxhrUyxQBPQEW1x9eeydTZC3Bg8';
 
 class SupabaseService {
   constructor() {
-    this.client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    this.client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       auth: { persistSession: false },
       realtime: { params: { eventsPerSecond: 20 } }
     });

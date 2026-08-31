@@ -328,8 +328,29 @@
     }
 
     async function syncQnA() {
+      // 1. Try local server first (0ms latency, 100% instant sync on local machine/network)
       try {
-        // Fetch directly from raw Gist CDN (unlimited requests, zero rate limits)
+        const localActiveRes = await fetch(`http://127.0.0.1:18942/api/qna/active?t=${Date.now()}`);
+        if (localActiveRes.ok) {
+          const localActiveData = await localActiveRes.json();
+          let allQuestions = [];
+          if (mode === 'screen') {
+            try {
+              const localQRes = await fetch(`http://127.0.0.1:18942/api/qna/questions?t=${Date.now()}`);
+              if (localQRes.ok) {
+                allQuestions = await localQRes.json();
+              }
+            } catch(e) {}
+          }
+          renderQnAData(localActiveData.active, allQuestions);
+          return;
+        }
+      } catch(localErr) {
+        // Local server unreachable, fallback to cloud Gist
+      }
+
+      // 2. Fallback: Remote Gist sync
+      try {
         const activeRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_active.json?t=${Date.now()}`);
         let activeQ = null;
         if (activeRes.ok) {
@@ -343,7 +364,6 @@
           } catch(e) {}
         }
 
-        // In screen mode, also fetch upcoming questions
         let allQuestions = [];
         if (mode === 'screen') {
           try {
@@ -356,7 +376,7 @@
 
         renderQnAData(activeQ, allQuestions);
       } catch(err) {
-        console.error('Q&A Gist Sync Error:', err);
+        console.error('Q&A Sync Error:', err);
       }
     }
 

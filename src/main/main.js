@@ -724,6 +724,33 @@ function startObsServer() {
       return;
     }
 
+    if (url === '/api/qna/active') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      const localFile = path.join(app.getPath('userData'), 'qna_active.json');
+      let active = null;
+      try {
+        if (fs.existsSync(localFile)) {
+          const raw = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+          active = (raw && typeof raw === 'object' && 'active' in raw) ? raw.active : raw;
+        }
+      } catch(e) {}
+      res.end(JSON.stringify({ active, updatedAt: Date.now() }));
+      return;
+    }
+
+    if (url === '/api/qna/questions') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+      let questions = [];
+      try {
+        if (fs.existsSync(localFile)) {
+          questions = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+        }
+      } catch(e) {}
+      res.end(JSON.stringify(questions));
+      return;
+    }
+
     if (url === '/qna' || url === '/qna.html' || url === '/prompter') {
       const qnaPath = path.join(__dirname, '../../docs/qna.html');
       if (fs.existsSync(qnaPath)) {

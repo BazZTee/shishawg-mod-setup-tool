@@ -712,7 +712,7 @@
 
     async function syncAllData() {
       try {
-        // 1. Fetch Questions (No URL query params that break PostgREST)
+        // 1. Fetch Questions
         const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&order=created_at.desc`, {
           headers: reqHeaders,
           cache: 'no-store'
@@ -875,6 +875,7 @@
       } catch(e) {}
     }
 
+    // DRAW RANDOM QUESTION
     const btnDraw = document.getElementById('btn-prompter-draw');
     if (btnDraw) {
       btnDraw.addEventListener('click', async () => {
@@ -882,28 +883,38 @@
         if (pool.length === 0) return;
         const randomQ = pool[Math.floor(Math.random() * pool.length)];
 
-        // Reset previous on_air
-        await fetch(`${SUPABASE_REST}/qna_questions?channel=eq.${encodeURIComponent(targetChannel)}&status=eq.on_air`, {
-          method: 'PATCH',
-          headers: reqHeaders,
-          body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
-        });
+        // Optimistic UI Update (Instant 0ms display!)
+        if (activeQuestion) activeQuestion.status = 'approved';
+        randomQ.status = 'on_air';
+        randomQ.person = qnaSettings.activePerson;
+        activeQuestion = randomQ;
+        renderScreenPrompter();
 
-        // Set chosen to on_air
-        await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(randomQ.id)}`, {
-          method: 'PATCH',
-          headers: reqHeaders,
-          body: JSON.stringify({
-            status: 'on_air',
-            person: qnaSettings.activePerson,
-            updated_at: new Date().toISOString()
-          })
-        });
+        try {
+          // Reset any other on_air questions
+          await fetch(`${SUPABASE_REST}/qna_questions?status=eq.on_air`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
+          });
 
-        await syncAllData();
+          // Set chosen question to on_air
+          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(randomQ.id)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({
+              status: 'on_air',
+              person: qnaSettings.activePerson,
+              updated_at: new Date().toISOString()
+            })
+          });
+        } catch(e) {}
+
+        syncAllData();
       });
     }
 
+    // CYCLE PERSON
     const btnCycle = document.getElementById('btn-prompter-cycle-person');
     if (btnCycle) {
       btnCycle.addEventListener('click', async () => {
@@ -912,30 +923,43 @@
         qnaSettings.activePerson = next;
 
         if (activeQuestion) {
-          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({ person: next, updated_at: new Date().toISOString() })
-          });
+          activeQuestion.person = next;
+          renderScreenPrompter();
+          try {
+            await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
+              method: 'PATCH',
+              headers: reqHeaders,
+              body: JSON.stringify({ person: next, updated_at: new Date().toISOString() })
+            });
+          } catch(e) {}
         }
         await saveSettingsRemote();
-        await syncAllData();
+        syncAllData();
       });
     }
 
+    // ANSWERED BUTTON
     const btnAnswered = document.getElementById('btn-prompter-answered');
     if (btnAnswered) {
       btnAnswered.addEventListener('click', async () => {
         if (!activeQuestion) return;
-        await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
-          method: 'PATCH',
-          headers: reqHeaders,
-          body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
-        });
+        const qId = activeQuestion.id;
+        activeQuestion = null;
+        renderScreenPrompter();
+
+        try {
+          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(qId)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
+          });
+        } catch(e) {}
+
         await cycleToNextPerson();
       });
     }
 
+    // UNANSWERED / SKIP BUTTON
     const btnUnanswered = document.getElementById('btn-prompter-unanswered');
     if (btnUnanswered) {
       btnUnanswered.addEventListener('click', async () => {
@@ -943,11 +967,19 @@
         if (qnaSettings.wheelEnabled) {
           openSpinningWheel();
         } else {
-          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
-          });
+          // If Wheel is off, skip and mark question as rejected
+          const qId = activeQuestion.id;
+          activeQuestion = null;
+          renderScreenPrompter();
+
+          try {
+            await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(qId)}`, {
+              method: 'PATCH',
+              headers: reqHeaders,
+              body: JSON.stringify({ status: 'rejected', updated_at: new Date().toISOString() })
+            });
+          } catch(e) {}
+
           await cycleToNextPerson();
         }
       });
@@ -1140,11 +1172,13 @@
           });
         }
         if (activeQuestion) {
+          // Question was replaced by challenge, so mark question rejected/answered
           await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
             method: 'PATCH',
             headers: reqHeaders,
-            body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
+            body: JSON.stringify({ status: 'rejected', updated_at: new Date().toISOString() })
           });
+          activeQuestion = null;
         }
         document.getElementById('wheel-modal').classList.remove('active');
         await cycleToNextPerson();

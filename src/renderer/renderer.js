@@ -5308,18 +5308,30 @@ function setupQnAListeners() {
   }
 
   // Add Person / Guest
+  const inputNewPerson = document.getElementById('input-new-person-name');
   const btnAddPerson = document.getElementById('btn-add-qna-person');
+
+  async function handleAddNewPerson() {
+    if (!inputNewPerson) return;
+    const name = inputNewPerson.value.trim();
+    if (!name) return;
+    if (!qnaPersons.includes(name)) {
+      qnaPersons.push(name);
+      await saveQnASettings();
+      renderPersonsPills();
+      showToast(`Person „${name}“ hinzugefügt! 👥`, 'success');
+    }
+    inputNewPerson.value = '';
+  }
+
   if (btnAddPerson) {
-    btnAddPerson.addEventListener('click', async () => {
-      const name = prompt('Name der Person / des Gastes eingeben:');
-      if (name && name.trim()) {
-        const cleanName = name.trim();
-        if (!qnaPersons.includes(cleanName)) {
-          qnaPersons.push(cleanName);
-          await saveQnASettings();
-          renderPersonsPills();
-          showToast(`Person „${cleanName}“ hinzugefügt! 👥`, 'success');
-        }
+    btnAddPerson.addEventListener('click', handleAddNewPerson);
+  }
+  if (inputNewPerson) {
+    inputNewPerson.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddNewPerson();
       }
     });
   }

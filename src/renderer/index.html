@@ -1012,9 +1012,12 @@
             <div id="qna-persons-pill-list" class="qna-persons-pill-list">
               <!-- Dynamically populated pills: [Marved ✕] [Hasty ✕] [Kai ✕] -->
             </div>
-            <button id="btn-add-qna-person" class="btn btn-xs btn-secondary" title="Person / Gast zur Fragerunde hinzufügen">
-              ➕ Person
-            </button>
+            <div class="add-person-group" style="display:inline-flex; align-items:center; gap:4px;">
+              <input type="text" id="input-new-person-name" placeholder="Name (z. B. Gast)" style="width:110px; height:24px; font-size:0.75rem; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff;">
+              <button id="btn-add-qna-person" class="btn btn-xs btn-primary" title="Person / Gast zur Fragerunde hinzufügen">
+                ➕
+              </button>
+            </div>
           </div>
 
           <div class="streamer-control-right">

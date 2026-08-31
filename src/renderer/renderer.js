@@ -1003,6 +1003,11 @@ function generateCommandString() {
       commandLengthBadge.textContent = `${len} / 500`;
     }
   }
+
+  // Automatic Shisha Session & Head Detection
+  if (typeof checkAndAutoStartHeadSession === 'function') {
+    checkAndAutoStartHeadSession(false);
+  }
 }
 
 // Smart Tobacco String Splitter (splits by comma, ' und ', ' & ', ' + ')
@@ -2034,6 +2039,11 @@ function setupEventListeners() {
     if (res.success) {
       showToast(`!editsetup Befehl in #${state.targetChannel} gesendet!`, 'success');
       triggerAutoLearn();
+
+      // Auto start / sync head session and timer
+      if (typeof checkAndAutoStartHeadSession === 'function') {
+        checkAndAutoStartHeadSession(true);
+      }
 
       // Publish confirmed setup to OBS Overlay Server & Cloud Gist
       const kohleVal = (inputGlobalKohle ? inputGlobalKohle.value : '').trim();
@@ -7281,7 +7291,125 @@ function updateStatsTimerTick() {
   if (progressBar) progressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
 }
 
+function extractCurrentSetupFromState() {
+  const p = state.persons && state.persons[0];
+  if (!p) return null;
+
+  const tobaccos = [];
+  const rawTobaccos = p.tobaccos || [];
+  for (let t of rawTobaccos) {
+    const clean = (t || '').trim();
+    if (clean) tobaccos.push(clean);
+  }
+  let tobStr = tobaccos.join(' & ');
+  if (!tobStr && p.tobacco) tobStr = (p.tobacco || '').trim();
+
+  return {
+    tobacco: tobStr,
+    bowl: (p.bowl || '').trim(),
+    pipe: (p.pipe || '').trim(),
+    hmd: (p.hmd || '').trim(),
+    person: (p.name || '').trim() || 'Marvin'
+  };
+}
+
+let lastKnownSetupSignature = '';
+
+function checkAndAutoStartHeadSession(force = false) {
+  const currentSetup = extractCurrentSetupFromState();
+  if (!currentSetup || !currentSetup.tobacco) return;
+
+  const sig = `${currentSetup.tobacco}__${currentSetup.bowl}__${currentSetup.hmd}__${currentSetup.pipe}`.toLowerCase();
+  if (!force && sig === lastKnownSetupSignature) {
+    return;
+  }
+
+  // If there was an active session running for >= 2 minutes (120s), auto-archive it into history!
+  if (statsState.isRunning && statsState.sessionElapsedSeconds >= 120 && statsState.activeSetup && statsState.activeSetup.tobacco && sig !== lastKnownSetupSignature) {
+    autoArchiveFinishedSession(statsState.activeSetup, statsState.sessionElapsedSeconds, statsState.coalRotations, statsState.sessionStartTime);
+  }
+
+  lastKnownSetupSignature = sig;
+  statsState.activeSetup = currentSetup;
+
+  // Auto-populate UI inputs if open
+  const inpTob = document.getElementById('input-session-tobacco');
+  const inpBowl = document.getElementById('input-session-bowl');
+  const inpHmd = document.getElementById('input-session-hmd');
+  const inpPipe = document.getElementById('input-session-pipe');
+  const inpPerson = document.getElementById('input-session-person');
+  if (inpTob) inpTob.value = currentSetup.tobacco;
+  if (inpBowl) inpBowl.value = currentSetup.bowl;
+  if (inpHmd) inpHmd.value = currentSetup.hmd;
+  if (inpPipe) inpPipe.value = currentSetup.pipe;
+  if (inpPerson) inpPerson.value = currentSetup.person;
+
+  // Automatically start timer for this new head!
+  const now = Date.now();
+  statsState.isRunning = true;
+  statsState.sessionStartTime = now;
+  statsState.sessionElapsedSeconds = 0;
+  statsState.coalStartTime = now;
+  statsState.coalElapsedSeconds = 0;
+  statsState.coalRotations = 0;
+  statsState.lastAlertPhase = null;
+
+  if (!statsState.intervalId) {
+    statsState.intervalId = setInterval(updateStatsTimerTick, 1000);
+  }
+
+  updateHeadCounterUI();
+  updateStatsTimerTick();
+
+  const badge = document.getElementById('timer-live-badge');
+  const lblStatus = document.getElementById('lbl-timer-status');
+  const iconPlay = document.getElementById('icon-timer-play');
+  const lblBtnPlay = document.getElementById('lbl-btn-timer-play');
+  const btnTogglePlay = document.getElementById('btn-timer-toggle-play');
+
+  if (badge) badge.className = 'qna-status-badge live';
+  if (lblStatus) lblStatus.textContent = 'Raucht live';
+  if (iconPlay) iconPlay.textContent = '⏸️';
+  if (lblBtnPlay) lblBtnPlay.textContent = 'Session pausieren';
+  if (btnTogglePlay) btnTogglePlay.className = 'btn btn-secondary btn-lg';
+
+  saveActiveTimerStateToBackend();
+}
+
+async function autoArchiveFinishedSession(setup, durationSecs, coalRotations, startTime) {
+  try {
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const durMins = Math.max(1, Math.round(durationSecs / 60));
+    const sessionObj = {
+      id: 'sess_' + Date.now(),
+      channel: chan,
+      headNum: statsState.headCountToday,
+      tobacco: setup.tobacco || 'Unbekannter Tabak',
+      bowl: setup.bowl || '',
+      hmd: setup.hmd || '',
+      pipe: setup.pipe || '',
+      person: setup.person || 'Marvin',
+      durationMinutes: durMins,
+      coalRotations: coalRotations || 0,
+      rating: 0,
+      notes: 'Automatisch archiviert beim Setup-Wechsel',
+      startedAt: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
+      endedAt: new Date().toISOString()
+    };
+    await ipcRenderer.invoke('stats:save-session', sessionObj);
+    await loadStatsState();
+  } catch(e) {}
+}
+
 function updateHeadCounterUI() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const finishedToday = (statsState.sessions || []).filter(s => {
+    const d = s.ended_at ? s.ended_at.split('T')[0] : (s.endedAt ? s.endedAt.split('T')[0] : '');
+    return d === todayStr;
+  }).length;
+
+  statsState.headCountToday = finishedToday + 1;
+
   const lblToday = document.getElementById('lbl-today-head-count');
   const lblBig = document.getElementById('lbl-head-counter-big');
   if (lblToday) lblToday.textContent = String(statsState.headCountToday);
@@ -7329,23 +7457,13 @@ function resetActiveTimer() {
 }
 
 function importCurrentGeneratorSetup() {
-  const p1 = document.querySelector('.person-card');
-  if (p1) {
-    const tobInp = p1.querySelector('.input-tobacco') || p1.querySelector('input[placeholder*="Tabak"]');
-    const bowlInp = p1.querySelector('.input-bowl') || p1.querySelector('input[placeholder*="Kopf"]');
-    const hmdInp = p1.querySelector('.input-hmd') || p1.querySelector('input[placeholder*="HMD"]');
-    const pipeInp = p1.querySelector('.input-pipe') || p1.querySelector('input[placeholder*="Pfeife"]');
-    const nameInp = p1.querySelector('.person-name-input');
-
-    if (tobInp && tobInp.value) document.getElementById('input-session-tobacco').value = tobInp.value;
-    if (bowlInp && bowlInp.value) document.getElementById('input-session-bowl').value = bowlInp.value;
-    if (hmdInp && hmdInp.value) document.getElementById('input-session-hmd').value = hmdInp.value;
-    if (pipeInp && pipeInp.value) document.getElementById('input-session-pipe').value = pipeInp.value;
-    if (nameInp && nameInp.value) document.getElementById('input-session-person').value = nameInp.value;
-
-    showToast('Setup aus dem Generator übernommen! ⚡', 'success');
-  } else {
-    showToast('Kein Setup im Generator gefunden.', 'info');
+  const currentSetup = extractCurrentSetupFromState();
+  if (currentSetup) {
+    if (currentSetup.tobacco) document.getElementById('input-session-tobacco').value = currentSetup.tobacco;
+    if (currentSetup.bowl) document.getElementById('input-session-bowl').value = currentSetup.bowl;
+    if (currentSetup.hmd) document.getElementById('input-session-hmd').value = currentSetup.hmd;
+    if (currentSetup.pipe) document.getElementById('input-session-pipe').value = currentSetup.pipe;
+    if (currentSetup.person) document.getElementById('input-session-person').value = currentSetup.person;
   }
 }
 
@@ -7408,8 +7526,6 @@ async function finishAndSaveHeadSession() {
   try {
     const res = await ipcRenderer.invoke('stats:save-session', sessionObj);
     if (res && res.success) {
-      statsState.headCountToday++;
-      updateHeadCounterUI();
       resetActiveTimer();
 
       // Clear setup inputs for next head
@@ -7435,30 +7551,73 @@ function renderSessionsHistory(sessions) {
     return;
   }
 
+  // Group sessions by Day Date (YYYY-MM-DD)
+  const groupsByDate = {};
+  sessions.forEach(s => {
+    const rawDate = s.ended_at || s.endedAt || s.started_at || s.startedAt || s.created_at || new Date().toISOString();
+    const dateKey = rawDate.split('T')[0];
+    if (!groupsByDate[dateKey]) groupsByDate[dateKey] = [];
+    groupsByDate[dateKey].push(s);
+  });
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const yesterdayDate = new Date(Date.now() - 86400000);
+  const yesterdayStr = yesterdayDate.toISOString().split('T')[0];
+
   let html = '';
-  sessions.forEach((s) => {
-    const timeStr = s.ended_at ? new Date(s.ended_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (s.endedAt ? new Date(s.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-');
-    const tobacco = s.tobacco || '-';
-    const bowlHmd = [s.bowl, s.hmd].filter(Boolean).join(' • ') || '-';
-    const dur = s.duration_minutes || s.durationMinutes || 0;
-    const coals = s.coal_rotations || s.coalRotations || 0;
-    const rating = s.rating ? `🌟 ${s.rating}/10` : '-';
-    const headNum = s.head_num || s.headNum || 1;
+  const sortedDates = Object.keys(groupsByDate).sort((a, b) => b.localeCompare(a));
+
+  sortedDates.forEach(dateKey => {
+    const daySessions = groupsByDate[dateKey];
+    let dayLabel = dateKey;
+    if (dateKey === todayStr) {
+      dayLabel = `📅 Heute (${new Date(dateKey + 'T12:00:00').toLocaleDateString('de-DE')})`;
+    } else if (dateKey === yesterdayStr) {
+      dayLabel = `📅 Gestern (${new Date(dateKey + 'T12:00:00').toLocaleDateString('de-DE')})`;
+    } else {
+      dayLabel = `📅 ${new Date(dateKey + 'T12:00:00').toLocaleDateString('de-DE')}`;
+    }
+
+    const totalDayMins = daySessions.reduce((sum, s) => sum + (s.duration_minutes || s.durationMinutes || 0), 0);
+    const dayHours = Math.floor(totalDayMins / 60);
+    const dayMins = totalDayMins % 60;
+    const timeDisplay = dayHours > 0 ? `${dayHours}h ${dayMins}m` : `${dayMins} Min`;
 
     html += `
-      <tr>
-        <td><strong style="color:var(--accent-cyan);">#${headNum}</strong></td>
-        <td style="color:var(--text-muted); font-size:0.8rem;">${timeStr}</td>
-        <td><strong style="color:#fff;">${escapeHtml(tobacco)}</strong></td>
-        <td style="color:var(--text-secondary); font-size:0.82rem;">${escapeHtml(bowlHmd)}</td>
-        <td><span style="background:rgba(0,240,255,0.1); color:var(--accent-cyan); padding:2px 6px; border-radius:4px; font-size:0.78rem; font-weight:700;">⏱️ ${dur} Min</span></td>
-        <td style="font-size:0.8rem; color:var(--text-muted);">🪵 ${coals}x</td>
-        <td><strong style="color:#fbbf24; font-size:0.82rem;">${rating}</strong></td>
-        <td style="text-align:right;">
-          <button class="btn btn-xs btn-secondary btn-del-session" data-id="${s.id}" title="Session löschen">🗑️</button>
+      <tr class="history-day-header-row" style="background: rgba(124, 58, 237, 0.15); border-top: 1px solid rgba(124, 58, 237, 0.35);">
+        <td colspan="8" style="padding: 8px 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="color: #c4b5fd; font-size: 0.88rem;">${dayLabel}</strong>
+            <span style="font-size: 0.76rem; color: #a78bfa; font-weight: 700;">${daySessions.length} ${daySessions.length === 1 ? 'Kopf' : 'Köpfe'} • Gesamt ${timeDisplay}</span>
+          </div>
         </td>
       </tr>
     `;
+
+    daySessions.forEach(s => {
+      const timeStr = s.ended_at ? new Date(s.ended_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (s.endedAt ? new Date(s.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-');
+      const tobacco = s.tobacco || '-';
+      const bowlHmd = [s.bowl, s.hmd].filter(Boolean).join(' • ') || '-';
+      const dur = s.duration_minutes || s.durationMinutes || 0;
+      const coals = s.coal_rotations || s.coalRotations || 0;
+      const rating = s.rating ? `🌟 ${s.rating}/10` : '-';
+      const headNum = s.head_num || s.headNum || 1;
+
+      html += `
+        <tr>
+          <td><strong style="color:var(--accent-cyan);">#${headNum}</strong></td>
+          <td style="color:var(--text-muted); font-size:0.8rem;">${timeStr}</td>
+          <td><strong style="color:#fff;">${escapeHtml(tobacco)}</strong></td>
+          <td style="color:var(--text-secondary); font-size:0.82rem;">${escapeHtml(bowlHmd)}</td>
+          <td><span style="background:rgba(0,240,255,0.1); color:var(--accent-cyan); padding:2px 6px; border-radius:4px; font-size:0.78rem; font-weight:700;">⏱️ ${dur} Min</span></td>
+          <td style="font-size:0.8rem; color:var(--text-muted);">🪵 ${coals}x</td>
+          <td><strong style="color:#fbbf24; font-size:0.82rem;">${rating}</strong></td>
+          <td style="text-align:right;">
+            <button class="btn btn-xs btn-secondary btn-del-session" data-id="${s.id}" title="Session löschen">🗑️</button>
+          </td>
+        </tr>
+      `;
+    });
   });
 
   tbody.innerHTML = html;

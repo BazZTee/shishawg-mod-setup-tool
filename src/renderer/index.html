@@ -118,7 +118,7 @@
             </div>
           </div>
 
-          <!-- Tile 5: Q&A & Umfragen -->
+          <!-- Tile 5: Q&A & Fragerunde -->
           <div class="hub-tile-card active-module" data-target="view-qna" tabindex="0" role="button">
             <div class="tile-header">
               <span class="tile-icon">🙋</span>
@@ -127,14 +127,27 @@
                 <span class="tile-badge ready">Bereit / Aktiv</span>
               </div>
             </div>
-            <h3>Q&amp;A &amp; Umfragen</h3>
-            <p>Zuschauerfragen moderieren, Duplikate filtern, OBS Browser-Quelle für den Streamer &amp; Twitch-Poll Vorlagen.</p>
+            <h3>Q&amp;A &amp; Fragerunde</h3>
+            <p>Zuschauerfragen moderieren, Duplikate filtern, Streamer-Prompter, On-Air Einblendung &amp; Bestrafungsrad.</p>
             <div class="tile-action">
               <span>Tool öffnen ➔</span>
             </div>
           </div>
 
-          <!-- Tile 6: Stats & Timer -->
+          <!-- Tile 6: Live Twitch-Umfragen -->
+          <div class="hub-tile-card active-module" data-target="view-polls" tabindex="0" role="button">
+            <div class="tile-header">
+              <span class="tile-icon">🗳️</span>
+              <span class="tile-badge ready">Bereit / Aktiv</span>
+            </div>
+            <h3>Live Twitch-Umfragen</h3>
+            <p>Twitch-Strawpolls erstellen, Live-Abstimmungsbalken überwachen, Schnell-Vorlagen &amp; eigene Templates.</p>
+            <div class="tile-action">
+              <span>Tool öffnen ➔</span>
+            </div>
+          </div>
+
+          <!-- Tile 7: Stats & Timer -->
           <div class="hub-tile-card" data-target="view-stats" tabindex="0" role="button">
             <div class="tile-header">
               <span class="tile-icon">📊</span>
@@ -964,7 +977,7 @@
       </div>
 
       <!-- ============================================== -->
-      <!-- VIEW 5: Q&A & UMFRAGEN (Coming Soon) -->
+      <!-- VIEW 5: Q&A & FRAGERUNDE -->
       <!-- ============================================== -->
       <div id="view-qna" class="hub-view-pane hidden">
         <!-- Tool Sub-Header -->
@@ -974,38 +987,44 @@
               <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
               🏠 Hauptmenü
             </button>
-            <span class="tool-breadcrumb">Dashboard ➔ <strong>🙋 Q&amp;A &amp; Umfragen</strong></span>
+            <span class="tool-breadcrumb">Dashboard ➔ <strong>🙋 Q&amp;A &amp; Fragerunde</strong></span>
           </div>
 
-          <div class="sub-header-actions">
-            <button id="btn-toggle-qna-listener" class="btn btn-sm btn-primary" title="Twitch Chat-Listener für !frage starten/pausieren">
-              <span class="status-dot green"></span> <span>Listener: Aktiv</span>
+          <div class="sub-header-actions" style="display:flex; align-items:center; gap:8px;">
+            <button id="btn-toggle-qna-listener" class="btn btn-sm btn-secondary" style="height:32px; min-width:135px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" title="Twitch Chat-Listener für !frage starten/pausieren">
+              <span class="status-dot red"></span> <span>Listener: Aus</span>
             </button>
 
-            <div class="btn-group-links" title="Links für OBS und Prompter kopieren">
-              <button id="btn-copy-qna-obs" class="btn btn-sm btn-secondary" title="OBS Stream-Overlay Link kopieren">
-                📺 OBS-Overlay
+            <!-- Hamburger / Options Dropdown Menu for Q&A -->
+            <div class="dropdown-wrapper">
+              <button id="btn-qna-menu" class="btn btn-sm btn-secondary" style="height:32px; display:inline-flex; align-items:center; gap:6px;" title="Optionen &amp; Links">
+                <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+                <span>Optionen ▾</span>
               </button>
-              <button id="btn-copy-qna-prompter" class="btn btn-sm btn-secondary" title="Prompter-Link für Marvins Monitor kopieren">
-                🖥️ Prompter
-              </button>
+              <div id="qna-dropdown-menu" class="dropdown-menu dropdown-menu-right hidden" style="min-width: 220px;">
+                <button id="btn-open-qna-stats-modal" class="dropdown-item">
+                  <span style="font-size:1.1rem; width:20px;">📊</span>
+                  <span>Streamer-Auswertung</span>
+                </button>
+                <button id="btn-open-manual-qna-modal" class="dropdown-item">
+                  <span style="font-size:1.1rem; width:20px;">➕</span>
+                  <span>Frage manuell erfassen</span>
+                </button>
+                <button id="btn-open-qna-settings-modal" class="dropdown-item">
+                  <span style="font-size:1.1rem; width:20px;">⚙️</span>
+                  <span>Filter &amp; Cooldowns</span>
+                </button>
+                <div class="hamburger-divider"></div>
+                <button id="btn-copy-qna-obs" class="dropdown-item">
+                  <span style="font-size:1.1rem; width:20px;">📺</span>
+                  <span>OBS-Overlay Link</span>
+                </button>
+                <button id="btn-copy-qna-prompter" class="dropdown-item">
+                  <span style="font-size:1.1rem; width:20px;">🖥️</span>
+                  <span>Prompter-Link (Streamer)</span>
+                </button>
+              </div>
             </div>
-
-            <button id="btn-open-manual-qna-modal" class="btn btn-sm btn-secondary" title="Frage manuell erfassen (z. B. aus Instagram oder Discord)">
-              ➕ Frage erfassen
-            </button>
-
-            <button id="btn-open-qna-stats-modal" class="btn btn-sm btn-secondary" title="Streamer-Auswertung &amp; Verlauf anzeigen">
-              📊 Auswertung
-            </button>
-
-            <button id="btn-open-qna-settings-modal" class="btn btn-sm btn-secondary" title="Q&A Filter, Cooldowns &amp; Benachrichtigungen">
-              ⚙️ Filter
-            </button>
-
-            <button id="btn-refresh-qna" class="btn btn-sm btn-secondary btn-icon-only" title="Fragen &amp; Umfragen manuell synchronisieren">
-              🔄
-            </button>
           </div>
         </div>
 
@@ -1131,10 +1150,10 @@
 
           </div>
 
-          <!-- RIGHT COLUMN: TWITCH POLLS & BESTRAFUNGEN -->
+          <!-- RIGHT COLUMN: BESTRAFUNGEN & CHALLENGES -->
           <div class="qna-sidebar-panel">
 
-            <!-- Card 0: Bestrafungen & Challenges Manager -->
+            <!-- Card 1: Bestrafungen & Challenges Manager -->
             <section class="qna-card bestrafungen-card">
               <div class="qna-card-header">
                 <div class="qa-title-group">
@@ -1161,6 +1180,55 @@
               </div>
             </section>
 
+            <!-- Card 2: Streamer Quick Leaderboard -->
+            <section class="qna-card" style="margin-top: 16px;">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">📊</span>
+                  <div>
+                    <h3>Streamer-Kurzübersicht</h3>
+                    <p class="qa-subtitle">Aktivitäten &amp; Fragerunden-Stand</p>
+                  </div>
+                </div>
+                <button id="btn-open-stats-from-card" class="btn btn-xs btn-secondary" title="Vollständige Auswertung öffnen">📊 Details</button>
+              </div>
+              <div class="qna-card-body" id="qna-quick-leaderboard-container">
+                <!-- Dynamically populated -->
+              </div>
+            </section>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ============================================== -->
+      <!-- VIEW 6: LIVE TWITCH-UMFRAGEN (Polls Module) -->
+      <!-- ============================================== -->
+      <div id="view-polls" class="hub-view-pane hidden">
+        <!-- Tool Sub-Header -->
+        <div class="tool-sub-header polls-sub-header">
+          <div class="sub-header-left">
+            <button class="btn btn-secondary btn-back-hub" title="Zurück zur Mod-Zentrale (ESC)">
+              <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              🏠 Hauptmenü
+            </button>
+            <span class="tool-breadcrumb">Dashboard ➔ <strong>🗳️ Live Twitch-Umfragen</strong></span>
+          </div>
+
+          <div class="sub-header-actions">
+            <button id="btn-refresh-polls" class="btn btn-sm btn-secondary" title="Umfrage-Status manuell synchronisieren">
+              🔄 Aktualisieren
+            </button>
+          </div>
+        </div>
+
+        <!-- Main Polls Grid Layout -->
+        <div class="qna-grid-container">
+
+          <!-- LEFT COLUMN: LIVE POLL MONITOR & PRESETS -->
+          <div class="qna-main-panel">
+
             <!-- Card 1: Live Twitch Poll Monitor -->
             <section class="qna-card poll-active-card">
               <div class="qna-card-header">
@@ -1183,7 +1251,7 @@
                   <div class="poll-empty-state">
                     <span class="empty-icon">🗳️</span>
                     <p>Aktuell läuft keine Umfrage im Twitch-Kanal.</p>
-                    <span class="empty-hint">Wähle eine Schnell-Vorlage unten oder erstelle eine neue Abstimmung.</span>
+                    <span class="empty-hint">Wähle eine Schnell-Vorlage unten oder erstelle rechts eine neue Abstimmung.</span>
                   </div>
                 </div>
               </div>
@@ -1237,6 +1305,11 @@
                 </div>
               </div>
             </section>
+
+          </div>
+
+          <!-- RIGHT COLUMN: POLL CREATOR & SAVED TEMPLATES -->
+          <div class="qna-sidebar-panel">
 
             <!-- Card 3: Poll Creator -->
             <section class="qna-card poll-creator-card">

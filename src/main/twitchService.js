@@ -944,6 +944,154 @@ class TwitchService {
     throw new Error(`Poll konnte nicht beendet werden: ${errText}`);
   }
 
+  // --- Twitch Predictions Methods ---
+  async createTwitchPrediction({ title, outcomes, duration, channel }) {
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(chan);
+    if (!broadcasterId) throw new Error(`Kanal-ID für #${chan} konnte nicht ermittelt werden.`);
+
+    const cleanTitle = (title || '').trim();
+    if (!cleanTitle || cleanTitle.length > 120) {
+      throw new Error('Vorhersage-Titel ist erforderlich (max. 120 Zeichen).');
+    }
+
+    const formattedOutcomes = (outcomes || [])
+      .map(o => typeof o === 'string' ? { title: o.trim() } : { title: (o.title || '').trim() })
+      .filter(o => o.title.length > 0);
+
+    if (formattedOutcomes.length < 2 || formattedOutcomes.length > 10) {
+      throw new Error('Eine Twitch-Vorhersage benötigt 2 bis 10 Auswahlmöglichkeiten.');
+    }
+
+    for (const o of formattedOutcomes) {
+      if (o.title.length > 25) {
+        throw new Error(`Auswahl "${o.title}" ist zu lang (max. 25 Zeichen erlaubt).`);
+      }
+    }
+
+    const bodyData = {
+      broadcaster_id: broadcasterId,
+      title: cleanTitle,
+      outcomes: formattedOutcomes,
+      prediction_window: parseInt(duration, 10) || 120
+    };
+
+    let useToken = this.accessToken;
+    if (!this.user || this.user.id !== broadcasterId) {
+      const bToken = await supabaseService.getBroadcasterToken(chan);
+      if (bToken) useToken = bToken;
+    }
+
+    if (!useToken) {
+      throw new Error('Kein Twitch-Token gefunden. Bitte mit Twitch verbinden.');
+    }
+
+    const res = await fetch('https://api.twitch.tv/helix/predictions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${useToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(bodyData)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        return { success: true, prediction: data.data[0] };
+      }
+    }
+
+    const errText = await res.text();
+    let parsedErr = '';
+    try {
+      const j = JSON.parse(errText);
+      parsedErr = j.message || j.error;
+    } catch(e) {
+      parsedErr = errText;
+    }
+
+    if (parsedErr.includes('must match the user ID found in the request')) {
+      const userLogin = this.user ? (this.user.display_name || this.user.login) : 'dein Account';
+      throw new Error(`Twitch erlaubt Vorhersagen nur mit der Freigabe des Streamers (#${chan}). Sobald Marvin sich einmalig im Tool anmeldet, können Moderatoren Vorhersagen per 1-Klick starten! Zum Testen kannst du den Ziel-Kanal auf #${userLogin.toLowerCase()} stellen.`);
+    }
+
+    throw new Error(`Twitch Vorhersage konnte nicht gestartet werden: ${parsedErr || res.statusText}`);
+  }
+
+  async getActivePrediction(channel = this.targetChannel) {
+    if (!this.accessToken || !this.clientId) return null;
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(chan);
+    if (!broadcasterId) return null;
+
+    let useToken = this.accessToken;
+    if (!this.user || this.user.id !== broadcasterId) {
+      const bToken = await supabaseService.getBroadcasterToken(chan);
+      if (bToken) useToken = bToken;
+    }
+
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/predictions?broadcaster_id=${broadcasterId}&first=1`, {
+        headers: {
+          'Authorization': `Bearer ${useToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          return data.data[0];
+        }
+      }
+    } catch(e) {
+      console.error('Error fetching active prediction:', e);
+    }
+    return null;
+  }
+
+  async endPrediction(predictionId, status = 'RESOLVED', winningOutcomeId = null, channel = this.targetChannel) {
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(chan);
+    if (!broadcasterId) throw new Error(`Kanal-ID für #${chan} nicht gefunden.`);
+
+    let useToken = this.accessToken;
+    if (!this.user || this.user.id !== broadcasterId) {
+      const bToken = await supabaseService.getBroadcasterToken(chan);
+      if (bToken) useToken = bToken;
+    }
+
+    const bodyData = {
+      broadcaster_id: broadcasterId,
+      id: predictionId,
+      status: status // 'RESOLVED', 'LOCKED', 'CANCELED'
+    };
+    if (status === 'RESOLVED' && winningOutcomeId) {
+      bodyData.winning_outcome_id = winningOutcomeId;
+    }
+
+    const res = await fetch('https://api.twitch.tv/helix/predictions', {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${useToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(bodyData)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        return { success: true, prediction: data.data[0] };
+      }
+    }
+
+    const errText = await res.text();
+    throw new Error(`Vorhersage konnte nicht beendet werden: ${errText}`);
+  }
+
   // --- Q&A Twitch Chat Listener ---
   startQnAListener(channel = this.targetChannel) {
     this.stopQnAListener();

@@ -779,6 +779,34 @@ ipcMain.handle('polls:save-templates', async (event, templates) => {
   }
 });
 
+// Twitch Predictions IPC Handlers
+ipcMain.handle('predictions:create', async (event, { title, outcomes, duration, channel }) => {
+  try {
+    const res = await twitchService.createTwitchPrediction({ title, outcomes, duration, channel });
+    return { success: true, prediction: res.prediction };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('predictions:get-active', async (event, channel) => {
+  try {
+    const prediction = await twitchService.getActivePrediction(channel);
+    return { success: true, prediction };
+  } catch(e) {
+    return { success: false, error: e.message, prediction: null };
+  }
+});
+
+ipcMain.handle('predictions:end', async (event, { predictionId, status, winningOutcomeId, channel }) => {
+  try {
+    const res = await twitchService.endPrediction(predictionId, status, winningOutcomeId, channel);
+    return { success: true, prediction: res.prediction };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
 // IPC Handlers for Database
 ipcMain.handle('db:get-catalog', async () => {
   return dbService.getCatalog();

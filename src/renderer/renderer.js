@@ -5823,6 +5823,9 @@ async function setQuestionStatus(questionId, newStatus) {
   const oldStatus = q.status;
   q.status = newStatus;
   q.updatedAt = Date.now();
+  if (newStatus === 'approved') {
+    q.answeredBy = null;
+  }
 
   const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
   if (newStatus === 'on_air') {
@@ -5840,6 +5843,10 @@ async function setQuestionStatus(questionId, newStatus) {
   } else if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
     qnaState.activeQuestion = null;
     await ipcRenderer.invoke('qna:set-active', null, chan);
+  }
+
+  if (newStatus === 'approved' && oldStatus !== 'approved') {
+    showToast(`Frage von @${q.displayName || q.login} freigegeben! ✅`, 'success');
   }
 
   await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
@@ -6035,32 +6042,27 @@ function renderQnAQuestionsList() {
     // Question body
     let bodyHtml = `<div class="qna-card-text">„${escapeHtml(q.question)}“</div>`;
 
-    // Action buttons based on status
+    // Action buttons based on status for Mod Tool
     let actionsHtml = `<div class="qna-card-bottom"><div class="qna-card-actions">`;
     if (q.status === 'pending') {
       actionsHtml += `
         <button class="btn btn-xs btn-primary btn-act-approve" data-id="${q.id}">✅ Freigeben</button>
-        <button class="btn btn-xs btn-secondary btn-act-onair" data-id="${q.id}">📺 Live schalten</button>
-        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
       `;
     } else if (q.status === 'approved') {
       actionsHtml += `
-        <button class="btn btn-xs btn-primary btn-act-onair" data-id="${q.id}">📺 Live schalten</button>
-        <button class="btn btn-xs btn-secondary btn-act-answered" data-id="${q.id}">✔️ Beantwortet</button>
-        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
+        <span style="font-size:0.75rem; color:#10b981; font-weight:600; display:inline-flex; align-items:center; gap:4px; padding:2px 0;">
+          <span>✅</span> <span>Im Streamer-Pool</span>
+        </span>
       `;
     } else if (q.status === 'on_air') {
       actionsHtml += `
-        <button class="btn btn-xs btn-primary btn-act-answered" data-id="${q.id}">✔️ Als beantwortet abhaken</button>
-        <button class="btn btn-xs btn-secondary btn-act-offair" data-id="${q.id}">⏹️ Vom Stream nehmen</button>
+        <span class="badge" style="background:rgba(0,240,255,0.15); color:#00f0ff; border:1px solid rgba(0,240,255,0.3); font-size:0.72rem; padding:2px 8px; border-radius:10px; font-weight:700;">
+          📺 Live auf Screen
+        </span>
       `;
-    } else if (q.status === 'answered') {
+    } else if (q.status === 'answered' || q.status === 'rejected') {
       actionsHtml += `
-        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Reaktivieren</button>
-      `;
-    } else if (q.status === 'rejected') {
-      actionsHtml += `
-        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Wiederherstellen</button>
+        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Wieder freigeben</button>
       `;
     }
     actionsHtml += `
@@ -6072,17 +6074,9 @@ function renderQnAQuestionsList() {
 
     // Attach event listeners to card buttons
     const btnApprove = card.querySelector('.btn-act-approve');
-    const btnOnAir = card.querySelector('.btn-act-onair');
-    const btnOffAir = card.querySelector('.btn-act-offair');
-    const btnAnswered = card.querySelector('.btn-act-answered');
-    const btnReject = card.querySelector('.btn-act-reject');
     const btnDel = card.querySelector('.btn-act-delete');
 
     if (btnApprove) btnApprove.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
-    if (btnOnAir) btnOnAir.addEventListener('click', () => setQuestionStatus(q.id, 'on_air'));
-    if (btnOffAir) btnOffAir.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
-    if (btnAnswered) btnAnswered.addEventListener('click', () => setQuestionStatus(q.id, 'answered'));
-    if (btnReject) btnReject.addEventListener('click', () => setQuestionStatus(q.id, 'rejected'));
     if (btnDel) btnDel.addEventListener('click', () => deleteQuestion(q.id));
 
     container.appendChild(card);

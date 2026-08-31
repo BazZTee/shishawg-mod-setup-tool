@@ -277,6 +277,39 @@ class SupabaseService {
     }
   }
 
+  async deleteAllQnAQuestions(channel = 'marved') {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { error } = await this.client
+        .from('qna_questions')
+        .delete()
+        .eq('channel', cleanChan);
+
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase deleteAllQnAQuestions error:', err.message);
+      return false;
+    }
+  }
+
+  async deleteAnsweredQnAQuestions(channel = 'marved') {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { error } = await this.client
+        .from('qna_questions')
+        .delete()
+        .eq('channel', cleanChan)
+        .eq('status', 'answered');
+
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase deleteAnsweredQnAQuestions error:', err.message);
+      return false;
+    }
+  }
+
   // --- Stream Setups CRUD ---
   async getStreamSetup(channel = 'marved') {
     try {

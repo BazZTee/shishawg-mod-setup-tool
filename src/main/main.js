@@ -583,6 +583,38 @@ ipcMain.handle('qna:upsert-question', async (event, question) => {
   }
 });
 
+ipcMain.handle('qna:delete-question', async (event, questionId) => {
+  try {
+    await supabaseService.deleteQnAQuestion(questionId);
+    await dbService.deleteQnAQuestion(questionId);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:delete-all-questions', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    await supabaseService.deleteAllQnAQuestions(chan);
+    await dbService.deleteAllQnAQuestions(chan);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:clear-answered-questions', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    await supabaseService.deleteAnsweredQnAQuestions(chan);
+    await dbService.deleteAnsweredQnAQuestions(chan);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('qna:get-active', async (event, channel) => {
   try {
     const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');

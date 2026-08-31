@@ -1371,6 +1371,43 @@ class DatabaseService {
     return updatedQuestions;
   }
 
+  async deleteQnAQuestion(questionId) {
+    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+    try {
+      let questions = await this.getQnAQuestions();
+      questions = questions.filter(q => q.id !== questionId);
+      fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
+      this.pushFileToGist('qna_questions.json', JSON.stringify(questions, null, 2)).catch(() => {});
+      return true;
+    } catch(e) {
+      return false;
+    }
+  }
+
+  async deleteAllQnAQuestions() {
+    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify([], null, 2), 'utf-8');
+      this.pushFileToGist('qna_questions.json', JSON.stringify([], null, 2)).catch(() => {});
+      return true;
+    } catch(e) {
+      return false;
+    }
+  }
+
+  async deleteAnsweredQnAQuestions() {
+    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+    try {
+      let questions = await this.getQnAQuestions();
+      questions = questions.filter(q => q.status !== 'answered');
+      fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
+      this.pushFileToGist('qna_questions.json', JSON.stringify(questions, null, 2)).catch(() => {});
+      return true;
+    } catch(e) {
+      return false;
+    }
+  }
+
   async getActiveQnAQuestion() {
     const localFile = path.join(app.getPath('userData'), 'qna_active.json');
     let localData = { active: null, updatedAt: 0 };

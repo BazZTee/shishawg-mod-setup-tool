@@ -5341,8 +5341,9 @@ function setupQnAListeners() {
         showToast('Keine beantworteten Fragen zum Löschen vorhanden.', 'info');
         return;
       }
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
       qnaState.questions = qnaState.questions.filter(q => q.status !== 'answered');
-      await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+      await ipcRenderer.invoke('qna:clear-answered-questions', chan);
       renderQnAQuestionsList();
       showToast(`${answeredCount} beantwortete Frage(n) gelöscht.`, 'success');
     });
@@ -5404,8 +5405,13 @@ function setupQnAListeners() {
   if (btnDeleteAll) {
     btnDeleteAll.addEventListener('click', async () => {
       if (confirm('Möchtest du wirklich ALLE Fragen in der Inbox unwiderruflich löschen?')) {
-        await ipcRenderer.invoke('qna:delete-all');
-        await loadQnAState();
+        const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        qnaState.questions = [];
+        qnaState.activeQuestion = null;
+        await ipcRenderer.invoke('qna:delete-all-questions', chan);
+        await ipcRenderer.invoke('qna:set-active', null, chan);
+        renderQnASpotlight();
+        renderQnAQuestionsList();
         showToast('Alle Fragen wurden gelöscht. 🗑️', 'info');
       }
     });
@@ -5766,32 +5772,64 @@ ipcRenderer.on('supabase:qna-changed', () => {
 function handleNewQnAQuestion(q) {
   if (!q || !q.question) return;
 
+  const rawText = (q.question || '').trim();
   // Validate minimum length
-  if (q.question.length < qnaState.settings.minLength) return;
+  if (rawText.length < qnaState.settings.minLength) return;
+
+  // Normalized clean text for matching (strip trailing punctuation, emojis, multiple spaces)
+  const normNew = rawText.toLowerCase().replace(/[?!.,;:_~#+*^$'"„“”\s]+/g, ' ').trim();
+  const uName = q.displayName || q.login || 'Viewer';
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
 
   // Auto Duplicate Detection via Fuzzy Matching
   let isDuplicate = false;
+  let matchedExisting = null;
+
   if (qnaState.settings.autoDupe && qnaState.questions.length > 0) {
     for (const existing of qnaState.questions) {
       if (existing.status === 'rejected' || existing.status === 'answered') continue;
-      const sim = similarityScore(q.question, existing.question);
-      if (sim >= 0.75) {
+
+      const normExisting = (existing.question || '').toLowerCase().replace(/[?!.,;:_~#+*^$'"„“”\s]+/g, ' ').trim();
+      const isExact = (normNew === normExisting);
+      const sim = isExact ? 1.0 : similarityScore(rawText, existing.question);
+
+      if (isExact || sim >= 0.70) {
         isDuplicate = true;
+        matchedExisting = existing;
         existing.duplicateCount = (existing.duplicateCount || 1) + 1;
         existing.updatedAt = Date.now();
-        if (!existing.duplicateUsers) existing.duplicateUsers = [existing.displayName || existing.login];
-        if (!existing.duplicateUsers.includes(q.displayName || q.login)) {
-          existing.duplicateUsers.push(q.displayName || q.login);
+        if (!existing.duplicateUsers) {
+          existing.duplicateUsers = [existing.displayName || existing.login];
+        }
+        if (!existing.duplicateUsers.includes(uName)) {
+          existing.duplicateUsers.push(uName);
         }
         break;
       }
     }
   }
 
-  if (!isDuplicate) {
-    q.updatedAt = Date.now();
-    qnaState.questions.unshift(q);
+  if (isDuplicate && matchedExisting) {
+    // Persist updated existing question with increased duplicateCount
+    ipcRenderer.invoke('qna:upsert-question', matchedExisting).catch(() => {});
+
+    // Send chat feedback so user knows question was already received
+    const sameUser = (matchedExisting.login && matchedExisting.login.toLowerCase() === (q.login || '').toLowerCase());
+    const replyMsg = sameUser
+      ? `@${uName} Du hast diese Frage bereits gestellt – sie ist bereits im Fragen-Pool! 💬`
+      : `@${uName} Eine sehr ähnliche Frage ist bereits im Fragen-Pool! 🔥`;
+
+    ipcRenderer.invoke('twitch:send-chat', { channel: chan, message: replyMsg }).catch(() => {});
+    showToast(`Doppelte Frage von @${uName} zusammengeführt! 🔥`, 'info');
+    renderQnAQuestionsList();
+    return;
   }
+
+  // Not a duplicate: Add new question
+  q.updatedAt = Date.now();
+  q.duplicateCount = 1;
+  q.duplicateUsers = [uName];
+  qnaState.questions.unshift(q);
 
   // Play sound if enabled
   if (qnaState.settings.soundAlert) {
@@ -5808,7 +5846,7 @@ function handleNewQnAQuestion(q) {
     }
   }
 
-  showToast(`🙋 Neue Frage von @${q.displayName || q.login}!`, 'info');
+  showToast(`🙋 Neue Frage von @${uName}!`, 'info');
 
   // Persist new question to Supabase
   ipcRenderer.invoke('qna:upsert-question', q).catch(() => {});
@@ -5861,10 +5899,10 @@ async function deleteQuestion(questionId) {
     await ipcRenderer.invoke('qna:set-active', null, chan);
   }
   qnaState.questions = qnaState.questions.filter(q => q.id !== questionId);
-  await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+  await ipcRenderer.invoke('qna:delete-question', questionId);
   renderQnASpotlight();
   renderQnAQuestionsList();
-  showToast('Frage gelöscht.', 'info');
+  showToast('Frage gelöscht. 🗑️', 'info');
 }
 
 function renderQnASpotlight() {
@@ -6518,10 +6556,19 @@ async function startTwitchPollFromForm() {
       renderPollActiveSection(res.poll);
       showToast('🚀 Twitch-Umfrage erfolgreich gestartet!', 'success');
     } else {
-      showToast(`Fehler: ${res && res.error ? res.error : 'Poll konnte nicht gestartet werden'}`, 'error');
+      const err = res && res.error ? res.error : 'Poll konnte nicht gestartet werden';
+      if (err.includes('Missing scope') || err.includes('channel:manage:polls')) {
+        showToast('⚠️ Berechtigung fehlt: Bitte oben rechts auf dein Twitch-Profil klicken und kurz neu verbinden!', 'error');
+      } else {
+        showToast(`Fehler: ${err}`, 'error');
+      }
     }
   } catch(e) {
-    showToast(`Fehler beim Starten: ${e.message}`, 'error');
+    if (e.message.includes('Missing scope') || e.message.includes('channel:manage:polls')) {
+      showToast('⚠️ Berechtigung fehlt: Bitte oben rechts auf dein Twitch-Profil klicken und kurz neu verbinden!', 'error');
+    } else {
+      showToast(`Fehler beim Starten: ${e.message}`, 'error');
+    }
   }
 }
 

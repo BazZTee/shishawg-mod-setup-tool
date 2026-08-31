@@ -12,6 +12,7 @@
     "dist:test": "electron-builder --win portable"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "electron-updater": "^6.3.9",
     "ws": "^8.18.0"
   },

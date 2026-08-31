@@ -691,6 +691,41 @@ class SupabaseService {
       return settings;
     }
   }
+
+  async getBroadcasterToken(channel = 'marved') {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('qna_settings')
+        .select('broadcaster_token')
+        .eq('channel', cleanChan)
+        .maybeSingle();
+      if (error) throw error;
+      return data && data.broadcaster_token ? data.broadcaster_token : null;
+    } catch(err) {
+      console.error('Supabase getBroadcasterToken error:', err.message);
+      return null;
+    }
+  }
+
+  async saveBroadcasterToken(channel = 'marved', token) {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('qna_settings')
+        .upsert({
+          channel: cleanChan,
+          broadcaster_token: token,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'channel' })
+        .select();
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase saveBroadcasterToken error:', err.message);
+      return false;
+    }
+  }
 }
 
 module.exports = new SupabaseService();

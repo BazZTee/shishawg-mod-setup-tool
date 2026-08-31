@@ -5898,6 +5898,8 @@ async function setQuestionStatus(questionId, newStatus) {
 
   if (newStatus === 'approved' && oldStatus !== 'approved') {
     showToast(`Frage von @${q.displayName || q.login} freigegeben! ✅`, 'success');
+  } else if (newStatus === 'rejected' && oldStatus !== 'rejected') {
+    showToast(`Frage von @${q.displayName || q.login} abgelehnt! ❌`, 'info');
   }
 
   await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
@@ -5949,63 +5951,27 @@ function renderQnASpotlight() {
 
   container.innerHTML = `
     <div class="qna-spotlight-active">
-      <div class="qna-spotlight-user-row">
+      <div class="qna-spotlight-top">
         <div class="qna-user-pill">
-          <span class="qna-user-dot" style="background:${userColor}; box-shadow: 0 0 8px ${userColor};"></span>
-          <span style="color:${userColor};">@${active.displayName || active.login}</span>
-          ${active.isSub ? '<span class="badge-sub" title="Subscriber" style="background:#a855f7; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">SUB</span>' : ''}
-          ${active.isMod ? '<span class="badge-mod" title="Moderator" style="background:#10b981; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">MOD</span>' : ''}
+          <span class="qna-user-dot" style="background:${userColor};"></span>
+          <strong style="color:${userColor};">@${escapeHtml(active.displayName || active.login)}</strong>
+          ${active.isSub ? '<span style="background:#a855f7; color:#fff; font-size:0.68rem; padding:1px 6px; border-radius:4px;">SUB</span>' : ''}
+          ${active.isMod ? '<span style="background:#10b981; color:#fff; font-size:0.68rem; padding:1px 6px; border-radius:4px;">MOD</span>' : ''}
         </div>
-        <span class="qna-spotlight-time">Gestellt um ${timeStr} Uhr</span>
+        <span class="qna-spotlight-time">${timeStr}</span>
       </div>
-
-      <div class="qna-spotlight-question">
+      <div class="qna-spotlight-body">
         „${escapeHtml(active.question)}“
       </div>
-
       <div class="qna-spotlight-actions">
-        <button id="btn-qna-off-air" class="btn btn-secondary btn-sm" title="Frage vom Bildschirm nehmen">
-          ⏹️ Vom Stream nehmen
-        </button>
-        <button id="btn-qna-mark-answered" class="btn btn-primary btn-sm" title="Frage als beantwortet abhaken">
-          ✔️ Als beantwortet abhaken
-        </button>
-        <button id="btn-qna-chat-ping" class="btn btn-secondary btn-sm" title="Dem Fragesteller im Twitch-Chat antworten">
-          💬 Im Twitch-Chat bestätigen
-        </button>
+        <button id="btn-spotlight-offair" class="btn btn-sm btn-secondary">⏹️ Vom Stream nehmen</button>
       </div>
     </div>
   `;
 
-  const btnOffAir = document.getElementById('btn-qna-off-air');
-  const btnMarkAnswered = document.getElementById('btn-qna-mark-answered');
-  const btnChatPing = document.getElementById('btn-qna-chat-ping');
-
+  const btnOffAir = document.getElementById('btn-spotlight-offair');
   if (btnOffAir) {
-    btnOffAir.addEventListener('click', async () => {
-      await setQuestionStatus(active.id, 'approved');
-      showToast('Frage vom Stream genommen.', 'info');
-    });
-  }
-
-  if (btnMarkAnswered) {
-    btnMarkAnswered.addEventListener('click', async () => {
-      await setQuestionStatus(active.id, 'answered');
-      showToast('Frage als beantwortet abgehakt! ✔️', 'success');
-    });
-  }
-
-  if (btnChatPing) {
-    btnChatPing.addEventListener('click', async () => {
-      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-      const pingMsg = `@${active.displayName || active.login} Deine Frage („${active.question}“) wurde live im Stream beantwortet! 💨`;
-      try {
-        await ipcRenderer.invoke('twitch:send-chat-message', { message: pingMsg, channel: chan });
-        showToast(`Antwort-Bestätigung an @${active.displayName || active.login} gesendet! 💬`, 'success');
-      } catch(e) {
-        showToast(`Chat-Ping Fehler: ${e.message}`, 'error');
-      }
-    });
+    btnOffAir.addEventListener('click', () => setQuestionStatus(active.id, 'approved'));
   }
 }
 
@@ -6013,9 +5979,9 @@ function renderQnAQuestionsList() {
   const container = document.getElementById('qna-questions-list');
   if (!container) return;
 
-  // Update tab badge counters
+  // Update counter badges
   const cPending = qnaState.questions.filter(q => q.status === 'pending').length;
-  const cApproved = qnaState.questions.filter(q => q.status === 'approved').length;
+  const cApproved = qnaState.questions.filter(q => q.status === 'approved' || q.status === 'on_air').length;
   const cAnswered = qnaState.questions.filter(q => q.status === 'answered').length;
   const cRejected = qnaState.questions.filter(q => q.status === 'rejected').length;
   const cAll = qnaState.questions.length;
@@ -6084,7 +6050,7 @@ function renderQnAQuestionsList() {
           ${q.answeredBy ? `<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-size:0.65rem; padding:1px 6px; border-radius:4px; font-weight:700;">👤 ${escapeHtml(q.answeredBy)}</span>` : ''}
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>` : ''}
+          ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>' : ''}
           <span class="qna-spotlight-time">${timeStr}</span>
         </div>
       </div>
@@ -6098,12 +6064,14 @@ function renderQnAQuestionsList() {
     if (q.status === 'pending') {
       actionsHtml += `
         <button class="btn btn-xs btn-primary btn-act-approve" data-id="${q.id}">✅ Freigeben</button>
+        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
       `;
     } else if (q.status === 'approved') {
       actionsHtml += `
         <span style="font-size:0.75rem; color:#10b981; font-weight:600; display:inline-flex; align-items:center; gap:4px; padding:2px 0;">
           <span>✅</span> <span>Im Streamer-Pool</span>
         </span>
+        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}" title="Aus Pool entfernen & ablehnen">❌ Ablehnen</button>
       `;
     } else if (q.status === 'on_air') {
       actionsHtml += `
@@ -6111,8 +6079,18 @@ function renderQnAQuestionsList() {
           📺 Live auf Screen
         </span>
       `;
-    } else if (q.status === 'answered' || q.status === 'rejected') {
+    } else if (q.status === 'answered') {
       actionsHtml += `
+        <span style="font-size:0.75rem; color:#a855f7; font-weight:600; display:inline-flex; align-items:center; gap:4px; padding:2px 0;">
+          <span>✔️</span> <span>Beantwortet</span>
+        </span>
+        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Wieder freigeben</button>
+      `;
+    } else if (q.status === 'rejected') {
+      actionsHtml += `
+        <span style="font-size:0.75rem; color:#ef4444; font-weight:600; display:inline-flex; align-items:center; gap:4px; padding:2px 0;">
+          <span>❌</span> <span>Abgelehnt</span>
+        </span>
         <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Wieder freigeben</button>
       `;
     }
@@ -6125,9 +6103,11 @@ function renderQnAQuestionsList() {
 
     // Attach event listeners to card buttons
     const btnApprove = card.querySelector('.btn-act-approve');
+    const btnReject = card.querySelector('.btn-act-reject');
     const btnDel = card.querySelector('.btn-act-delete');
 
     if (btnApprove) btnApprove.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
+    if (btnReject) btnReject.addEventListener('click', () => setQuestionStatus(q.id, 'rejected'));
     if (btnDel) btnDel.addEventListener('click', () => deleteQuestion(q.id));
 
     container.appendChild(card);

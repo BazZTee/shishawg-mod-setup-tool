@@ -2,6 +2,7 @@ const http = require('http');
 const url = require('url');
 const WebSocket = require('ws');
 const { shell } = require('electron');
+const supabaseService = require('./supabaseService');
 
 class TwitchService {
   constructor(mainWindow, store) {
@@ -96,6 +97,12 @@ class TwitchService {
         }
         this.store.set('twitch_access_token', cleanToken);
         this.store.set('twitch_user', this.user);
+
+        const cleanChan = (this.targetChannel || 'marved').toLowerCase().replace('#', '');
+        if (valData.login && valData.login.toLowerCase() === cleanChan) {
+          supabaseService.saveBroadcasterToken(cleanChan, cleanToken).catch(() => {});
+        }
+
         return this.user;
       }
     } catch (err) {
@@ -832,10 +839,23 @@ class TwitchService {
       bodyData.channel_points_per_vote = parseInt(channelPointsPerVote, 10) || 100;
     }
 
+    let useToken = this.accessToken;
+    // If the logged-in user is not the broadcaster, try to use the stored broadcaster token from Supabase
+    if (!this.user || this.user.id !== broadcasterId) {
+      const bToken = await supabaseService.getBroadcasterToken(chan);
+      if (bToken) {
+        useToken = bToken;
+      }
+    }
+
+    if (!useToken) {
+      throw new Error('Kein Twitch-Token gefunden. Bitte mit Twitch verbinden.');
+    }
+
     const res = await fetch('https://api.twitch.tv/helix/polls', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
+        'Authorization': `Bearer ${useToken}`,
         'Client-Id': this.clientId,
         'Content-Type': 'application/json'
       },
@@ -860,7 +880,7 @@ class TwitchService {
 
     if (parsedErr.includes('must match the user ID found in the request')) {
       const userLogin = this.user ? (this.user.display_name || this.user.login) : 'dein Account';
-      throw new Error(`Twitch erlaubt das Erstellen von Polls per API nur dem Kanal-Inhaber (#${chan}). Da du als @${userLogin} eingeloggt bist, kannst du zum Testen den Ziel-Kanal oben im Menü auf deinen eigenen Kanal (#${userLogin.toLowerCase()}) stellen.`);
+      throw new Error(`Twitch erlaubt das Erstellen von Polls per API nur mit der Freigabe des Streamers (#${chan}). Sobald Marvin sich einmalig mit seinem Account im Tool einloggt, können alle Moderatoren Umfragen per 1-Klick starten! Zum Testen kannst du den Ziel-Kanal auf #${userLogin.toLowerCase()} stellen.`);
     }
 
     throw new Error(`Twitch Poll konnte nicht gestartet werden: ${parsedErr || res.statusText}`);

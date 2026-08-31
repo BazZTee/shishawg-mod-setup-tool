@@ -554,6 +554,111 @@
       from { transform: scale(0.85); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
     }
+    .auth-gate-card {
+      background: linear-gradient(145deg, #111420 0%, #0d0f17 100%);
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(124, 58, 237, 0.2);
+      border-radius: 24px;
+      padding: 44px 36px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .auth-gate-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #7c3aed, #4f46e5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 25px rgba(124, 58, 237, 0.45);
+    }
+
+    .auth-gate-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .auth-gate-subtitle {
+      font-size: 14px;
+      color: #94a3b8;
+      line-height: 1.55;
+      margin-bottom: 24px;
+    }
+
+    .auth-gate-features {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 26px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-align: left;
+    }
+
+    .auth-gate-feature-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    .btn-twitch-login-large {
+      width: 100%;
+      background: #9146ff;
+      color: #ffffff;
+      border: none;
+      border-radius: 14px;
+      padding: 15px 20px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      transition: all 0.2s ease;
+      box-shadow: 0 8px 22px rgba(145, 70, 255, 0.4);
+    }
+
+    .btn-twitch-login-large:hover {
+      background: #772ce8;
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(145, 70, 255, 0.55);
+    }
+
+    .auth-gate-error {
+      margin-top: 16px;
+      padding: 12px 14px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      width: 100%;
+    }
+
+    .auth-gate-footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #64748b;
+    }
   </style>
 </head>
 <body class="mode-screen">
@@ -583,8 +688,42 @@
     </div>
   </div>
 
+  <!-- AUTH GATE / LOGIN SCREEN (Shown before Prompter is unlocked) -->
+  <div id="view-auth-gate" style="display:none; min-height:100vh; align-items:center; justify-content:center; padding:24px;">
+    <div class="auth-gate-card">
+      <div class="auth-gate-icon">✨</div>
+      <h1 class="auth-gate-title">ShishaWG Prompter</h1>
+      <p class="auth-gate-subtitle">
+        Geschützter Bereich für <strong>Marvin (@marved)</strong> und autorisierte Moderatoren.
+      </p>
+
+      <div class="auth-gate-features">
+        <div class="auth-gate-feature-item">
+          <span>📺</span> <span>Live Fragen-Prompter für den Stream</span>
+        </div>
+        <div class="auth-gate-feature-item">
+          <span>🎡</span> <span>Bestrafungsrad & Streamer-Pills</span>
+        </div>
+        <div class="auth-gate-feature-item">
+          <span>🗳️</span> <span>Freigabe für 1-Klick Mod-Umfragen</span>
+        </div>
+      </div>
+
+      <button id="btn-gate-twitch-login" class="btn-twitch-login-large">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
+        <span>Mit Twitch anmelden</span>
+      </button>
+
+      <div id="auth-gate-error" class="auth-gate-error" style="display:none;"></div>
+
+      <div class="auth-gate-footer">
+        <span>🔒 Zugriffsschutz aktiv • ShishaWG Mod Tool</span>
+      </div>
+    </div>
+  </div>
+
   <!-- STREAMER FRONTEND / PROMPTER (Base44 Exact) -->
-  <div id="view-screen-container" style="display:flex; flex-direction:column; min-height:100vh;">
+  <div id="view-screen-container" style="display:none; flex-direction:column; min-height:100vh;">
     <!-- Navbar -->
     <header class="streamer-navbar">
       <div class="streamer-brand">
@@ -593,15 +732,9 @@
       </div>
 
       <div class="streamer-nav-controls">
-        <div id="prompter-twitch-auth-container" style="display:flex; align-items:center;">
-          <button id="btn-prompter-twitch-login" class="wheel-toggle-btn" style="background:#7c3aed; color:#fff; border:1px solid rgba(124,58,237,0.6); cursor:pointer; gap:6px;" title="Einmalig als Streamer mit Twitch verbinden, um Umfragen für Moderatoren freizugeben">
-            <span>🔑</span> <span>Twitch Streamer-Login</span>
-          </button>
-          <div id="prompter-twitch-connected-badge" style="display:none; align-items:center; gap:6px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); padding:5px 12px; border-radius:20px; font-size:12px; color:#10b981; font-weight:700;">
-            <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981; box-shadow:0 0 6px #10b981;"></span>
-            <span id="prompter-twitch-username">@marved</span>
-          </div>
-        </div>
+        <button id="btn-prompter-logout" class="wheel-toggle-btn" style="background:rgba(255,255,255,0.05); color:#94a3b8; border:1px solid rgba(255,255,255,0.1); cursor:pointer;" title="Abmelden">
+          <span>🚪</span> <span id="prompter-current-user-name">@marved</span>
+        </button>
 
         <label class="wheel-toggle-btn" title="Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
           <input type="checkbox" id="prompter-wheel-toggle" checked>
@@ -723,16 +856,6 @@
     let isSpinning = false;
     let wheelAngle = 0;
     let selectedBestrafung = null;
-
-    if (isOverlay) {
-      document.body.className = 'mode-overlay';
-      document.getElementById('view-overlay-container').style.display = 'flex';
-      document.getElementById('view-screen-container').style.display = 'none';
-    } else {
-      document.body.className = 'mode-screen';
-      document.getElementById('view-overlay-container').style.display = 'none';
-      document.getElementById('view-screen-container').style.display = 'flex';
-    }
 
     async function syncAllData() {
       try {
@@ -1265,17 +1388,55 @@
         .replace(/'/g, '&#039;');
     }
 
-    // Twitch Streamer Auth handling for Prompter Screen
-    async function handleTwitchOAuthHash() {
-      const hash = window.location.hash;
-      if (!hash || !hash.includes('access_token=')) {
-        checkStoredStreamerAuth();
+    // =========================================================
+    // PROMPTER AUTHENTICATION & LOGIN GATE
+    // =========================================================
+    let isPrompterAuthenticated = false;
+
+    async function initPrompterAuth() {
+      if (isOverlay) {
+        // OBS Overlay never requires login
+        document.body.className = 'mode-overlay';
+        document.getElementById('view-overlay-container').style.display = 'flex';
+        document.getElementById('view-screen-container').style.display = 'none';
+        document.getElementById('view-auth-gate').style.display = 'none';
+        syncAllData();
+        setInterval(syncAllData, 1000);
         return;
       }
 
-      const params = new URLSearchParams(hash.substring(1));
-      const token = params.get('access_token');
-      if (!token) return;
+      document.body.className = 'mode-screen';
+      document.getElementById('view-overlay-container').style.display = 'none';
+
+      // 1. Check if returning from Twitch OAuth redirect hash (#access_token=...)
+      const hash = window.location.hash;
+      if (hash && hash.includes('access_token=')) {
+        const params = new URLSearchParams(hash.substring(1));
+        const token = params.get('access_token');
+        if (token) {
+          await verifyAndSaveTwitchToken(token);
+          history.replaceState(null, null, window.location.pathname + window.location.search);
+          return;
+        }
+      }
+
+      // 2. Check local stored token
+      const storedToken = localStorage.getItem('prompter_twitch_token');
+      const storedUser = localStorage.getItem('prompter_twitch_user');
+      if (storedToken && storedUser) {
+        unlockPrompterUI(storedUser);
+        syncAllData();
+        setInterval(syncAllData, 1000);
+        return;
+      }
+
+      // 3. Not authenticated -> Show Login Gate
+      showLoginGate();
+    }
+
+    async function verifyAndSaveTwitchToken(token) {
+      const errBox = document.getElementById('auth-gate-error');
+      if (errBox) errBox.style.display = 'none';
 
       try {
         const uRes = await fetch('https://api.twitch.tv/helix/users', {
@@ -1284,71 +1445,90 @@
             'Client-Id': '440sjk1dkut7ltxkf7b3p267dekbpu'
           }
         });
+
         if (uRes.ok) {
           const uData = await uRes.json();
           if (uData.data && uData.data.length > 0) {
             const twitchUser = uData.data[0];
-            // Save broadcaster token to Supabase in qna_settings
-            await fetch(`${SUPABASE_REST}/qna_settings?on_conflict=channel`, {
-              method: 'POST',
-              headers: Object.assign({}, reqHeaders, { 'Prefer': 'resolution=merge-duplicates' }),
-              body: JSON.stringify({
-                channel: targetChannel,
-                broadcaster_token: token,
-                updated_at: new Date().toISOString()
-              })
-            });
+            const uLogin = (twitchUser.login || '').toLowerCase();
+            const uName = twitchUser.display_name || twitchUser.login;
 
-            localStorage.setItem('prompter_twitch_user', twitchUser.login);
-            showTwitchConnected(twitchUser.display_name || twitchUser.login);
-          }
-        }
-      } catch(e) {
-        console.error('Twitch OAuth error:', e);
-      } finally {
-        history.replaceState(null, null, window.location.pathname + window.location.search);
-      }
-    }
+            // Save to localStorage for prompter session
+            localStorage.setItem('prompter_twitch_token', token);
+            localStorage.setItem('prompter_twitch_user', uName);
 
-    async function checkStoredStreamerAuth() {
-      try {
-        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?channel=eq.${targetChannel}&select=broadcaster_token`, {
-          headers: reqHeaders,
-          cache: 'no-store'
-        });
-        if (sRes.ok) {
-          const sData = await sRes.json();
-          if (Array.isArray(sData) && sData.length > 0 && sData[0].broadcaster_token) {
-            const savedUser = localStorage.getItem('prompter_twitch_user') || targetChannel;
-            showTwitchConnected(savedUser);
+            // If user is broadcaster, persist token to Supabase for desktop tool 1-click polls
+            if (uLogin === targetChannel.toLowerCase()) {
+              await fetch(`${SUPABASE_REST}/qna_settings?on_conflict=channel`, {
+                method: 'POST',
+                headers: Object.assign({}, reqHeaders, { 'Prefer': 'resolution=merge-duplicates' }),
+                body: JSON.stringify({
+                  channel: targetChannel,
+                  broadcaster_token: token,
+                  updated_at: new Date().toISOString()
+                })
+              });
+            }
+
+            unlockPrompterUI(uName);
+            syncAllData();
+            setInterval(syncAllData, 1000);
             return;
           }
         }
-      } catch(e) {}
+        throw new Error('Twitch-Benutzerdaten konnten nicht verifiziert werden.');
+      } catch(e) {
+        console.error('Twitch Auth Error:', e);
+        showLoginGate(e.message);
+      }
     }
 
-    function showTwitchConnected(userName) {
-      const btnLogin = document.getElementById('btn-prompter-twitch-login');
-      const badgeConnected = document.getElementById('prompter-twitch-connected-badge');
-      const labelUser = document.getElementById('prompter-twitch-username');
-      if (btnLogin) btnLogin.style.display = 'none';
-      if (badgeConnected) badgeConnected.style.display = 'inline-flex';
-      if (labelUser) labelUser.textContent = `@${userName}`;
+    function showLoginGate(errorMsg = '') {
+      isPrompterAuthenticated = false;
+      document.getElementById('view-auth-gate').style.display = 'flex';
+      document.getElementById('view-screen-container').style.display = 'none';
+      const errBox = document.getElementById('auth-gate-error');
+      if (errBox) {
+        if (errorMsg) {
+          errBox.textContent = errorMsg;
+          errBox.style.display = 'block';
+        } else {
+          errBox.style.display = 'none';
+        }
+      }
     }
 
-    const btnTwitchLogin = document.getElementById('btn-prompter-twitch-login');
-    if (btnTwitchLogin) {
-      btnTwitchLogin.addEventListener('click', () => {
+    function unlockPrompterUI(userName) {
+      isPrompterAuthenticated = true;
+      document.getElementById('view-auth-gate').style.display = 'none';
+      document.getElementById('view-screen-container').style.display = 'flex';
+      const userLabel = document.getElementById('prompter-current-user-name');
+      if (userLabel) userLabel.textContent = `@${userName}`;
+    }
+
+    // Connect Login Buttons
+    const btnGateLogin = document.getElementById('btn-gate-twitch-login');
+    if (btnGateLogin) {
+      btnGateLogin.addEventListener('click', () => {
         const redirectUri = window.location.origin + window.location.pathname;
-        const scopes = encodeURIComponent('channel:manage:polls channel:read:polls chat:read');
+        const scopes = encodeURIComponent('channel:manage:polls channel:read:polls chat:read user:read:email');
         const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=440sjk1dkut7ltxkf7b3p267dekbpu&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scopes}`;
         window.location.href = authUrl;
       });
     }
 
-    handleTwitchOAuthHash();
-    syncAllData();
-    setInterval(syncAllData, 1000);
+    const btnLogout = document.getElementById('btn-prompter-logout');
+    if (btnLogout) {
+      btnLogout.addEventListener('click', () => {
+        if (confirm('Möchtest du dich wirklich vom Prompter abmelden?')) {
+          localStorage.removeItem('prompter_twitch_token');
+          localStorage.removeItem('prompter_twitch_user');
+          showLoginGate();
+        }
+      });
+    }
+
+    initPrompterAuth();
   </script>
 </body>
 </html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>ShishaWG Live Q&A Stream Overlay & Prompter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 18px;
+      color: #ffffff;
+    }
+
+    /* Mode: OBS Overlay (Transparent HUD) */
+    body.mode-overlay {
+      background: transparent;
+      overflow: hidden;
+    }
+
+    /* Mode: Streamer Prompter Screen (Marvin 2nd Monitor) */
+    body.mode-screen {
+      background: #080c16;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 24px;
+    }
+
+    /* HUD Card for OBS Overlay */
+    .qna-hud-card {
+      display: inline-flex;
+      flex-direction: column;
+      background: rgba(10, 15, 29, 0.95);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid rgba(0, 240, 255, 0.45);
+      border-left: 5px solid #00f0ff;
+      border-radius: 16px;
+      padding: 16px 24px;
+      color: #ffffff;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 240, 255, 0.25);
+      max-width: 860px;
+      opacity: 0;
+      transform: translateY(-20px);
+      transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: none;
+    }
+
+    .qna-hud-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    .qna-hud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .qna-badge {
+      background: linear-gradient(135deg, #00f0ff, #7928ca);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      box-shadow: 0 2px 10px rgba(0, 240, 255, 0.35);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .qna-user-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .qna-user-name {
+      color: #00f0ff;
+    }
+
+    .qna-badge-sub {
+      background: #a855f7;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .qna-badge-mod {
+      background: #10b981;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .qna-question-content {
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.4;
+      color: #f8fafc;
+      word-break: break-word;
+    }
+
+    .qna-time {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 8px;
+      text-align: right;
+    }
+
+    /* Screen Mode Specific Styles */
+    .prompter-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 14px;
+    }
+
+    .prompter-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #00f0ff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .prompter-live-badge {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid #10b981;
+      color: #34d399;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .prompter-live-badge .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    .prompter-spotlight-box {
+      background: rgba(15, 23, 42, 0.85);
+      border: 2px solid #00f0ff;
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 10px 40px rgba(0, 240, 255, 0.15);
+    }
+
+    .prompter-spotlight-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #94a3b8;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .prompter-big-question {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.35;
+      color: #ffffff;
+      margin: 14px 0;
+    }
+
+    .prompter-upcoming-section {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 20px;
+    }
+
+    .prompter-upcoming-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #94a3b8;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .prompter-upcoming-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .prompter-upcoming-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .prompter-upcoming-item .user {
+      color: #00f0ff;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .prompter-upcoming-item .text {
+      font-size: 16px;
+      color: #e2e8f0;
+      flex: 1;
+    }
+
+    .prompter-empty {
+      color: #64748b;
+      text-align: center;
+      padding: 30px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+<body class="mode-overlay">
+
+  <!-- OVERLAY MODE VIEW -->
+  <div id="view-overlay-container">
+    <div class="qna-hud-card" id="qna-hud-card">
+      <div class="qna-hud-header">
+        <span class="qna-badge">🙋 ZUSCHAUERFRAGE</span>
+        <div class="qna-user-pill" id="hud-user-pill">
+          <span class="qna-user-name" id="hud-user-name">@Viewer</span>
+          <span id="hud-user-sub" class="qna-badge-sub" style="display:none;">SUB</span>
+          <span id="hud-user-mod" class="qna-badge-mod" style="display:none;">MOD</span>
+        </div>
+      </div>
+      <div class="qna-question-content" id="hud-question-text">
+        Lade Frage...
+      </div>
+      <div class="qna-time" id="hud-time">
+        Live Stream Q&amp;A
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN / PROMPTER MODE VIEW -->
+  <div id="view-screen-container" style="display:none;">
+    <div class="prompter-header">
+      <div class="prompter-title">
+        <span>💨 ShishaWG Streamer Prompter</span>
+        <span id="prompter-channel-tag" style="font-size:14px; color:#94a3b8;">#marved</span>
+      </div>
+      <div class="prompter-live-badge">
+        <span class="dot"></span>
+        <span>Live-Sync aktiv</span>
+      </div>
+    </div>
+
+    <!-- On Air Spotlight -->
+    <div class="prompter-spotlight-box">
+      <div class="prompter-spotlight-title">
+        <span>📺 AKTUELL LIVE IM STREAM:</span>
+      </div>
+      <div id="prompter-spotlight-content">
+        <div class="prompter-empty">Aktuell ist keine Frage live geschaltet. Moderatoren schalten Fragen frei...</div>
+      </div>
+    </div>
+
+    <!-- Upcoming Approved Questions -->
+    <div class="prompter-upcoming-section">
+      <div class="prompter-upcoming-title">
+        <span>📋 NÄCHSTE FREIGEGEBENE FRAGEN:</span>
+      </div>
+      <div id="prompter-upcoming-list" class="prompter-upcoming-list">
+        <div class="prompter-empty" style="padding:15px; font-size:14px;">Keine weiteren Fragen in der Warteschlange.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
+    let lastActiveId = null;
+    let hideTimer = null;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const mode = (urlParams.get('mode') || 'overlay').toLowerCase();
+    const targetChannel = (urlParams.get('channel') || 'marved').toLowerCase().replace('#', '').trim();
+    const isPersistent = urlParams.get('persistent') === '1';
+
+    // Set body mode
+    if (mode === 'screen') {
+      document.body.className = 'mode-screen';
+      document.getElementById('view-overlay-container').style.display = 'none';
+      document.getElementById('view-screen-container').style.display = 'block';
+      const chanTag = document.getElementById('prompter-channel-tag');
+      if (chanTag) chanTag.textContent = `#${targetChannel}`;
+    } else {
+      document.body.className = 'mode-overlay';
+      document.getElementById('view-overlay-container').style.display = 'block';
+      document.getElementById('view-screen-container').style.display = 'none';
+    }
+
+    async function syncQnA() {
+      try {
+        const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // 1. Check active question
+        const activeFile = data.files && data.files['qna_active.json'];
+        let activeQ = null;
+        if (activeFile && activeFile.content) {
+          try {
+            const rawActive = JSON.parse(activeFile.content);
+            if (rawActive && typeof rawActive === 'object' && 'active' in rawActive) {
+              activeQ = rawActive.active;
+            } else {
+              activeQ = rawActive;
+            }
+          } catch(e) {}
+        }
+
+        // 2. Check all questions (for upcoming in screen mode)
+        const questionsFile = data.files && data.files['qna_questions.json'];
+        let allQuestions = [];
+        if (questionsFile && questionsFile.content) {
+          try {
+            allQuestions = JSON.parse(questionsFile.content);
+          } catch(e) {}
+        }
+
+        renderQnAData(activeQ, allQuestions);
+      } catch(err) {
+        console.error('Q&A Gist Sync Error:', err);
+      }
+    }
+
+    function renderQnAData(activeQ, allQuestions) {
+      if (mode === 'screen') {
+        renderScreenMode(activeQ, allQuestions);
+      } else {
+        renderOverlayMode(activeQ);
+      }
+    }
+
+    function renderOverlayMode(activeQ) {
+      const card = document.getElementById('qna-hud-card');
+      if (!card) return;
+
+      if (!activeQ || !activeQ.question) {
+        card.classList.remove('visible');
+        lastActiveId = null;
+        return;
+      }
+
+      if (activeQ.id !== lastActiveId) {
+        lastActiveId = activeQ.id;
+
+        const userNameEl = document.getElementById('hud-user-name');
+        const userSubEl = document.getElementById('hud-user-sub');
+        const userModEl = document.getElementById('hud-user-mod');
+        const textEl = document.getElementById('hud-question-text');
+        const timeEl = document.getElementById('hud-time');
+
+        if (userNameEl) {
+          userNameEl.textContent = `@${activeQ.displayName || activeQ.login}`;
+          if (activeQ.userColor) userNameEl.style.color = activeQ.userColor;
+        }
+
+        if (userSubEl) userSubEl.style.display = activeQ.isSub ? 'inline-block' : 'none';
+        if (userModEl) userModEl.style.display = activeQ.isMod ? 'inline-block' : 'none';
+
+        if (textEl) {
+          textEl.textContent = `„${activeQ.question}“`;
+        }
+
+        if (timeEl && activeQ.timestamp) {
+          const d = new Date(activeQ.timestamp);
+          const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+          timeEl.textContent = `Gestellt um ${timeStr} Uhr`;
+        }
+
+        card.classList.add('visible');
+
+        if (!isPersistent) {
+          if (hideTimer) clearTimeout(hideTimer);
+          // Stay visible for 45s, then fade out smoothly
+          hideTimer = setTimeout(() => {
+            card.classList.remove('visible');
+          }, 45000);
+        }
+      }
+    }
+
+    function renderScreenMode(activeQ, allQuestions) {
+      const spotContainer = document.getElementById('prompter-spotlight-content');
+      const upcomingContainer = document.getElementById('prompter-upcoming-list');
+
+      if (spotContainer) {
+        if (!activeQ || !activeQ.question) {
+          spotContainer.innerHTML = '<div class="prompter-empty">Aktuell ist keine Frage live geschaltet. Moderatoren schalten Fragen frei...</div>';
+        } else {
+          const userColor = activeQ.userColor || '#00f0ff';
+          spotContainer.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
+              <span style="font-size:20px; font-weight:800; color:${userColor};">@${activeQ.displayName || activeQ.login}</span>
+              ${activeQ.isSub ? '<span class="qna-badge-sub">SUB</span>' : ''}
+              ${activeQ.isMod ? '<span class="qna-badge-mod">MOD</span>' : ''}
+            </div>
+            <div class="prompter-big-question">„${escapeHtml(activeQ.question)}“</div>
+          `;
+        }
+      }
+
+      if (upcomingContainer && Array.isArray(allQuestions)) {
+        const approved = allQuestions.filter(q => q.status === 'approved' && (!activeQ || q.id !== activeQ.id));
+        if (approved.length === 0) {
+          upcomingContainer.innerHTML = '<div class="prompter-empty" style="padding:15px; font-size:14px;">Keine weiteren Fragen in der Warteschlange.</div>';
+        } else {
+          upcomingContainer.innerHTML = '';
+          approved.slice(0, 5).forEach(q => {
+            const item = document.createElement('div');
+            item.className = 'prompter-upcoming-item';
+            item.innerHTML = `
+              <span class="user">@${escapeHtml(q.displayName || q.login)}</span>
+              <span class="text">„${escapeHtml(q.question)}“</span>
+            `;
+            upcomingContainer.appendChild(item);
+          });
+        }
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    syncQnA();
+    setInterval(syncQnA, 2500);
+  </script>
+</body>
+</html>

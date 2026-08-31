@@ -450,6 +450,7 @@ function renderPromoCodesEditorList(promos) {
 // Initialize App
 async function initApp() {
   setupHubNavigation();
+  updateTwitchUI();
 
   try {
     await loadStreamerProfiles();
@@ -808,24 +809,29 @@ function populateDatalist(elementId, items) {
 
 // Check Twitch Authentication
 async function checkTwitchAuth() {
-  const authData = await ipcRenderer.invoke('twitch:check-auth');
-  if (authData && authData.user) {
-    state.twitchUser = authData.user;
-    if (authData.targetChannel) {
-      state.targetChannel = authData.targetChannel;
-      targetChannelInput.value = state.targetChannel;
+  try {
+    const authData = await ipcRenderer.invoke('twitch:check-auth');
+    if (authData && authData.user) {
+      state.twitchUser = authData.user;
+      if (authData.targetChannel) {
+        state.targetChannel = authData.targetChannel;
+        if (targetChannelInput) targetChannelInput.value = state.targetChannel;
+      }
+      if (authData.clientId) {
+        state.clientId = authData.clientId;
+        if (inputClientId) inputClientId.value = state.clientId;
+      }
+    } else {
+      state.twitchUser = null;
+      const cfg = await ipcRenderer.invoke('twitch:get-config');
+      if (cfg && cfg.clientId) {
+        state.clientId = cfg.clientId;
+        if (inputClientId) inputClientId.value = state.clientId;
+      }
     }
-    if (authData.clientId) {
-      state.clientId = authData.clientId;
-      inputClientId.value = state.clientId;
-    }
-  } else {
+  } catch (err) {
+    console.error('Error during checkTwitchAuth:', err);
     state.twitchUser = null;
-    const cfg = await ipcRenderer.invoke('twitch:get-config');
-    if (cfg && cfg.clientId) {
-      state.clientId = cfg.clientId;
-      inputClientId.value = state.clientId;
-    }
   }
   updateTwitchUI();
   updateChannelBotTooltips();

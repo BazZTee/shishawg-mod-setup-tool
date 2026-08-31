@@ -75,7 +75,7 @@
           <p class="landing-subtitle">Wähle ein Modul aus, um zu starten:</p>
         </div>
 
-        <div id="landing-twitch-banner" class="landing-twitch-alert hidden">
+        <div id="landing-twitch-banner" class="landing-twitch-alert">
           <div class="landing-alert-icon">🔒</div>
           <div class="landing-alert-content">
             <strong>Twitch-Verbindung erforderlich</strong>
@@ -89,99 +89,99 @@
 
         <div class="hub-tiles-grid">
           <!-- Tile 1: Setup-Manager -->
-          <div class="hub-tile-card active-module" data-target="view-setup" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-setup" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">💨</span>
-              <span class="tile-badge ready">Bereit / Aktiv</span>
+              <span class="tile-badge locked">🔒 Login erforderlich</span>
             </div>
             <h3>Setup-Manager</h3>
             <p>Pfeifen, Köpfe, Tabaksorten &amp; Kohle verwalten und per 1-Klick <code>!editsetup</code> in den Twitch-Chat senden.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
 
           <!-- Tile 2: Quick-Actions & Stream-Manager -->
-          <div class="hub-tile-card active-module" data-target="view-quickactions" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-quickactions" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">⚡</span>
-              <span class="tile-badge ready">Bereit / Aktiv</span>
+              <span class="tile-badge locked">🔒 Login erforderlich</span>
             </div>
             <h3>Quick-Actions &amp; Stream-Manager</h3>
             <p>Twitch-Kategorie &amp; Streamtitel schnell wechseln, Raid-Finder mit Live-Suche, Soundboard und 1-Klick-Clipping.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
 
           <!-- Tile 3: Mod-HQ & Live-Chat -->
-          <div class="hub-tile-card active-module" data-target="view-modchat" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-modchat" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">💬</span>
               <div style="display:flex; align-items:center; gap:6px;">
                 <span id="hub-modchat-unread" class="tile-unread-counter hidden">0</span>
-                <span class="tile-badge ready">Bereit / Aktiv</span>
+                <span class="tile-badge locked">🔒 Login erforderlich</span>
               </div>
             </div>
             <h3>Mod-HQ &amp; Live-Chat</h3>
             <p>WhatsApp-Style Team-Chat für Moderatoren, Stream-Marker für den Cutter &amp; User-Watchlist.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
 
           <!-- Tile 4: Giveaways & Adressen -->
-          <div class="hub-tile-card active-module" data-target="view-giveaways" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-giveaways" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">🎁</span>
-              <span class="tile-badge ready">Bereit / Aktiv</span>
+              <span class="tile-badge locked">🔒 Login erforderlich</span>
             </div>
             <h3>Giveaways &amp; Adressen</h3>
             <p>Live-Chat Auslosung mit Keyword, geschützter Gewinner-Link, 2-Stufen-Mod-Prüfung &amp; Telegram-Versand an Marvin.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
 
           <!-- Tile 5: Q&A & Fragerunde -->
-          <div class="hub-tile-card active-module" data-target="view-qna" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-qna" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">🙋</span>
               <div style="display:flex; align-items:center; gap:6px;">
                 <span id="hub-qna-unread" class="tile-unread-counter hidden">0</span>
-                <span class="tile-badge ready">Bereit / Aktiv</span>
+                <span class="tile-badge locked">🔒 Login erforderlich</span>
               </div>
             </div>
             <h3>Q&amp;A &amp; Fragerunde</h3>
             <p>Zuschauerfragen moderieren, Duplikate filtern, Streamer-Prompter, On-Air Einblendung &amp; Bestrafungsrad.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
 
           <!-- Tile 6: Live Twitch-Umfragen -->
-          <div class="hub-tile-card active-module" data-target="view-polls" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-polls" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">🗳️</span>
-              <span class="tile-badge ready">Bereit / Aktiv</span>
+              <span class="tile-badge locked">🔒 Login erforderlich</span>
             </div>
             <h3>Live Twitch-Umfragen</h3>
             <p>Twitch-Strawpolls erstellen, Live-Abstimmungsbalken überwachen, Schnell-Vorlagen &amp; eigene Templates.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
 
           <!-- Tile 7: Stats & Timer -->
-          <div class="hub-tile-card active-module" data-target="view-stats" tabindex="0" role="button">
+          <div class="hub-tile-card locked" data-target="view-stats" tabindex="0" role="button" aria-disabled="true">
             <div class="tile-header">
               <span class="tile-icon">📊</span>
-              <span class="tile-badge ready">Bereit / Aktiv</span>
+              <span class="tile-badge locked">🔒 Login erforderlich</span>
             </div>
             <h3>Stats &amp; Kohle-Timer</h3>
             <p>Live Kohle- &amp; Session-Timer, Stream-Kopf-Counter, Rauchhistorie und Ranglisten der beliebtesten Sorten.</p>
             <div class="tile-action">
-              <span>Tool öffnen ➔</span>
+              <span>🔒 Twitch verbinden</span>
             </div>
           </div>
         </div>

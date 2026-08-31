@@ -329,75 +329,233 @@ ipcMain.handle('twitch:get-chatters', async (event, channel) => {
   return await twitchService.getChatters(channel);
 });
 
-// YouTube Live Search IPC Handler for ShishaWG Channel & Topics
-ipcMain.handle('youtube:search', async (event, query) => {
-  if (!query || typeof query !== 'string' || query.trim().length < 2) return [];
-  const cleanQuery = query.trim();
-  const searchTerm = cleanQuery.toLowerCase().includes('shishawg') ? cleanQuery : `shishawg ${cleanQuery}`;
-  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm)}`;
+// =========================================================================
+// MULTI-STREAMER PROFILES & SETTINGS
+// =========================================================================
+const DEFAULT_STREAMER_PROFILES = [
+  {
+    id: 'prof_shishawg',
+    name: 'ShishaWG (Marvin)',
+    targetChannel: 'marved',
+    botName: 'marvedbot',
+    defaultPersons: ['Marvin', 'Hasty', 'Kai'],
+    youtubeChannels: ['@shishawg', '@marvocado'],
+    promoCodes: [
+      { shop: 'HookahFloW', code: 'SHISHAWG10', desc: '10% Rabatt' },
+      { shop: 'Moze', code: 'SHISHAWG', desc: 'Rabattcode' }
+    ],
+    telegram: {
+      botToken: '',
+      chatId: '',
+      claimUrl: 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html'
+    },
+    isDefault: true
+  }
+];
 
-  return new Promise((resolve) => {
-    const req = https.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
-      }
-    }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
+ipcMain.handle('profiles:get-all', async () => {
+  try {
+    let profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+    const activeId = store.get('active_profile_id', profiles[0]?.id || 'prof_shishawg');
+
+    // Auto-fetch Telegram config from Supabase / Gist / Store if empty
+    for (const prof of profiles) {
+      if (!prof.telegram || !prof.telegram.botToken || !prof.telegram.chatId) {
         try {
-          const match = data.match(/var ytInitialData = ({.*?});<\/script>/s) || data.match(/ytInitialData\s*=\s*({.*?});/s);
-          if (!match) return resolve([]);
-          const json = JSON.parse(match[1]);
-          const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
-          const items = [];
-          if (contents) {
-            for (const section of contents) {
-              const itemSection = section.itemSectionRenderer?.contents;
-              if (itemSection) {
-                for (const item of itemSection) {
-                  if (item.videoRenderer) {
-                    const vr = item.videoRenderer;
-                    const videoId = vr.videoId;
-                    const title = vr.title?.runs?.[0]?.text || '';
-                    const desc = vr.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map(r => r.text).join('') || vr.descriptionSnippet?.runs?.map(r => r.text).join('') || '';
-                    const channelName = vr.ownerText?.runs?.[0]?.text || '';
-                    const lengthText = vr.lengthText?.simpleText || '';
-                    const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+          const chan = prof.targetChannel || 'marved';
+          let remoteCfg = null;
+          if (supabaseService) {
+            remoteCfg = await supabaseService.getTelegramConfig(chan);
+          }
+          if (!remoteCfg && dbService) {
+            remoteCfg = await dbService.getTelegramConfig();
+          }
+          const localToken = store.get('telegram_bot_token', '');
+          const localChat = store.get('telegram_chat_id', '');
+          const localClaim = store.get('giveaway_claim_url', 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html');
 
-                    items.push({
-                      id: videoId,
-                      videoId: videoId,
-                      title: title,
-                      url: `https://youtu.be/${videoId}`,
-                      desc: desc,
-                      channel: channelName,
-                      duration: lengthText,
-                      thumb: thumb,
-                      category: channelName.toLowerCase().includes('shishawg') ? 'ShishaWG' : 'YouTube',
-                      isLiveResult: true
-                    });
-                    if (items.length >= 10) break;
+          prof.telegram = {
+            botToken: prof.telegram?.botToken || remoteCfg?.botToken || localToken || '',
+            chatId: prof.telegram?.chatId || remoteCfg?.chatId || localChat || '',
+            claimUrl: prof.telegram?.claimUrl || remoteCfg?.claimUrl || localClaim || 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html'
+          };
+        } catch(e) {}
+      }
+    }
+
+    return { success: true, profiles, activeProfileId: activeId };
+  } catch(e) {
+    return { success: false, profiles: DEFAULT_STREAMER_PROFILES, activeProfileId: 'prof_shishawg', error: e.message };
+  }
+});
+
+ipcMain.handle('profiles:save-all', async (event, { profiles, activeProfileId }) => {
+  try {
+    if (Array.isArray(profiles) && profiles.length > 0) {
+      store.set('streamer_profiles', profiles);
+
+      // Save and sync Telegram config to Supabase for all profiles
+      for (const p of profiles) {
+        if (p.telegram && (p.telegram.botToken || p.telegram.chatId)) {
+          if (supabaseService) {
+            await supabaseService.saveTelegramConfig(p.telegram, p.targetChannel || 'marved');
+          }
+          if (dbService) {
+            await dbService.saveTelegramConfig(p.telegram);
+          }
+        }
+      }
+    }
+    if (activeProfileId) {
+      store.set('active_profile_id', activeProfileId);
+      const activeProf = (profiles || store.get('streamer_profiles', [])).find(p => p.id === activeProfileId);
+      if (activeProf) {
+        if (activeProf.targetChannel && twitchService) {
+          twitchService.setTargetChannel(activeProf.targetChannel);
+        }
+        if (activeProf.botName) {
+          store.set('target_bot', activeProf.botName);
+        }
+        if (activeProf.telegram) {
+          store.set('telegram_bot_token', activeProf.telegram.botToken || '');
+          store.set('telegram_chat_id', activeProf.telegram.chatId || '');
+          store.set('giveaway_claim_url', activeProf.telegram.claimUrl || '');
+        }
+      }
+    }
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('profiles:set-active', async (event, profileId) => {
+  try {
+    const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+    const activeProf = profiles.find(p => p.id === profileId);
+    if (!activeProf) return { success: false, error: 'Profil nicht gefunden' };
+
+    store.set('active_profile_id', profileId);
+    if (activeProf.targetChannel && twitchService) {
+      twitchService.setTargetChannel(activeProf.targetChannel);
+    }
+    if (activeProf.botName) {
+      store.set('target_bot', activeProf.botName);
+    }
+    if (activeProf.telegram) {
+      store.set('telegram_bot_token', activeProf.telegram.botToken || '');
+      store.set('telegram_chat_id', activeProf.telegram.chatId || '');
+      store.set('giveaway_claim_url', activeProf.telegram.claimUrl || '');
+    }
+    return { success: true, activeProfile: activeProf };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// YouTube Live Search IPC Handler supporting multiple channel handles / queries
+ipcMain.handle('youtube:search', async (event, payload) => {
+  let query = '';
+  let channelHandles = ['shishawg'];
+
+  if (typeof payload === 'string') {
+    query = payload.trim();
+  } else if (payload && typeof payload === 'object') {
+    query = (payload.query || '').trim();
+    if (Array.isArray(payload.channels) && payload.channels.length > 0) {
+      channelHandles = payload.channels.map(c => c.replace('@', '').trim()).filter(Boolean);
+    }
+  }
+
+  if (!query || query.length < 2) return [];
+
+  // Helper function to search for a specific term/channel on YouTube
+  const searchSingle = (term, channelBadge) => {
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(term)}`;
+    return new Promise((resolve) => {
+      const req = https.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+        }
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const match = data.match(/var ytInitialData = ({.*?});<\/script>/s) || data.match(/ytInitialData\s*=\s*({.*?});/s);
+            if (!match) return resolve([]);
+            const json = JSON.parse(match[1]);
+            const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+            const items = [];
+            if (contents) {
+              for (const section of contents) {
+                const itemSection = section.itemSectionRenderer?.contents;
+                if (itemSection) {
+                  for (const item of itemSection) {
+                    if (item.videoRenderer) {
+                      const vr = item.videoRenderer;
+                      const videoId = vr.videoId;
+                      const title = vr.title?.runs?.[0]?.text || '';
+                      const desc = vr.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map(r => r.text).join('') || vr.descriptionSnippet?.runs?.map(r => r.text).join('') || '';
+                      const channelName = vr.ownerText?.runs?.[0]?.text || '';
+                      const lengthText = vr.lengthText?.simpleText || '';
+                      const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+                      items.push({
+                        id: videoId,
+                        videoId: videoId,
+                        title: title,
+                        url: `https://youtu.be/${videoId}`,
+                        desc: desc,
+                        channel: channelName,
+                        duration: lengthText,
+                        thumb: thumb,
+                        category: channelBadge || channelName || 'YouTube',
+                        isLiveResult: true
+                      });
+                      if (items.length >= 8) break;
+                    }
                   }
                 }
+                if (items.length >= 8) break;
               }
-              if (items.length >= 10) break;
             }
+            resolve(items);
+          } catch(err) {
+            resolve([]);
           }
-          resolve(items);
-        } catch(err) {
-          resolve([]);
-        }
+        });
+      });
+
+      req.on('error', () => resolve([]));
+      req.setTimeout(5000, () => {
+        req.destroy();
+        resolve([]);
       });
     });
+  };
 
-    req.on('error', () => resolve([]));
-    req.setTimeout(5000, () => {
-      req.destroy();
-      resolve([]);
-    });
-  });
+  try {
+    // Search across all channels in parallel
+    const searchPromises = channelHandles.map(ch => searchSingle(`${ch} ${query}`, ch));
+    const resultsArrays = await Promise.all(searchPromises);
+    const seenIds = new Set();
+    const merged = [];
+
+    // Interleave/merge results avoiding duplicates
+    for (const arr of resultsArrays) {
+      for (const item of arr) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          merged.push(item);
+        }
+      }
+    }
+    return merged.slice(0, 15);
+  } catch(e) {
+    return [];
+  }
 });
 
 // Mod-Chat IPC Handlers

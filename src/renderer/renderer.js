@@ -103,9 +103,355 @@ const streamStatusPill = document.getElementById('stream-status-pill');
 const streamStatusDot = document.getElementById('stream-status-dot');
 const streamStatusText = document.getElementById('stream-status-text');
 
+// =========================================================================
+// STREAMER PROFILES MANAGEMENT SYSTEM
+// =========================================================================
+let streamerProfiles = [];
+let activeProfileId = 'prof_shishawg';
+let editingProfileId = null;
+
+function getActiveStreamerProfile() {
+  return streamerProfiles.find(p => p.id === activeProfileId) || streamerProfiles[0] || {
+    id: 'prof_shishawg',
+    name: 'ShishaWG (Marvin)',
+    targetChannel: 'marved',
+    botName: 'marvedbot',
+    defaultPersons: ['Marvin', 'Hasty', 'Kai'],
+    youtubeChannels: ['@shishawg', '@marvocado'],
+    promoCodes: [
+      { shop: 'HookahFloW', code: 'SHISHAWG10', desc: '10% Rabatt' },
+      { shop: 'Moze', code: 'SHISHAWG', desc: 'Rabattcode' }
+    ],
+    telegram: { botToken: '', chatId: '', claimUrl: '' },
+    isDefault: true
+  };
+}
+
+async function loadStreamerProfiles() {
+  try {
+    const res = await ipcRenderer.invoke('profiles:get-all');
+    if (res && res.success) {
+      streamerProfiles = res.profiles || [];
+      activeProfileId = res.activeProfileId || (streamerProfiles[0]?.id || 'prof_shishawg');
+    }
+  } catch(e) {
+    console.error('Failed to load streamer profiles:', e);
+  }
+  updateLandingProfileDropdown();
+  await applyActiveStreamerProfile(false);
+}
+
+function updateLandingProfileDropdown() {
+  const select = document.getElementById('select-active-streamer-profile');
+  if (!select) return;
+  select.innerHTML = streamerProfiles.map(p => `
+    <option value="${escapeHtml(p.id)}" ${p.id === activeProfileId ? 'selected' : ''}>
+      ${escapeHtml(p.name)} (#${escapeHtml(p.targetChannel || 'marved')})
+    </option>
+  `).join('');
+}
+
+async function applyActiveStreamerProfile(saveToBackend = true) {
+  const prof = getActiveStreamerProfile();
+  if (!prof) return;
+
+  // 1. Update Target Channel & Bot in UI & state
+  if (prof.targetChannel) {
+    state.targetChannel = prof.targetChannel;
+    if (targetChannelInput) targetChannelInput.value = prof.targetChannel;
+  }
+  if (prof.botName && targetBotInput) {
+    targetBotInput.value = prof.botName;
+  }
+
+  // 2. Update Channel status pill & tooltips
+  updateChannelBotTooltips();
+  checkLiveStreamStatus();
+
+  // 3. Update Landing Page Dropdown selection
+  const select = document.getElementById('select-active-streamer-profile');
+  if (select && select.value !== activeProfileId) {
+    select.value = activeProfileId;
+  }
+
+  // 4. Update YouTube Search Placeholder
+  const ytSearchInput = document.getElementById('qa-yt-search-input');
+  if (ytSearchInput) {
+    const ytNames = (prof.youtubeChannels || []).join(', ') || '@shishawg';
+    ytSearchInput.placeholder = `🔍 YouTube-Videos (${ytNames}) durchsuchen (z. B. phunnel, kopfbau, hmd)...`;
+  }
+
+  // 5. Update Q&A Persons Pills if applicable
+  if (Array.isArray(prof.defaultPersons) && prof.defaultPersons.length > 0 && typeof renderQnAPersonsPillList === 'function') {
+    renderQnAPersonsPillList(prof.defaultPersons);
+  }
+
+  if (saveToBackend) {
+    await ipcRenderer.invoke('profiles:set-active', activeProfileId);
+    showToast(`🎮 Aktiver Streamer: ${prof.name} (#${prof.targetChannel})`, 'success');
+  }
+}
+
+function setupProfileEventListeners() {
+  const select = document.getElementById('select-active-streamer-profile');
+  if (select) {
+    select.addEventListener('change', async (e) => {
+      activeProfileId = e.target.value;
+      await applyActiveStreamerProfile(true);
+    });
+  }
+
+  const btnOpen = document.getElementById('btn-open-streamer-profiles');
+  if (btnOpen) {
+    btnOpen.addEventListener('click', openStreamerProfilesModal);
+  }
+
+  const btnClose = document.getElementById('btn-close-profiles-modal');
+  if (btnClose) {
+    btnClose.addEventListener('click', closeStreamerProfilesModal);
+  }
+
+  const btnCancel = document.getElementById('btn-cancel-profile-edit');
+  if (btnCancel) {
+    btnCancel.addEventListener('click', closeStreamerProfilesModal);
+  }
+
+  const btnAddNew = document.getElementById('btn-add-new-profile');
+  if (btnAddNew) {
+    btnAddNew.addEventListener('click', () => {
+      const newId = 'prof_' + Date.now();
+      const newProf = {
+        id: newId,
+        name: 'Neuer Streamer',
+        targetChannel: 'channel',
+        botName: 'bot',
+        defaultPersons: ['Streamer', 'Gast 1'],
+        youtubeChannels: ['@channel'],
+        promoCodes: [
+          { shop: 'Shop 1', code: 'CODE10', desc: '10% Rabatt' }
+        ],
+        telegram: { botToken: '', chatId: '', claimUrl: '' },
+        isDefault: false
+      };
+      streamerProfiles.push(newProf);
+      editingProfileId = newId;
+      renderProfilesSidebar();
+      loadProfileIntoEditor(newId);
+      const nameInp = document.getElementById('input-profile-name');
+      if (nameInp) {
+        nameInp.focus();
+        nameInp.select();
+      }
+    });
+  }
+
+  const btnDelete = document.getElementById('btn-delete-profile');
+  if (btnDelete) {
+    btnDelete.addEventListener('click', async () => {
+      if (streamerProfiles.length <= 1) {
+        showToast('Das letzte verbleibende Profil kann nicht gelöscht werden.', 'error');
+        return;
+      }
+      const toDelete = streamerProfiles.find(p => p.id === editingProfileId);
+      const toDeleteName = toDelete ? toDelete.name : 'Profil';
+      streamerProfiles = streamerProfiles.filter(p => p.id !== editingProfileId);
+      if (activeProfileId === editingProfileId) {
+        activeProfileId = streamerProfiles[0].id;
+      }
+      editingProfileId = streamerProfiles[0].id;
+      renderProfilesSidebar();
+      loadProfileIntoEditor(editingProfileId);
+      updateLandingProfileDropdown();
+      await applyActiveStreamerProfile(false);
+      await ipcRenderer.invoke('profiles:save-all', { profiles: streamerProfiles, activeProfileId });
+      showToast(`Profil "${toDeleteName}" gelöscht.`, 'info');
+    });
+  }
+
+  const btnAddPromo = document.getElementById('btn-add-profile-promo');
+  if (btnAddPromo) {
+    btnAddPromo.addEventListener('click', () => {
+      const container = document.getElementById('profile-promo-codes-list');
+      if (!container) return;
+      const newRow = document.createElement('div');
+      newRow.className = 'promo-code-row';
+      newRow.innerHTML = `
+        <input type="text" class="input-promo-shop" placeholder="Shop Name (z. B. HookahFloW)" value="">
+        <input type="text" class="input-promo-code" placeholder="Code (z. B. SHISHAWG10)" value="">
+        <input type="text" class="input-promo-desc" placeholder="Rabatt (z. B. 10% Rabatt)" value="">
+        <button type="button" class="btn-icon btn-remove-promo-row" title="Entfernen">✕</button>
+      `;
+      newRow.querySelector('.btn-remove-promo-row').addEventListener('click', () => newRow.remove());
+      container.appendChild(newRow);
+      newRow.querySelector('.input-promo-shop').focus();
+    });
+  }
+
+  const btnSave = document.getElementById('btn-save-profile-edit');
+  if (btnSave) {
+    btnSave.addEventListener('click', async () => {
+      const nameVal = document.getElementById('input-profile-name')?.value.trim();
+      const chanVal = document.getElementById('input-profile-channel')?.value.trim().toLowerCase().replace('#', '');
+      const botVal = document.getElementById('input-profile-bot')?.value.trim().toLowerCase().replace('@', '');
+      const personsVal = document.getElementById('input-profile-persons')?.value.trim();
+      const ytVal = document.getElementById('input-profile-youtube')?.value.trim();
+      const tgTokenVal = document.getElementById('input-profile-telegram-token')?.value.trim();
+      const tgChatVal = document.getElementById('input-profile-telegram-chatid')?.value.trim();
+      const isDefVal = document.getElementById('chk-profile-is-default')?.checked;
+
+      if (!nameVal) {
+        showToast('Bitte gib einen Profil-Namen an.', 'error');
+        return;
+      }
+
+      const currentProf = streamerProfiles.find(p => p.id === editingProfileId);
+      if (currentProf) {
+        currentProf.name = nameVal;
+        currentProf.targetChannel = chanVal || 'marved';
+        currentProf.botName = botVal || 'bot';
+        currentProf.defaultPersons = personsVal ? personsVal.split(',').map(s => s.trim()).filter(Boolean) : ['Marvin'];
+        currentProf.youtubeChannels = ytVal ? ytVal.split(',').map(s => s.trim()).filter(Boolean) : ['@shishawg'];
+        currentProf.telegram = {
+          botToken: tgTokenVal || '',
+          chatId: tgChatVal || '',
+          claimUrl: currentProf.telegram?.claimUrl || ''
+        };
+
+        const promoRows = document.querySelectorAll('.promo-code-row');
+        const collectedPromos = [];
+        promoRows.forEach(row => {
+          const s = row.querySelector('.input-promo-shop')?.value.trim();
+          const c = row.querySelector('.input-promo-code')?.value.trim();
+          const d = row.querySelector('.input-promo-desc')?.value.trim();
+          if (s || c) {
+            collectedPromos.push({ shop: s || 'Shop', code: c || '', desc: d || '' });
+          }
+        });
+        currentProf.promoCodes = collectedPromos;
+
+        if (isDefVal) {
+          streamerProfiles.forEach(p => p.isDefault = (p.id === currentProf.id));
+        }
+      }
+
+      await ipcRenderer.invoke('profiles:save-all', { profiles: streamerProfiles, activeProfileId });
+      updateLandingProfileDropdown();
+      await applyActiveStreamerProfile(false);
+      closeStreamerProfilesModal();
+      showToast(`Profil "${nameVal}" gespeichert! ⭐`, 'success');
+    });
+  }
+}
+
+function openStreamerProfilesModal() {
+  const modal = document.getElementById('modal-streamer-profiles');
+  if (!modal) return;
+  editingProfileId = activeProfileId;
+  renderProfilesSidebar();
+  loadProfileIntoEditor(editingProfileId);
+  modal.classList.remove('hidden');
+}
+
+function closeStreamerProfilesModal() {
+  const modal = document.getElementById('modal-streamer-profiles');
+  if (modal) modal.classList.add('hidden');
+}
+
+function renderProfilesSidebar() {
+  const listContainer = document.getElementById('profiles-list-container');
+  if (!listContainer) return;
+  listContainer.innerHTML = streamerProfiles.map(p => `
+    <div class="profile-card-item ${p.id === editingProfileId ? 'active' : ''}" data-id="${p.id}">
+      <div>
+        <div class="profile-card-item-title">${escapeHtml(p.name)} ${p.isDefault ? '⭐' : ''}</div>
+        <div class="profile-card-item-channel">#${escapeHtml(p.targetChannel || 'marved')}</div>
+      </div>
+      ${p.id === activeProfileId ? '<span class="status-dot green" title="Aktuell aktiv"></span>' : ''}
+    </div>
+  `).join('');
+
+  listContainer.querySelectorAll('.profile-card-item').forEach(card => {
+    card.addEventListener('click', () => {
+      const pId = card.getAttribute('data-id');
+      editingProfileId = pId;
+      renderProfilesSidebar();
+      loadProfileIntoEditor(pId);
+    });
+  });
+}
+
+async function loadProfileIntoEditor(profileId) {
+  const p = streamerProfiles.find(item => item.id === profileId) || streamerProfiles[0];
+  if (!p) return;
+
+  const inputName = document.getElementById('input-profile-name');
+  const inputChannel = document.getElementById('input-profile-channel');
+  const inputBot = document.getElementById('input-profile-bot');
+  const inputPersons = document.getElementById('input-profile-persons');
+  const inputYt = document.getElementById('input-profile-youtube');
+  const inputTgToken = document.getElementById('input-profile-telegram-token');
+  const inputTgChatId = document.getElementById('input-profile-telegram-chatid');
+  const chkDefault = document.getElementById('chk-profile-is-default');
+
+  if (inputName) inputName.value = p.name || '';
+  if (inputChannel) inputChannel.value = p.targetChannel || '';
+  if (inputBot) inputBot.value = p.botName || '';
+  if (inputPersons) inputPersons.value = Array.isArray(p.defaultPersons) ? p.defaultPersons.join(', ') : (p.defaultPersons || '');
+  if (inputYt) inputYt.value = Array.isArray(p.youtubeChannels) ? p.youtubeChannels.join(', ') : (p.youtubeChannels || '');
+  if (inputTgToken) inputTgToken.value = p.telegram?.botToken || '';
+  if (inputTgChatId) inputTgChatId.value = p.telegram?.chatId || '';
+  if (chkDefault) chkDefault.checked = !!p.isDefault;
+
+  // If Telegram token is empty, auto-fetch from Supabase / Gist config
+  if ((!p.telegram || !p.telegram.botToken) && (inputTgToken && !inputTgToken.value)) {
+    try {
+      const tgCfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
+      if (tgCfg && tgCfg.botToken) {
+        if (inputTgToken) inputTgToken.value = tgCfg.botToken;
+        if (inputTgChatId) inputTgChatId.value = tgCfg.chatId || '';
+        p.telegram = {
+          botToken: tgCfg.botToken,
+          chatId: tgCfg.chatId || '',
+          claimUrl: tgCfg.claimUrl || 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html'
+        };
+      }
+    } catch(e) {}
+  }
+
+  renderPromoCodesEditorList(p.promoCodes || []);
+}
+
+function renderPromoCodesEditorList(promos) {
+  const container = document.getElementById('profile-promo-codes-list');
+  if (!container) return;
+
+  container.innerHTML = (promos.length === 0 ? [{ shop: '', code: '', desc: '' }] : promos).map((promo, idx) => `
+    <div class="promo-code-row" data-idx="${idx}">
+      <input type="text" class="input-promo-shop" placeholder="Shop Name (z. B. HookahFloW)" value="${escapeHtml(promo.shop || '')}">
+      <input type="text" class="input-promo-code" placeholder="Code (z. B. SHISHAWG10)" value="${escapeHtml(promo.code || '')}">
+      <input type="text" class="input-promo-desc" placeholder="Rabatt (z. B. 10% Rabatt)" value="${escapeHtml(promo.desc || '')}">
+      <button type="button" class="btn-icon btn-remove-promo-row" data-idx="${idx}" title="Entfernen">✕</button>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.btn-remove-promo-row').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.currentTarget.closest('.promo-code-row');
+      if (row) row.remove();
+    });
+  });
+}
+
 // Initialize App
 async function initApp() {
   setupHubNavigation();
+
+  try {
+    await loadStreamerProfiles();
+    setupProfileEventListeners();
+  } catch(e) {
+    console.error('Error loading streamer profiles:', e);
+  }
 
   try {
     await loadCatalog();
@@ -562,9 +908,10 @@ function renderPersonsGrid() {
           <span class="person-name-display">${escapeHtml(p.name || `Person ${i + 1}`)}</span>
         </div>
         <div class="person-header-actions" style="display:flex; align-items:center; gap:12px;">
-          <label class="checkbox-label" style="font-size: 0.78rem; color: var(--accent-cyan);" title="Kennzeichnet diese Person als E-Gerät Nutzer (z. B. XKAH Lite / Pro)">
+          <label class="toggle-switch checkbox-label" style="font-size: 0.78rem;" title="Kennzeichnet diese Person als E-Gerät Nutzer (z. B. XKAH Lite / Pro)">
             <input type="checkbox" class="chk-p-electric" tabindex="-1" data-index="${i}" ${isElectric ? 'checked' : ''}>
-            <span>⚡ E-Gerät</span>
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">⚡ E-Gerät</span>
           </label>
           <button class="btn-icon btn-clear-person" tabindex="-1" data-index="${i}" title="Person entfernen">✕</button>
         </div>
@@ -635,16 +982,17 @@ function renderPersonsGrid() {
         <div class="tobacco-header-bar">
           <label style="margin-bottom:0;">Tabaksorte(n):</label>
           <div class="tobacco-amount-toggle-group">
-            <label class="tobacco-amount-switch-label" title="Mischverhältnis oder Mengenangaben (% oder g) aktivieren">
-              <input type="checkbox" class="chk-p-tob-amount" data-pindex="${i}" ${p.showTobaccoAmounts ? 'checked' : ''}>
-              <span>⚖️ Mengen</span>
-            </label>
             ${p.showTobaccoAmounts ? `
               <div class="unit-selector-pills">
                 <button type="button" class="btn-unit-pill ${p.tobaccoUnit === 'g' ? 'active' : ''}" data-pindex="${i}" data-unit="g">g</button>
                 <button type="button" class="btn-unit-pill ${p.tobaccoUnit === '%' ? 'active' : ''}" data-pindex="${i}" data-unit="%">%</button>
               </div>
             ` : ''}
+            <label class="toggle-switch tobacco-amount-switch-label" title="Mischverhältnis oder Mengenangaben (% oder g) aktivieren">
+              <input type="checkbox" class="chk-p-tob-amount" data-pindex="${i}" ${p.showTobaccoAmounts ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">⚖️ Mengen</span>
+            </label>
           </div>
         </div>
         <div class="tobacco-mix-inputs">
@@ -1856,18 +2204,12 @@ function setupEventListeners() {
   if (inputGlobalPromo) inputGlobalPromo.addEventListener('input', generateCommandString);
   if (selectPromoTarget) selectPromoTarget.addEventListener('change', generateCommandString);
 
-  // Target Channel Listener
-  if (targetChannelInput) {
-    targetChannelInput.addEventListener('input', () => {
-      targetChannelInput.title = `Ziel-Kanal: #${targetChannelInput.value.trim() || 'marved'}`;
-    });
-    targetChannelInput.addEventListener('change', async () => {
-      state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marved';
-      updateChannelBotTooltips();
-      if (typeof updateObsUrls === 'function') updateObsUrls();
-      await ipcRenderer.invoke('twitch:set-channel', state.targetChannel);
-      checkLiveStreamStatus();
-      showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
+  // Hamburger Menu Profile Manager Button
+  const btnHamburgerOpenProfiles = document.getElementById('btn-hamburger-open-profiles');
+  if (btnHamburgerOpenProfiles) {
+    btnHamburgerOpenProfiles.addEventListener('click', () => {
+      if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');
+      openStreamerProfilesModal();
     });
   }
 
@@ -2629,7 +2971,7 @@ function renderCatalogList() {
           <div class="inline-edit-box">
             <input type="text" id="inline-input-${idx}" value="${escapeHtml(oldName)}" maxlength="60" style="flex:1;">
             ${catKey === 'bowls' ? `
-            <label class="checkbox-label" title="Als Elektro-Gerät kennzeichnen"><input type="checkbox" id="inline-elec-${idx}" ${oldIsElec ? 'checked' : ''}> <span>⚡ Elektro</span></label>
+            <label class="toggle-switch checkbox-label" title="Als Elektro-Gerät kennzeichnen"><input type="checkbox" id="inline-elec-${idx}" ${oldIsElec ? 'checked' : ''}><span class="toggle-slider"></span><span class="toggle-text">⚡ Elektro</span></label>
             ` : ''}
             <button class="btn btn-primary btn-sm btn-save-inline">✓ Speichern</button>
             <button class="btn btn-secondary btn-sm btn-cancel-inline">✕ Abbrechen</button>
@@ -3390,6 +3732,32 @@ function renderYouTubeBoard(isLiveSearch = false) {
     return;
   }
 
+  // Multi-Channel Tag Color resolver (Red for 1st / ShishaWG, Blue for 2nd / Marvocado, Purple for 3rd, Green for 4th, Amber for 5th)
+  function getYtChannelTagStyle(catOrChannel) {
+    const defaultRed = 'background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.35)); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4);';
+    if (!catOrChannel) return defaultRed;
+    const name = catOrChannel.toLowerCase().replace('@', '').trim();
+    const prof = getActiveStreamerProfile();
+    const channels = (prof && Array.isArray(prof.youtubeChannels)) ? prof.youtubeChannels.map(c => c.toLowerCase().replace('@', '').trim()) : [];
+
+    let idx = channels.findIndex(c => name.includes(c) || c.includes(name));
+    if (idx === -1) {
+      if (name.includes('shisha') || name.includes('marvin')) idx = 0;
+      else if (name.includes('marvocado') || name.includes('vlog') || name.includes('food')) idx = 1;
+      else idx = 2;
+    }
+
+    const colorStyles = [
+      'background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(220, 38, 38, 0.35)); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4);', // 1: Red (ShishaWG)
+      'background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(37, 99, 235, 0.35)); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4);', // 2: Blue (Marvocado)
+      'background: linear-gradient(135deg, rgba(168, 85, 247, 0.25), rgba(124, 58, 237, 0.35)); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.4);', // 3: Purple
+      'background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(5, 150, 105, 0.35)); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4);', // 4: Emerald
+      'background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.35)); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4);'   // 5: Amber
+    ];
+
+    return colorStyles[idx % colorStyles.length];
+  }
+
   combined.forEach(video => {
     const item = document.createElement('div');
     item.className = 'qa-yt-suggestion-item';
@@ -3397,13 +3765,15 @@ function renderYouTubeBoard(isLiveSearch = false) {
     const videoId = video.videoId || extractYouTubeVideoId(video.url);
     const thumbUrl = video.thumb || (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : '');
     const isPinned = youtubeVideos.some(v => v.url === video.url && v.pinned);
+    const tagText = video.category || (video.channel || 'ShishaWG');
+    const tagStyle = getYtChannelTagStyle(tagText);
 
     item.innerHTML = `
       <div class="qa-yt-sugg-left">
         ${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" class="qa-yt-thumb-mini" alt="Thumb" onerror="this.style.display='none'">` : '<div class="qa-yt-icon-badge">▶</div>'}
         <div class="qa-yt-sugg-content">
           <div class="qa-yt-sugg-title-row">
-            <span class="qa-yt-category-tag">${escapeHtml(video.category || (video.channel || 'ShishaWG'))}</span>
+            <span class="qa-yt-category-tag" style="${tagStyle}">${escapeHtml(tagText)}</span>
             <span class="qa-yt-sugg-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</span>
           </div>
           <div class="qa-yt-sugg-desc" title="${escapeHtml(video.desc || video.url)}">${escapeHtml(video.desc || video.url)}</div>
@@ -3496,8 +3866,10 @@ function renderYouTubeBoard(isLiveSearch = false) {
 async function postYouTubeVideoToChat(video) {
   if (!video || !video.url) return;
   try {
-    const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-    const message = `🎥 Video-Tipp von Marvin: "${video.title}" 👉 ${video.url}`;
+    const activeProf = getActiveStreamerProfile();
+    const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || activeProf.targetChannel || 'marved';
+    const streamerName = (activeProf.name || 'Streamer').split(' ')[0] || 'Streamer';
+    const message = `🎥 Video-Tipp von ${streamerName}: "${video.title}" 👉 ${video.url}`;
     const res = await ipcRenderer.invoke('twitch:send-chat', { message, channel });
     if (res && res.success) {
       showToast(`Video im Chat gepostet: ${video.title}`, 'success');
@@ -3526,7 +3898,11 @@ function setupYouTubeVideoFinder() {
       if (q.length >= 2) {
         ytSearchDebounce = setTimeout(async () => {
           try {
-            const liveRes = await ipcRenderer.invoke('youtube:search', q);
+            const activeProf = getActiveStreamerProfile();
+            const channels = (activeProf && Array.isArray(activeProf.youtubeChannels) && activeProf.youtubeChannels.length > 0)
+              ? activeProf.youtubeChannels
+              : ['@shishawg', '@marvocado'];
+            const liveRes = await ipcRenderer.invoke('youtube:search', { query: q, channels });
             if (Array.isArray(liveRes) && qaYtSearchInput.value.trim() === q) {
               liveSearchResults = liveRes;
               lastLiveQuery = q;

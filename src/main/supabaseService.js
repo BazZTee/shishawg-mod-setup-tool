@@ -380,15 +380,23 @@ class SupabaseService {
   }
 
   // --- Mod Watchlist CRUD ---
-  async getWatchlist() {
+  async getWatchlist(channel = 'marved') {
     try {
-      const { data, error } = await this.client
+      const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
+      let query = this.client
         .from('mod_watchlist')
-        .select('*')
-        .order('created_at', { ascending: false });
+        .select('*');
+      
+      // Attempt to filter by channel if supported
+      try {
+        query = query.or(`channel.eq.${cleanChan},channel.is.null`);
+      } catch(e) {}
+
+      const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []).map(r => ({
         id: r.id,
+        channel: r.channel || cleanChan,
         username: r.username,
         addedBy: r.added_by,
         reason: r.reason,
@@ -400,12 +408,14 @@ class SupabaseService {
     }
   }
 
-  async addToWatchlist(item) {
+  async addToWatchlist(item, channel = 'marved') {
     try {
+      const cleanChan = (channel || item.channel || 'marved').toLowerCase().replace('#', '');
       await this.client
         .from('mod_watchlist')
         .upsert({
           id: item.id || ('wl_' + Date.now()),
+          channel: cleanChan,
           username: item.username,
           added_by: item.addedBy || 'Mod',
           reason: item.reason || '',
@@ -428,12 +438,15 @@ class SupabaseService {
   }
 
   // --- Telegram Config CRUD ---
-  async getTelegramConfig() {
+  async getTelegramConfig(channel = 'marved') {
     try {
+      const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
       const { data, error } = await this.client
         .from('telegram_config')
         .select('*')
-        .eq('id', 'default')
+        .in('id', [cleanChan, 'default'])
+        .order('id', { ascending: true }) // custom channel first or fallback
+        .limit(1)
         .maybeSingle();
       if (error) throw error;
       return data ? { botToken: data.bot_token, chatId: data.chat_id, claimUrl: data.claim_url } : null;
@@ -443,12 +456,13 @@ class SupabaseService {
     }
   }
 
-  async saveTelegramConfig(config) {
+  async saveTelegramConfig(config, channel = 'marved') {
     try {
+      const cleanChan = (channel || config.channel || 'marved').toLowerCase().replace('#', '');
       await this.client
         .from('telegram_config')
         .upsert({
-          id: 'default',
+          id: cleanChan,
           bot_token: config.botToken || '',
           chat_id: config.chatId || '',
           claim_url: config.claimUrl || '',
@@ -460,16 +474,24 @@ class SupabaseService {
   }
 
   // --- Mod Chat CRUD ---
-  async getModChat() {
+  async getModChat(channel = 'marved') {
     try {
-      const { data, error } = await this.client
+      const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
+      let query = this.client
         .from('mod_chat')
-        .select('*')
+        .select('*');
+
+      try {
+        query = query.or(`channel.eq.${cleanChan},channel.is.null`);
+      } catch(e) {}
+
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(100);
       if (error) throw error;
       return (data || []).reverse().map(r => ({
         id: r.id,
+        channel: r.channel || cleanChan,
         sender: r.sender,
         message: r.message,
         color: r.color,
@@ -481,12 +503,14 @@ class SupabaseService {
     }
   }
 
-  async sendModChatMessage(msg) {
+  async sendModChatMessage(msg, channel = 'marved') {
     try {
+      const cleanChan = (channel || msg.channel || 'marved').toLowerCase().replace('#', '');
       await this.client
         .from('mod_chat')
         .upsert({
           id: msg.id || ('chat_' + Date.now()),
+          channel: cleanChan,
           sender: msg.sender || 'Mod',
           message: msg.message || '',
           color: msg.color || '#00f0ff',
@@ -498,15 +522,23 @@ class SupabaseService {
   }
 
   // --- Giveaway Winners CRUD ---
-  async getGiveaways() {
+  async getGiveaways(channel = 'marved') {
     try {
-      const { data, error } = await this.client
+      const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
+      let query = this.client
         .from('giveaway_winners')
-        .select('*')
+        .select('*');
+
+      try {
+        query = query.or(`channel.eq.${cleanChan},channel.is.null`);
+      } catch(e) {}
+
+      const { data, error } = await query
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []).map(r => ({
         id: r.id,
+        channel: r.channel || cleanChan,
         username: r.username,
         displayName: r.display_name,
         prize: r.prize,
@@ -520,12 +552,14 @@ class SupabaseService {
     }
   }
 
-  async saveGiveawayWinner(winner) {
+  async saveGiveawayWinner(winner, channel = 'marved') {
     try {
+      const cleanChan = (channel || winner.channel || 'marved').toLowerCase().replace('#', '');
       await this.client
         .from('giveaway_winners')
         .upsert({
           id: winner.id || ('win_' + Date.now()),
+          channel: cleanChan,
           username: winner.username,
           display_name: winner.displayName || winner.username,
           prize: winner.prize || '',

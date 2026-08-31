@@ -5135,10 +5135,12 @@ function renderWinnersHistory(winners) {
   if (!winnersHistoryTbody) return;
   const list = winners || [];
 
+  const isCpCheck = (w) => w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle') || w.prize?.toLowerCase().includes('zauber') || w.prize?.toLowerCase().includes('punkte');
+
   // Update Counters
   const countAll = list.length;
-  const countGw = list.filter(w => w.type !== 'channel_points' && !w.prize?.toLowerCase().includes('kohle')).length;
-  const countCp = list.filter(w => w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle')).length;
+  const countGw = list.filter(w => !isCpCheck(w)).length;
+  const countCp = list.filter(w => isCpCheck(w)).length;
 
   const elCountAll = document.getElementById('count-gw-all');
   const elCountGw = document.getElementById('count-gw-giveaway');
@@ -5150,9 +5152,9 @@ function renderWinnersHistory(winners) {
   // Filter list
   let filtered = list;
   if (currentGiveawayTabFilter === 'giveaway') {
-    filtered = list.filter(w => w.type !== 'channel_points' && !w.prize?.toLowerCase().includes('kohle'));
+    filtered = list.filter(w => !isCpCheck(w));
   } else if (currentGiveawayTabFilter === 'channel_points') {
-    filtered = list.filter(w => w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle'));
+    filtered = list.filter(w => isCpCheck(w));
   }
 
   if (filtered.length === 0) {
@@ -5167,7 +5169,7 @@ function renderWinnersHistory(winners) {
     const addr = w.address || {};
     const addrPreview = addr.street ? `${addr.street}, ${addr.zip} ${addr.city}` : '—';
     const recipient = addr.fullName || '—';
-    const isChannelPoints = w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle');
+    const isChannelPoints = isCpCheck(w);
 
     let statusHtml = '<span class="address-status-pill waiting">Wartend</span>';
     if (w.status === 'sent_to_telegram') statusHtml = '<span class="address-status-pill sent">✅ Telegram</span>';
@@ -5175,7 +5177,7 @@ function renderWinnersHistory(winners) {
     if (w.status === 'shipped') statusHtml = '<span class="address-status-pill shipped">📦 Verschickt</span>';
 
     const typeBadge = isChannelPoints
-      ? '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(124,58,237,0.25); color:#c4b5fd; border:1px solid rgba(124,58,237,0.4); margin-right:4px;">⬛ KOHLE</span>'
+      ? '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(124,58,237,0.25); color:#c4b5fd; border:1px solid rgba(124,58,237,0.4); margin-right:4px;">⬛ 1KG KOHLE</span>'
       : '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.25); color:#6ee7b7; border:1px solid rgba(16,185,129,0.4); margin-right:4px;">🎁 GIVEAWAY</span>';
 
     html += `
@@ -5185,7 +5187,7 @@ function renderWinnersHistory(winners) {
         <td>
           <div style="display:flex; align-items:center; flex-wrap:wrap; gap:2px;">
             ${typeBadge}
-            <span style="font-size:0.78rem; font-weight:600;">${escapeHtml(w.prize || 'Shisha-Kohle')}</span>
+            <span style="font-size:0.78rem; font-weight:600;">${escapeHtml(w.prize || '1KG Zauberwürfel FREE!')}</span>
           </div>
         </td>
         <td>${escapeHtml(recipient)}</td>
@@ -5237,14 +5239,14 @@ function getFormattedTelegramMessage(winner) {
   if (!winner) return '';
   const addr = winner.address || {};
   const dateStr = new Date(winner.timestamp || Date.now()).toLocaleString('de-DE');
-  const isChannelPoints = winner.type === 'channel_points' || winner.prize?.toLowerCase().includes('kohle');
+  const isChannelPoints = winner.type === 'channel_points' || winner.prize?.toLowerCase().includes('kohle') || winner.prize?.toLowerCase().includes('zauber');
   const activeProf = getActiveStreamerProfile();
   const streamerName = activeProf ? activeProf.name : 'Marvin';
 
   if (isChannelPoints) {
-    return `⬛ <b>KANALPUNKTE-PRÄMIE (KOHLE STÜCKE)</b>\n` +
+    return `⬛ <b>KANALPUNKTE-PRÄMIE (1KG ZAUBERWÜRFEL)</b>\n` +
            `👤 <b>Twitch-User:</b> @${winner.username || winner.user_name || winner.user_login}\n` +
-           `🎁 <b>Prämie:</b> ${winner.prize || 'Shisha-Kohle (Kohle Stücke)'}\n` +
+           `🎁 <b>Prämie:</b> ${winner.prize || '1KG Zauberwürfel FREE!'}\n` +
            `📦 <b>Empfänger:</b> ${addr.fullName || '—'}\n` +
            `🏠 <b>Adresse:</b> ${addr.street || '—'}, ${addr.zip || ''} ${addr.city || ''} (${addr.country || 'Deutschland'})\n` +
            `📅 <b>Datum:</b> ${dateStr}\n` +

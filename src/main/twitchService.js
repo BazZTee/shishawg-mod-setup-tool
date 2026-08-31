@@ -872,7 +872,7 @@ class TwitchService {
 
             const displayName = tags['display-name'] || login || 'Zuschauer';
             const uniqueId = `kp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-            const prizeTitle = 'Shisha-Kohle (Kohle Stücke)';
+            const prizeTitle = '1KG Zauberwürfel FREE!';
 
             const redemptionItem = {
               id: uniqueId,
@@ -896,7 +896,7 @@ class TwitchService {
             const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(login)}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
             if (autoChat) {
               try {
-                const chatMsg = `@${displayName} 🎉 Du hast Kohle Stücke für echte Shisha-Kohle eingelöst! Trage hier deine Lieferadresse ein 👉 ${claimUrl}`;
+                const chatMsg = `@${displayName} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
                 await this.sendMessage(chatMsg, chan);
               } catch(e) {
                 console.error('Failed to send channel points chat message:', e);
@@ -927,14 +927,14 @@ class TwitchService {
     return { success: true };
   }
 
-  async createManualClaimLink(userLogin, prizeTitle = 'Shisha-Kohle (Kohle Stücke)', channel = this.targetChannel, postToChat = false) {
+  async createManualClaimLink(userLogin, prizeTitle = '1KG Zauberwürfel FREE!', channel = this.targetChannel, postToChat = false) {
     const cleanUser = (userLogin || '').replace(/^@/, '').toLowerCase().trim();
     if (!cleanUser) throw new Error('Twitch-Username ist erforderlich.');
 
     const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
-    const prize = (prizeTitle || 'Shisha-Kohle (Kohle Stücke)').trim();
+    const prize = (prizeTitle || '1KG Zauberwürfel FREE!').trim();
     const uniqueId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    const isChannelPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('punkte');
+    const isChannelPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte');
 
     const item = {
       id: uniqueId,

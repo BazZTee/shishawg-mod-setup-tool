@@ -352,7 +352,7 @@
 
     if (!winId) winId = 'gw-' + Date.now();
 
-    const isPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('punkte');
+    const isPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte');
     const prizeLabelEl = document.querySelector('.prize-label');
     if (prizeLabelEl) {
       prizeLabelEl.textContent = isPoints ? '⬛ Deine Kanalpunkte-Prämie:' : '🎁 Dein Gewinn:';

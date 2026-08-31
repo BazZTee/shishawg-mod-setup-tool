@@ -151,12 +151,11 @@
           <div class="hub-tile-card" data-target="view-stats" tabindex="0" role="button">
             <div class="tile-header">
               <span class="tile-icon">📊</span>
-              <span class="tile-badge planned">Geplant</span>
             </div>
             <h3>Stats &amp; Kohle-Timer</h3>
-            <p>Kopf-Counter, Rauchdauer- &amp; Kohlewechsel-Timer und Statistiken über die meistgerauchten Sorten.</p>
+            <p>Live Kohle- &amp; Session-Timer, Stream-Kopf-Counter, Rauchhistorie und Ranglisten der beliebtesten Sorten.</p>
             <div class="tile-action">
-              <span>Vorschau öffnen ➔</span>
+              <span>Tool öffnen ➔</span>
             </div>
           </div>
         </div>
@@ -1604,43 +1603,349 @@
       </div>
 
       <!-- ============================================== -->
-      <!-- VIEW 6: STATS & TIMER (Coming Soon) -->
+      <!-- VIEW 6: STATS & KOHLE-TIMER -->
       <!-- ============================================== -->
       <div id="view-stats" class="hub-view-pane hidden">
         <div class="tool-sub-header">
-          <button class="btn btn-secondary btn-back-hub" title="Zurück zur Mod-Zentrale (ESC)">
-            <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
-            🏠 Hauptmenü
-          </button>
-          <span class="tool-breadcrumb">Dashboard ➔ <strong>📊 Stats &amp; Kohle-Timer</strong></span>
+          <div class="sub-header-left">
+            <button class="btn btn-secondary btn-back-hub" title="Zurück zur Mod-Zentrale (ESC)">
+              <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              🏠 Hauptmenü
+            </button>
+            <span class="tool-breadcrumb">Dashboard ➔ <strong>📊 Stats &amp; Kohle-Timer</strong></span>
+          </div>
+          <div class="sub-header-actions">
+            <button id="btn-copy-timer-obs-link" class="btn btn-sm btn-secondary" title="OBS Overlay URL für Kohletimer & Kopf-Counter kopieren">
+              📺 OBS-Overlay Link
+            </button>
+            <button id="btn-refresh-stats" class="btn btn-sm btn-secondary" title="Statistiken &amp; Sessions aktualisieren">
+              🔄 Aktualisieren
+            </button>
+          </div>
         </div>
 
-        <div class="hub-module-card">
-          <div class="module-hero">
-            <span class="module-hero-icon">📊</span>
-            <h2>Shisha-Statistiken &amp; Kohle-Timer</h2>
-            <p class="module-subtitle">Automatische Auswertung gerauchter Köpfe, Tabaksorten &amp; Rauchdauer-Erinnerungen</p>
+        <!-- Top Section: Grid with Timer Dashboard & Setup Controller -->
+        <div class="stats-top-grid">
+
+          <!-- Card 1: LIVE SESSION- & KOHLE-TIMER -->
+          <section class="qna-card timer-main-card">
+            <div class="qna-card-header">
+              <div class="qa-title-group">
+                <span class="qa-header-icon">⏱️</span>
+                <div>
+                  <h3>Live Kohle- &amp; Session-Timer</h3>
+                  <p class="qa-subtitle">Echtzeit-Stoppuhr, Kohlephasen &amp; automatische Erinnerungen</p>
+                </div>
+              </div>
+              <div id="timer-live-badge" class="qna-status-badge offline">
+                <span class="status-dot"></span>
+                <span class="status-text" id="lbl-timer-status">Gestoppt</span>
+              </div>
+            </div>
+
+            <div class="qna-card-body">
+              <!-- Digital Stopwatch Display -->
+              <div class="timer-display-container">
+                <div class="timer-time-block">
+                  <span class="timer-label">Gesamte Rauchdauer</span>
+                  <div class="digital-clock" id="lbl-session-time">00:00:00</div>
+                </div>
+                <div class="timer-divider"></div>
+                <div class="timer-time-block">
+                  <span class="timer-label">Aktuelle Kohlephase</span>
+                  <div class="digital-clock small" id="lbl-coal-time">00:00</div>
+                </div>
+              </div>
+
+              <!-- Phase Progress Bar -->
+              <div class="timer-phase-container">
+                <div class="phase-info-row">
+                  <span id="lbl-timer-phase-text" class="phase-title">Phase: Bereit zum Anrauchen 🔥</span>
+                  <span id="lbl-timer-phase-countdown" class="phase-countdown">00:00 bis Kohle drehen</span>
+                </div>
+                <div class="phase-progress-track">
+                  <div id="bar-coal-progress" class="phase-progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="phase-markers">
+                  <span>Anrauchen (0m)</span>
+                  <span>Kohle drehen (30m)</span>
+                  <span>Neue Kohlen (60m)</span>
+                  <span>Ende</span>
+                </div>
+              </div>
+
+              <!-- Timer Action Buttons -->
+              <div class="timer-actions-grid">
+                <button id="btn-timer-toggle-play" class="btn btn-primary btn-lg" style="grid-column: span 2;">
+                  <span id="icon-timer-play">▶️</span> <span id="lbl-btn-timer-play">Kopf gestartet (Timer Start)</span>
+                </button>
+                <button id="btn-timer-rotate-coal" class="btn btn-secondary" title="Kohle gewendet / entascht">
+                  <span>🪵</span> Kohle gewendet (<span id="lbl-coal-rotation-count">0</span>x)
+                </button>
+                <button id="btn-timer-new-coal" class="btn btn-secondary" title="Neue Kohlen auf den Kopf gelegt">
+                  <span>🔥</span> Neue Kohlen
+                </button>
+                <button id="btn-timer-finish-head" class="btn btn-secondary btn-finish-head" style="grid-column: span 2;" title="Diesen Kopf beenden, bewerten und in die Historie speichern">
+                  <span>🏁</span> Kopf beenden &amp; in Historie speichern
+                </button>
+              </div>
+
+              <!-- Sound Alerts Toggle & Phase Settings -->
+              <div class="timer-footer-settings">
+                <label class="switch-label">
+                  <input type="checkbox" id="chk-timer-sound" checked>
+                  <span>🔔 Akustischer Signalton bei Kohle-Phasen</span>
+                </label>
+                <button id="btn-reset-current-timer" class="btn btn-xs btn-secondary" title="Timer komplett zurücksetzen">
+                  🔄 Timer Reset
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Card 2: AKTIVES SETUP & STREAM-KOPF-COUNTER -->
+          <section class="qna-card current-head-card">
+            <div class="qna-card-header">
+              <div class="qa-title-group">
+                <span class="qa-header-icon">🥣</span>
+                <div>
+                  <h3>Aktiver Kopf &amp; Counter</h3>
+                  <p class="qa-subtitle">Heutige Stream-Session &amp; Setup-Details</p>
+                </div>
+              </div>
+              <div class="head-counter-badge">
+                <span>Kopf #<strong id="lbl-today-head-count">1</strong> heute</span>
+              </div>
+            </div>
+
+            <div class="qna-card-body" style="display:flex; flex-direction:column; gap:12px;">
+              <!-- Quick Counter Controller -->
+              <div class="head-counter-controller">
+                <div class="counter-display">
+                  <span class="counter-label">Köpfe im heutigen Stream</span>
+                  <div class="counter-number" id="lbl-head-counter-big">1</div>
+                </div>
+                <div class="counter-buttons">
+                  <button id="btn-head-count-inc" class="btn btn-sm btn-primary" title="Kopf hinzufügen (+1)">➕ Nächster Kopf (+1)</button>
+                  <button id="btn-head-count-dec" class="btn btn-sm btn-secondary" title="Kopf abziehen (-1)">➖</button>
+                  <button id="btn-head-count-reset" class="btn btn-sm btn-secondary" title="Counter für heute auf 1 zurücksetzen">🔄 Reset</button>
+                </div>
+              </div>
+
+              <!-- Setup Details Form -->
+              <div class="form-group" style="margin-top: 4px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <label class="form-label" style="margin-bottom:0;">Aktueller Tabak:</label>
+                  <button id="btn-import-from-generator" class="btn btn-xs btn-secondary" title="Letztes generiertes Setup aus dem Generator übernehmen">
+                    ⚡ Aus Generator laden
+                  </button>
+                </div>
+                <input type="text" id="input-session-tobacco" placeholder="z. B. Nameless - Black Nana" class="gw-input">
+              </div>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div class="form-group">
+                  <label class="form-label">Kopf:</label>
+                  <input type="text" id="input-session-bowl" placeholder="z. B. Oblako M" class="gw-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">HMD / Aufsatz:</label>
+                  <input type="text" id="input-session-hmd" placeholder="z. B. Onmo HMD" class="gw-input">
+                </div>
+              </div>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                <div class="form-group">
+                  <label class="form-label">Pfeife:</label>
+                  <input type="text" id="input-session-pipe" placeholder="z. B. Moze Varity" class="gw-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Raucher / Person:</label>
+                  <input type="text" id="input-session-person" placeholder="z. B. Marvin" value="Marvin" class="gw-input">
+                </div>
+              </div>
+
+              <!-- Session Notes -->
+              <div class="form-group">
+                <label class="form-label">Notizen / Geschmackseindruck:</label>
+                <input type="text" id="input-session-notes" placeholder="z. B. Sehr minzig, dichter Rauch, Kopf läuft top" class="gw-input">
+              </div>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- Bottom Section: Tabs for History & Analytics -->
+        <div class="stats-bottom-container">
+          <div class="polls-segmented-nav" style="margin-bottom: 16px;">
+            <button id="tab-stats-history" class="poll-tab-btn active">
+              <span class="poll-tab-icon">📋</span>
+              <span class="poll-tab-label">Gerauchte Köpfe (Historie)</span>
+            </button>
+            <button id="tab-stats-analytics" class="poll-tab-btn">
+              <span class="poll-tab-icon">🏆</span>
+              <span class="poll-tab-label">Statistiken &amp; Ranglisten</span>
+            </button>
           </div>
 
-          <div class="features-preview-grid">
-            <div class="feature-card">
-              <div class="feature-icon">⏱️</div>
-              <h3>Kohle- &amp; Session-Timer</h3>
-              <p>Erfasst die Rauchzeit des aktuellen Setups und erinnert rechtzeitig an Kohlewenden oder neue Kohlen.</p>
-              <span class="feature-badge">Geplant</span>
+          <!-- TAB 1: HISTORY OF SESSIONS -->
+          <div id="panel-stats-history" class="stats-tab-panel">
+            <section class="qna-card">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">📜</span>
+                  <div>
+                    <h3>Protokoll gerauchter Köpfe</h3>
+                    <p class="qa-subtitle">Übersicht aller beendeten Sessions mit Rauchzeit &amp; Setup</p>
+                  </div>
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button id="btn-copy-stream-summary" class="btn btn-sm btn-primary" title="Zusammenfassung der heutigen Köpfe in den Twitch Chat kopieren">
+                    💬 In Chat posten
+                  </button>
+                </div>
+              </div>
+              <div class="qna-card-body">
+                <div class="table-responsive">
+                  <table class="winners-history-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Uhrzeit</th>
+                        <th>Tabak</th>
+                        <th>Kopf &amp; HMD</th>
+                        <th>Dauer</th>
+                        <th>Kohle</th>
+                        <th>Bewertung</th>
+                        <th style="text-align:right;">Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody id="sessions-history-tbody">
+                      <tr><td colspan="8" class="empty-list-placeholder">Noch keine beendeten Köpfe in der Historie.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- TAB 2: ANALYTICS & LEADERBOARDS -->
+          <div id="panel-stats-analytics" class="stats-tab-panel hidden">
+            <div class="stats-analytics-grid">
+              
+              <!-- Quick Metric KPI Cards -->
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">🥣</span>
+                <div class="kpi-data">
+                  <strong id="kpi-total-heads">0</strong>
+                  <span>Gesamt gerauchte Köpfe</span>
+                </div>
+              </div>
+
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">⏱️</span>
+                <div class="kpi-data">
+                  <strong id="kpi-avg-duration">0 Min</strong>
+                  <span>Ø Rauchdauer pro Kopf</span>
+                </div>
+              </div>
+
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">🌟</span>
+                <div class="kpi-data">
+                  <strong id="kpi-avg-rating">- / 10</strong>
+                  <span>Ø Setup-Bewertung</span>
+                </div>
+              </div>
+
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">🪵</span>
+                <div class="kpi-data">
+                  <strong id="kpi-total-coals">0</strong>
+                  <span>Kohlewechsel gesamt</span>
+                </div>
+              </div>
+
+              <!-- Leaderboard 1: Meistgerauchte Tabaksorten -->
+              <section class="qna-card" style="grid-column: span 2;">
+                <div class="qna-card-header">
+                  <div class="qa-title-group">
+                    <span class="qa-header-icon">🍇</span>
+                    <div>
+                      <h3>Top 5 meistgerauchte Tabaksorten</h3>
+                      <p class="qa-subtitle">Die beliebtesten Geschmäcker im Stream</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="qna-card-body">
+                  <div id="analytics-top-tobacco" class="analytics-ranking-list">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+              </section>
+
+              <!-- Leaderboard 2: Beliebteste Köpfe & HMDs -->
+              <section class="qna-card" style="grid-column: span 2;">
+                <div class="qna-card-header">
+                  <div class="qa-title-group">
+                    <span class="qa-header-icon">🥣</span>
+                    <div>
+                      <h3>Top Hardware (Köpfe &amp; HMDs)</h3>
+                      <p class="qa-subtitle">Die am häufigsten verwendeten Setups</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="qna-card-body">
+                  <div id="analytics-top-hardware" class="analytics-ranking-list">
+                    <!-- Populated dynamically -->
+                  </div>
+                </div>
+              </section>
+
             </div>
-            <div class="feature-card">
-              <div class="feature-icon">🏆</div>
-              <h3>Tabak- &amp; Hardware-Ranglisten</h3>
-              <p>Top-Listen der meistgerauchten Tabaksorten, beliebtesten Köpfe und HMDs aus allen Stream-Setups.</p>
-              <span class="feature-badge">Geplant</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Finish Head Modal (Rating & Notes) -->
+      <div id="modal-finish-head" class="modal-overlay hidden">
+        <div class="modal-card" style="max-width: 480px;">
+          <div class="modal-header">
+            <h3>🏁 Kopf beenden &amp; bewerten</h3>
+            <button id="btn-close-finish-modal" class="btn-icon">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
+            <p style="font-size:0.9rem; color:var(--text-secondary);">
+              Möchtest du die Session für <strong id="lbl-modal-finish-tobacco" style="color:#fff;"></strong> abschließen und in die Historie speichern?
+            </p>
+            <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-size:0.85rem;">
+              <div>⏱️ <strong>Rauchdauer:</strong> <span id="lbl-modal-finish-duration">45 Min</span></div>
+              <div style="margin-top:4px;">🪵 <strong>Kohle gewendet:</strong> <span id="lbl-modal-finish-coals">1x</span></div>
             </div>
-            <div class="feature-card">
-              <div class="feature-icon">🔢</div>
-              <h3>Stream-Kopf-Counter</h3>
-              <p>Zählt mit, wie viele Köpfe heute bereits geraucht wurden, inklusive automatischer Historie.</p>
-              <span class="feature-badge">Geplant</span>
+            <div class="form-group">
+              <label class="form-label">Bewertung (1–10 Punkte):</label>
+              <select id="select-modal-finish-rating" class="gw-select" style="width:100%;">
+                <option value="10">🌟 10 / 10 (Absoluter Banger!)</option>
+                <option value="9">🌟 9 / 10 (Sehr geil)</option>
+                <option value="8" selected>🌟 8 / 10 (Guter Standard)</option>
+                <option value="7">7 / 10 (Solide)</option>
+                <option value="6">6 / 10 (Geht so)</option>
+                <option value="5">5 / 10 (Mittelmäßig)</option>
+                <option value="3">3 / 10 (Nicht mein Fall)</option>
+                <option value="1">1 / 10 (Kopf verkackt / verbrannt)</option>
+                <option value="0">Keine Bewertung</option>
+              </select>
             </div>
+            <div class="form-group">
+              <label class="form-label">Abschluss-Notiz (optional):</label>
+              <input type="text" id="input-modal-finish-notes" placeholder="z. B. Geschmack hielt 50 Min, gute Rauchentwicklung" class="gw-input" style="width:100%;">
+            </div>
+          </div>
+          <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+            <button id="btn-cancel-finish-modal" class="btn btn-secondary">Abbrechen</button>
+            <button id="btn-confirm-finish-session" class="btn btn-primary">💾 In Historie speichern</button>
           </div>
         </div>
       </div>

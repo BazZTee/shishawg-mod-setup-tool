@@ -149,6 +149,12 @@ async function initApp() {
     console.error('Error setting up Q&A & Umfragen:', e);
   }
   try {
+    setupStatsListeners();
+    loadStatsState();
+  } catch (e) {
+    console.error('Error setting up Stats & Kohletimer:', e);
+  }
+  try {
     setupUpdaterEvents();
   } catch (e) {
     console.error('Error setting up updater:', e);
@@ -265,6 +271,11 @@ function showView(targetViewId) {
       clearInterval(qnaSyncInterval);
       qnaSyncInterval = null;
     }
+  }
+
+  // If opening Stats & Kohletimer, load state
+  if (targetViewId === 'view-stats') {
+    loadStatsState();
   }
 }
 
@@ -7155,5 +7166,734 @@ function renderPredictionActiveSection(pred) {
       }
     });
   });
+}
+
+// =========================================================
+// STATS & KOHLE-TIMER LOGIC (VIEW 6)
+// =========================================================
+
+let statsState = {
+  isRunning: false,
+  sessionStartTime: null,
+  sessionElapsedSeconds: 0,
+  coalStartTime: null,
+  coalElapsedSeconds: 0,
+  coalRotations: 0,
+  headCountToday: 1,
+  soundEnabled: true,
+  sessions: [],
+  intervalId: null,
+  lastAlertPhase: null
+};
+
+function formatTimerClock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds || 0));
+  const hrs = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = Math.floor(s % 60);
+  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatCoalClock(totalSeconds) {
+  const s = Math.max(0, Math.floor(totalSeconds || 0));
+  const mins = Math.floor(s / 60);
+  const secs = Math.floor(s % 60);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function playCoalAlertSound() {
+  if (!statsState.soundEnabled) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.45);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.45);
+  } catch(e) {}
+}
+
+function updateStatsTimerTick() {
+  if (!statsState.isRunning) return;
+
+  const now = Date.now();
+  if (statsState.sessionStartTime) {
+    statsState.sessionElapsedSeconds = Math.floor((now - statsState.sessionStartTime) / 1000);
+  }
+  if (statsState.coalStartTime) {
+    statsState.coalElapsedSeconds = Math.floor((now - statsState.coalStartTime) / 1000);
+  }
+
+  // Update digital displays
+  const lblSession = document.getElementById('lbl-session-time');
+  const lblCoal = document.getElementById('lbl-coal-time');
+  if (lblSession) lblSession.textContent = formatTimerClock(statsState.sessionElapsedSeconds);
+  if (lblCoal) lblCoal.textContent = formatCoalClock(statsState.coalElapsedSeconds);
+
+  // Update Coal Phase & Progress Bar
+  const coalSecs = statsState.coalElapsedSeconds;
+  const progressBar = document.getElementById('bar-coal-progress');
+  const lblPhaseText = document.getElementById('lbl-timer-phase-text');
+  const lblPhaseCountdown = document.getElementById('lbl-timer-phase-countdown');
+
+  let pct = 0;
+  if (coalSecs < 420) {
+    // 0 - 7 Min: Anrauchen
+    pct = (coalSecs / 1800) * 100;
+    if (lblPhaseText) lblPhaseText.textContent = 'Phase 1: Anrauchen 🔥';
+    const remain = Math.max(0, 1800 - coalSecs);
+    if (lblPhaseCountdown) lblPhaseCountdown.textContent = `${formatCoalClock(remain)} bis Kohle drehen`;
+  } else if (coalSecs < 1800) {
+    // 7 - 30 Min: Kohle brennt gut
+    pct = (coalSecs / 1800) * 100;
+    if (lblPhaseText) lblPhaseText.textContent = 'Phase 2: Kohle brennt optimal 💨';
+    const remain = Math.max(0, 1800 - coalSecs);
+    if (lblPhaseCountdown) lblPhaseCountdown.textContent = `${formatCoalClock(remain)} bis Kohle drehen`;
+  } else if (coalSecs < 3600) {
+    // 30 - 60 Min: Kohle 2. Hälfte / Neue Kohlen
+    pct = 50 + ((coalSecs - 1800) / 1800) * 50;
+    if (lblPhaseText) lblPhaseText.textContent = 'Phase 3: 2. Hälfte • Zeit zum Wenden / Neue Kohlen 🪵';
+    const remain = Math.max(0, 3600 - coalSecs);
+    if (lblPhaseCountdown) lblPhaseCountdown.textContent = `${formatCoalClock(remain)} bis neue Kohlen`;
+    if (coalSecs === 1800 && statsState.lastAlertPhase !== 'rotate') {
+      statsState.lastAlertPhase = 'rotate';
+      playCoalAlertSound();
+      showToast('🪵 Kohle-Erinnerung: Zeit zum Wenden / Abaschen!', 'warning');
+    }
+  } else {
+    // > 60 Min: Ende / Neuer Kopf
+    pct = 100;
+    if (lblPhaseText) lblPhaseText.textContent = 'Phase 4: Kopf ausrauchen oder neuen Kopf bauen 🏁';
+    if (lblPhaseCountdown) lblPhaseCountdown.textContent = 'Rauchzeit > 60 Min';
+    if (coalSecs === 3600 && statsState.lastAlertPhase !== 'finish') {
+      statsState.lastAlertPhase = 'finish';
+      playCoalAlertSound();
+      showToast('🔥 Kohle-Erinnerung: Kopf raucht seit 60 Min!', 'info');
+    }
+  }
+
+  if (progressBar) progressBar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+}
+
+function updateHeadCounterUI() {
+  const lblToday = document.getElementById('lbl-today-head-count');
+  const lblBig = document.getElementById('lbl-head-counter-big');
+  if (lblToday) lblToday.textContent = String(statsState.headCountToday);
+  if (lblBig) lblBig.textContent = String(statsState.headCountToday);
+}
+
+function resetActiveTimer() {
+  statsState.isRunning = false;
+  if (statsState.intervalId) {
+    clearInterval(statsState.intervalId);
+    statsState.intervalId = null;
+  }
+  statsState.sessionStartTime = null;
+  statsState.sessionElapsedSeconds = 0;
+  statsState.coalStartTime = null;
+  statsState.coalElapsedSeconds = 0;
+  statsState.coalRotations = 0;
+  statsState.lastAlertPhase = null;
+
+  const lblSession = document.getElementById('lbl-session-time');
+  const lblCoal = document.getElementById('lbl-coal-time');
+  const progressBar = document.getElementById('bar-coal-progress');
+  const lblPhaseText = document.getElementById('lbl-timer-phase-text');
+  const lblPhaseCountdown = document.getElementById('lbl-timer-phase-countdown');
+  const lblRot = document.getElementById('lbl-coal-rotation-count');
+  const badge = document.getElementById('timer-live-badge');
+  const lblStatus = document.getElementById('lbl-timer-status');
+  const iconPlay = document.getElementById('icon-timer-play');
+  const lblBtnPlay = document.getElementById('lbl-btn-timer-play');
+  const btnTogglePlay = document.getElementById('btn-timer-toggle-play');
+
+  if (lblSession) lblSession.textContent = '00:00:00';
+  if (lblCoal) lblCoal.textContent = '00:00';
+  if (progressBar) progressBar.style.width = '0%';
+  if (lblPhaseText) lblPhaseText.textContent = 'Phase: Bereit zum Anrauchen 🔥';
+  if (lblPhaseCountdown) lblPhaseCountdown.textContent = '00:00 bis Kohle drehen';
+  if (lblRot) lblRot.textContent = '0';
+  if (badge) badge.className = 'qna-status-badge offline';
+  if (lblStatus) lblStatus.textContent = 'Gestoppt';
+  if (iconPlay) iconPlay.textContent = '▶️';
+  if (lblBtnPlay) lblBtnPlay.textContent = 'Kopf gestartet (Timer Start)';
+  if (btnTogglePlay) btnTogglePlay.className = 'btn btn-primary btn-lg';
+
+  saveActiveTimerStateToBackend();
+}
+
+function importCurrentGeneratorSetup() {
+  const p1 = document.querySelector('.person-card');
+  if (p1) {
+    const tobInp = p1.querySelector('.input-tobacco') || p1.querySelector('input[placeholder*="Tabak"]');
+    const bowlInp = p1.querySelector('.input-bowl') || p1.querySelector('input[placeholder*="Kopf"]');
+    const hmdInp = p1.querySelector('.input-hmd') || p1.querySelector('input[placeholder*="HMD"]');
+    const pipeInp = p1.querySelector('.input-pipe') || p1.querySelector('input[placeholder*="Pfeife"]');
+    const nameInp = p1.querySelector('.person-name-input');
+
+    if (tobInp && tobInp.value) document.getElementById('input-session-tobacco').value = tobInp.value;
+    if (bowlInp && bowlInp.value) document.getElementById('input-session-bowl').value = bowlInp.value;
+    if (hmdInp && hmdInp.value) document.getElementById('input-session-hmd').value = hmdInp.value;
+    if (pipeInp && pipeInp.value) document.getElementById('input-session-pipe').value = pipeInp.value;
+    if (nameInp && nameInp.value) document.getElementById('input-session-person').value = nameInp.value;
+
+    showToast('Setup aus dem Generator übernommen! ⚡', 'success');
+  } else {
+    showToast('Kein Setup im Generator gefunden.', 'info');
+  }
+}
+
+async function saveActiveTimerStateToBackend() {
+  try {
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const payload = {
+      isRunning: statsState.isRunning,
+      sessionStartTime: statsState.sessionStartTime,
+      sessionElapsedSeconds: statsState.sessionElapsedSeconds,
+      coalStartTime: statsState.coalStartTime,
+      coalElapsedSeconds: statsState.coalElapsedSeconds,
+      coalRotations: statsState.coalRotations,
+      headCountToday: statsState.headCountToday,
+      activeSetup: {
+        tobacco: (document.getElementById('input-session-tobacco') ? document.getElementById('input-session-tobacco').value : ''),
+        bowl: (document.getElementById('input-session-bowl') ? document.getElementById('input-session-bowl').value : ''),
+        hmd: (document.getElementById('input-session-hmd') ? document.getElementById('input-session-hmd').value : ''),
+        pipe: (document.getElementById('input-session-pipe') ? document.getElementById('input-session-pipe').value : ''),
+        person: (document.getElementById('input-session-person') ? document.getElementById('input-session-person').value : 'Marvin'),
+        notes: (document.getElementById('input-session-notes') ? document.getElementById('input-session-notes').value : '')
+      },
+      updatedAt: Date.now()
+    };
+    await ipcRenderer.invoke('stats:save-timer-state', { channel: chan, timerState: payload });
+  } catch(e) {}
+}
+
+async function finishAndSaveHeadSession() {
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  const inputTob = document.getElementById('input-session-tobacco');
+  const inputBowl = document.getElementById('input-session-bowl');
+  const inputHmd = document.getElementById('input-session-hmd');
+  const inputPipe = document.getElementById('input-session-pipe');
+  const inputPerson = document.getElementById('input-session-person');
+  const selectRating = document.getElementById('select-modal-finish-rating');
+  const inputFinishNotes = document.getElementById('input-modal-finish-notes');
+
+  const durMins = Math.max(1, Math.round(statsState.sessionElapsedSeconds / 60));
+
+  const sessionObj = {
+    id: 'sess_' + Date.now(),
+    channel: chan,
+    headNum: statsState.headCountToday,
+    tobacco: (inputTob ? inputTob.value.trim() : '') || 'Unbekannter Tabak',
+    bowl: (inputBowl ? inputBowl.value.trim() : '') || '',
+    hmd: (inputHmd ? inputHmd.value.trim() : '') || '',
+    pipe: (inputPipe ? inputPipe.value.trim() : '') || '',
+    person: (inputPerson ? inputPerson.value.trim() : '') || 'Marvin',
+    durationMinutes: durMins,
+    coalRotations: statsState.coalRotations,
+    rating: selectRating ? (parseInt(selectRating.value, 10) || 0) : 0,
+    notes: (inputFinishNotes ? inputFinishNotes.value.trim() : ''),
+    startedAt: statsState.sessionStartTime ? new Date(statsState.sessionStartTime).toISOString() : new Date().toISOString(),
+    endedAt: new Date().toISOString()
+  };
+
+  showToast('Speichere Session in Historie...', 'info');
+
+  try {
+    const res = await ipcRenderer.invoke('stats:save-session', sessionObj);
+    if (res && res.success) {
+      statsState.headCountToday++;
+      updateHeadCounterUI();
+      resetActiveTimer();
+
+      // Clear setup inputs for next head
+      if (inputTob) inputTob.value = '';
+      if (inputFinishNotes) inputFinishNotes.value = '';
+      const inputNotes = document.getElementById('input-session-notes');
+      if (inputNotes) inputNotes.value = '';
+
+      await loadStatsState();
+      showToast(`🏁 Kopf #${sessionObj.headNum} (${sessionObj.tobacco}) erfolgreich gespeichert!`, 'success');
+    }
+  } catch(e) {
+    showToast(`Fehler beim Speichern: ${e.message}`, 'error');
+  }
+}
+
+function renderSessionsHistory(sessions) {
+  const tbody = document.getElementById('sessions-history-tbody');
+  if (!tbody) return;
+
+  if (!sessions || sessions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-list-placeholder">Noch keine beendeten Köpfe in der Historie.</td></tr>';
+    return;
+  }
+
+  let html = '';
+  sessions.forEach((s) => {
+    const timeStr = s.ended_at ? new Date(s.ended_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (s.endedAt ? new Date(s.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-');
+    const tobacco = s.tobacco || '-';
+    const bowlHmd = [s.bowl, s.hmd].filter(Boolean).join(' • ') || '-';
+    const dur = s.duration_minutes || s.durationMinutes || 0;
+    const coals = s.coal_rotations || s.coalRotations || 0;
+    const rating = s.rating ? `🌟 ${s.rating}/10` : '-';
+    const headNum = s.head_num || s.headNum || 1;
+
+    html += `
+      <tr>
+        <td><strong style="color:var(--accent-cyan);">#${headNum}</strong></td>
+        <td style="color:var(--text-muted); font-size:0.8rem;">${timeStr}</td>
+        <td><strong style="color:#fff;">${escapeHtml(tobacco)}</strong></td>
+        <td style="color:var(--text-secondary); font-size:0.82rem;">${escapeHtml(bowlHmd)}</td>
+        <td><span style="background:rgba(0,240,255,0.1); color:var(--accent-cyan); padding:2px 6px; border-radius:4px; font-size:0.78rem; font-weight:700;">⏱️ ${dur} Min</span></td>
+        <td style="font-size:0.8rem; color:var(--text-muted);">🪵 ${coals}x</td>
+        <td><strong style="color:#fbbf24; font-size:0.82rem;">${rating}</strong></td>
+        <td style="text-align:right;">
+          <button class="btn btn-xs btn-secondary btn-del-session" data-id="${s.id}" title="Session löschen">🗑️</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+
+  tbody.querySelectorAll('.btn-del-session').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      if (confirm('Möchtest du diese gerauchte Session wirklich aus der Historie löschen?')) {
+        await ipcRenderer.invoke('stats:delete-session', id);
+        await loadStatsState();
+        showToast('Session gelöscht.', 'info');
+      }
+    });
+  });
+}
+
+function renderStatsAnalytics(sessions) {
+  if (!sessions) sessions = [];
+
+  const kpiTotalHeads = document.getElementById('kpi-total-heads');
+  const kpiAvgDuration = document.getElementById('kpi-avg-duration');
+  const kpiAvgRating = document.getElementById('kpi-avg-rating');
+  const kpiTotalCoals = document.getElementById('kpi-total-coals');
+
+  const containerTobacco = document.getElementById('analytics-top-tobacco');
+  const containerHardware = document.getElementById('analytics-top-hardware');
+
+  const totalCount = sessions.length;
+  if (kpiTotalHeads) kpiTotalHeads.textContent = String(totalCount);
+
+  let sumDuration = 0;
+  let sumCoals = 0;
+  let ratingCount = 0;
+  let sumRating = 0;
+
+  const tobaccoCounts = {};
+  const hardwareCounts = {};
+
+  sessions.forEach(s => {
+    const dur = s.duration_minutes || s.durationMinutes || 0;
+    const coals = s.coal_rotations || s.coalRotations || 0;
+    const r = s.rating || 0;
+    const tob = (s.tobacco || '').trim();
+    const bowl = (s.bowl || '').trim();
+    const hmd = (s.hmd || '').trim();
+
+    sumDuration += dur;
+    sumCoals += coals;
+    if (r > 0) {
+      sumRating += r;
+      ratingCount++;
+    }
+
+    if (tob && tob !== 'Unbekannter Tabak') {
+      tobaccoCounts[tob] = (tobaccoCounts[tob] || 0) + 1;
+    }
+
+    if (bowl) {
+      hardwareCounts[bowl] = (hardwareCounts[bowl] || 0) + 1;
+    }
+    if (hmd) {
+      hardwareCounts[hmd] = (hardwareCounts[hmd] || 0) + 1;
+    }
+  });
+
+  const avgDur = totalCount > 0 ? Math.round(sumDuration / totalCount) : 0;
+  if (kpiAvgDuration) kpiAvgDuration.textContent = `${avgDur} Min`;
+
+  const avgRat = ratingCount > 0 ? (sumRating / ratingCount).toFixed(1) : '-';
+  if (kpiAvgRating) kpiAvgRating.textContent = avgRat !== '-' ? `🌟 ${avgRat} / 10` : '- / 10';
+
+  if (kpiTotalCoals) kpiTotalCoals.textContent = String(sumCoals);
+
+  // Top 5 Tobacco
+  if (containerTobacco) {
+    const sortedTob = Object.entries(tobaccoCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (sortedTob.length === 0) {
+      containerTobacco.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; text-align:center; padding:12px;">Noch keine Tabakdaten erfasst.</div>';
+    } else {
+      const maxCount = sortedTob[0][1] || 1;
+      let html = '';
+      sortedTob.forEach(([name, count], idx) => {
+        const pct = Math.round((count / maxCount) * 100);
+        const rankClass = idx === 0 ? 'rank-1' : (idx === 1 ? 'rank-2' : (idx === 2 ? 'rank-3' : 'rank-other'));
+        html += `
+          <div class="ranking-item">
+            <div class="ranking-badge ${rankClass}">#${idx + 1}</div>
+            <div class="ranking-info">
+              <div class="ranking-title">${escapeHtml(name)}</div>
+              <div class="ranking-bar-track">
+                <div class="ranking-bar-fill" style="width: ${pct}%;"></div>
+              </div>
+            </div>
+            <div class="ranking-count">${count}x geraucht</div>
+          </div>
+        `;
+      });
+      containerTobacco.innerHTML = html;
+    }
+  }
+
+  // Top 5 Hardware
+  if (containerHardware) {
+    const sortedHw = Object.entries(hardwareCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (sortedHw.length === 0) {
+      containerHardware.innerHTML = '<div style="color:var(--text-muted); font-size:0.8rem; text-align:center; padding:12px;">Noch keine Hardware-Daten erfasst.</div>';
+    } else {
+      const maxCount = sortedHw[0][1] || 1;
+      let html = '';
+      sortedHw.forEach(([name, count], idx) => {
+        const pct = Math.round((count / maxCount) * 100);
+        const rankClass = idx === 0 ? 'rank-1' : (idx === 1 ? 'rank-2' : (idx === 2 ? 'rank-3' : 'rank-other'));
+        html += `
+          <div class="ranking-item">
+            <div class="ranking-badge ${rankClass}">#${idx + 1}</div>
+            <div class="ranking-info">
+              <div class="ranking-title">${escapeHtml(name)}</div>
+              <div class="ranking-bar-track">
+                <div class="ranking-bar-fill" style="width: ${pct}%;"></div>
+              </div>
+            </div>
+            <div class="ranking-count">${count}x genutzt</div>
+          </div>
+        `;
+      });
+      containerHardware.innerHTML = html;
+    }
+  }
+}
+
+function copyStreamSummaryToChat() {
+  const sessions = statsState.sessions || [];
+  if (sessions.length === 0) {
+    showToast('Noch keine Köpfe in der heutigen Historie.', 'info');
+    return;
+  }
+
+  const lines = [`💨 ShishaWG Stream-Köpfe heute (${sessions.length} Gesamt):`];
+  sessions.slice(0, 6).forEach(s => {
+    const headNum = s.head_num || s.headNum || 1;
+    const tob = s.tobacco || 'Tabak';
+    const dur = s.duration_minutes || s.durationMinutes || 0;
+    const rating = s.rating ? `[${s.rating}/10]` : '';
+    lines.push(`• Kopf #${headNum}: ${tob} (${dur} Min) ${rating}`);
+  });
+
+  const text = lines.join(' ');
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('📋 Stream-Zusammenfassung in die Zwischenablage kopiert!', 'success');
+    });
+  }
+
+  // Send directly to chat if twitchService is connected
+  if (btnSendChat) {
+    const inputGlobalExtra = document.getElementById('input-global-extra');
+    if (inputGlobalExtra) inputGlobalExtra.value = text;
+  }
+}
+
+async function loadStatsState() {
+  try {
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    
+    // Load Sessions
+    const res = await ipcRenderer.invoke('stats:get-sessions', chan);
+    if (res && res.success && Array.isArray(res.sessions)) {
+      statsState.sessions = res.sessions;
+      renderSessionsHistory(res.sessions);
+      renderStatsAnalytics(res.sessions);
+    }
+
+    // Load Timer State
+    const timerRes = await ipcRenderer.invoke('stats:get-timer-state', chan);
+    if (timerRes && timerRes.success && timerRes.timerState) {
+      const ts = timerRes.timerState;
+      if (typeof ts.headCountToday === 'number') {
+        statsState.headCountToday = ts.headCountToday;
+        updateHeadCounterUI();
+      }
+      if (ts.activeSetup) {
+        if (ts.activeSetup.tobacco) {
+          const inp = document.getElementById('input-session-tobacco');
+          if (inp && !inp.value) inp.value = ts.activeSetup.tobacco;
+        }
+        if (ts.activeSetup.bowl) {
+          const inp = document.getElementById('input-session-bowl');
+          if (inp && !inp.value) inp.value = ts.activeSetup.bowl;
+        }
+        if (ts.activeSetup.hmd) {
+          const inp = document.getElementById('input-session-hmd');
+          if (inp && !inp.value) inp.value = ts.activeSetup.hmd;
+        }
+        if (ts.activeSetup.pipe) {
+          const inp = document.getElementById('input-session-pipe');
+          if (inp && !inp.value) inp.value = ts.activeSetup.pipe;
+        }
+        if (ts.activeSetup.person) {
+          const inp = document.getElementById('input-session-person');
+          if (inp && !inp.value) inp.value = ts.activeSetup.person;
+        }
+      }
+    }
+  } catch(e) {
+    console.error('Error loading stats state:', e);
+  }
+}
+
+function setupStatsListeners() {
+  const btnTogglePlay = document.getElementById('btn-timer-toggle-play');
+  const btnRotateCoal = document.getElementById('btn-timer-rotate-coal');
+  const btnNewCoal = document.getElementById('btn-timer-new-coal');
+  const btnFinishHead = document.getElementById('btn-timer-finish-head');
+  const btnResetTimer = document.getElementById('btn-reset-current-timer');
+  const chkSound = document.getElementById('chk-timer-sound');
+
+  const btnHeadInc = document.getElementById('btn-head-count-inc');
+  const btnHeadDec = document.getElementById('btn-head-count-dec');
+  const btnHeadReset = document.getElementById('btn-head-count-reset');
+  const btnImportGen = document.getElementById('btn-import-from-generator');
+
+  const btnCopyObs = document.getElementById('btn-copy-timer-obs-link');
+  const btnRefreshStats = document.getElementById('btn-refresh-stats');
+  const btnCopySummary = document.getElementById('btn-copy-stream-summary');
+
+  const tabHistory = document.getElementById('tab-stats-history');
+  const tabAnalytics = document.getElementById('tab-stats-analytics');
+  const panelHistory = document.getElementById('panel-stats-history');
+  const panelAnalytics = document.getElementById('panel-stats-analytics');
+
+  // Modal Finish Head Elements
+  const modalFinish = document.getElementById('modal-finish-head');
+  const btnCloseFinishModal = document.getElementById('btn-close-finish-modal');
+  const btnCancelFinishModal = document.getElementById('btn-cancel-finish-modal');
+  const btnConfirmFinish = document.getElementById('btn-confirm-finish-session');
+
+  // Play / Pause Toggle
+  if (btnTogglePlay) {
+    btnTogglePlay.addEventListener('click', () => {
+      statsState.isRunning = !statsState.isRunning;
+      const now = Date.now();
+      const badge = document.getElementById('timer-live-badge');
+      const lblStatus = document.getElementById('lbl-timer-status');
+      const iconPlay = document.getElementById('icon-timer-play');
+      const lblBtnPlay = document.getElementById('lbl-btn-timer-play');
+
+      if (statsState.isRunning) {
+        statsState.sessionStartTime = now - (statsState.sessionElapsedSeconds * 1000);
+        statsState.coalStartTime = now - (statsState.coalElapsedSeconds * 1000);
+
+        if (!statsState.intervalId) {
+          statsState.intervalId = setInterval(updateStatsTimerTick, 1000);
+        }
+
+        if (badge) badge.className = 'qna-status-badge live';
+        if (lblStatus) lblStatus.textContent = 'Raucht live';
+        if (iconPlay) iconPlay.textContent = '⏸️';
+        if (lblBtnPlay) lblBtnPlay.textContent = 'Session pausieren';
+        btnTogglePlay.className = 'btn btn-secondary btn-lg';
+
+        showToast('⏱️ Kohle- & Session-Timer gestartet!', 'success');
+      } else {
+        if (statsState.intervalId) {
+          clearInterval(statsState.intervalId);
+          statsState.intervalId = null;
+        }
+
+        if (badge) badge.className = 'qna-status-badge closed';
+        if (lblStatus) lblStatus.textContent = 'Pausiert';
+        if (iconPlay) iconPlay.textContent = '▶️';
+        if (lblBtnPlay) lblBtnPlay.textContent = 'Session fortsetzen';
+        btnTogglePlay.className = 'btn btn-primary btn-lg';
+
+        showToast('⏸️ Session-Timer pausiert.', 'info');
+      }
+      saveActiveTimerStateToBackend();
+    });
+  }
+
+  // Kohle gewendet
+  if (btnRotateCoal) {
+    btnRotateCoal.addEventListener('click', () => {
+      statsState.coalRotations++;
+      statsState.coalStartTime = Date.now();
+      statsState.coalElapsedSeconds = 0;
+      statsState.lastAlertPhase = null;
+
+      const lblRot = document.getElementById('lbl-coal-rotation-count');
+      if (lblRot) lblRot.textContent = String(statsState.coalRotations);
+
+      updateStatsTimerTick();
+      saveActiveTimerStateToBackend();
+      showToast(`🪵 Kohle zum ${statsState.coalRotations}. Mal gewendet! Kohle-Timer zurückgesetzt.`, 'success');
+    });
+  }
+
+  // Neue Kohlen
+  if (btnNewCoal) {
+    btnNewCoal.addEventListener('click', () => {
+      statsState.coalStartTime = Date.now();
+      statsState.coalElapsedSeconds = 0;
+      statsState.lastAlertPhase = null;
+
+      updateStatsTimerTick();
+      saveActiveTimerStateToBackend();
+      showToast('🔥 Neue Kohlen aufgelegt! Kohle-Timer neu gestartet.', 'success');
+    });
+  }
+
+  // Reset Timer
+  if (btnResetTimer) {
+    btnResetTimer.addEventListener('click', () => {
+      if (confirm('Möchtest du den aktuellen Timer wirklich auf 00:00:00 zurücksetzen?')) {
+        resetActiveTimer();
+        showToast('Timer auf 0 zurückgesetzt.', 'info');
+      }
+    });
+  }
+
+  // Sound Toggle
+  if (chkSound) {
+    chkSound.addEventListener('change', () => {
+      statsState.soundEnabled = chkSound.checked;
+    });
+  }
+
+  // Counter Inc / Dec / Reset
+  if (btnHeadInc) {
+    btnHeadInc.addEventListener('click', () => {
+      statsState.headCountToday++;
+      updateHeadCounterUI();
+      saveActiveTimerStateToBackend();
+    });
+  }
+  if (btnHeadDec) {
+    btnHeadDec.addEventListener('click', () => {
+      if (statsState.headCountToday > 1) {
+        statsState.headCountToday--;
+        updateHeadCounterUI();
+        saveActiveTimerStateToBackend();
+      }
+    });
+  }
+  if (btnHeadReset) {
+    btnHeadReset.addEventListener('click', () => {
+      statsState.headCountToday = 1;
+      updateHeadCounterUI();
+      saveActiveTimerStateToBackend();
+    });
+  }
+
+  // Import from Generator
+  if (btnImportGen) {
+    btnImportGen.addEventListener('click', () => {
+      importCurrentGeneratorSetup();
+    });
+  }
+
+  // OBS Link copy
+  if (btnCopyObs) {
+    btnCopyObs.addEventListener('click', () => {
+      const url = `https://bazzteedj.github.io/shishawg-mod-setup-tool/qna.html?mode=timer`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast('📺 OBS-Timer Overlay URL in die Zwischenablage kopiert!', 'success');
+        });
+      }
+    });
+  }
+
+  // Refresh Stats
+  if (btnRefreshStats) {
+    btnRefreshStats.addEventListener('click', async () => {
+      showToast('Aktualisiere Statistiken...', 'info');
+      await loadStatsState();
+      showToast('Statistiken synchronisiert! 🔄', 'success');
+    });
+  }
+
+  // Copy Stream Summary
+  if (btnCopySummary) {
+    btnCopySummary.addEventListener('click', () => {
+      copyStreamSummaryToChat();
+    });
+  }
+
+  // Sub-tabs switching
+  if (tabHistory && tabAnalytics && panelHistory && panelAnalytics) {
+    tabHistory.addEventListener('click', () => {
+      tabHistory.classList.add('active');
+      tabAnalytics.classList.remove('active');
+      panelHistory.classList.remove('hidden');
+      panelAnalytics.classList.add('hidden');
+    });
+
+    tabAnalytics.addEventListener('click', () => {
+      tabAnalytics.classList.add('active');
+      tabHistory.classList.remove('active');
+      panelAnalytics.classList.remove('hidden');
+      panelHistory.classList.add('hidden');
+      renderStatsAnalytics(statsState.sessions);
+    });
+  }
+
+  // Finish Head Modal
+  if (btnFinishHead && modalFinish) {
+    btnFinishHead.addEventListener('click', () => {
+      const inputTob = document.getElementById('input-session-tobacco');
+      const lblTob = document.getElementById('lbl-modal-finish-tobacco');
+      const lblDur = document.getElementById('lbl-modal-finish-duration');
+      const lblCoals = document.getElementById('lbl-modal-finish-coals');
+
+      const tobName = (inputTob ? inputTob.value.trim() : '') || 'Aktueller Kopf';
+      const durMins = Math.max(1, Math.round(statsState.sessionElapsedSeconds / 60));
+
+      if (lblTob) lblTob.textContent = tobName;
+      if (lblDur) lblDur.textContent = `${durMins} Minuten`;
+      if (lblCoals) lblCoals.textContent = `${statsState.coalRotations}x`;
+
+      modalFinish.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseFinishModal && modalFinish) {
+    btnCloseFinishModal.addEventListener('click', () => modalFinish.classList.add('hidden'));
+  }
+  if (btnCancelFinishModal && modalFinish) {
+    btnCancelFinishModal.addEventListener('click', () => modalFinish.classList.add('hidden'));
+  }
+
+  if (btnConfirmFinish && modalFinish) {
+    btnConfirmFinish.addEventListener('click', async () => {
+      await finishAndSaveHeadSession();
+      modalFinish.classList.add('hidden');
+    });
+  }
 }
 

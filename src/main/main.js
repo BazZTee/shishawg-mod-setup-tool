@@ -807,6 +807,73 @@ ipcMain.handle('predictions:end', async (event, { predictionId, status, winningO
   }
 });
 
+// Stats & Kohle-Timer IPC Handlers
+ipcMain.handle('stats:get-sessions', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    let sessions = await supabaseService.getShishaSessions(chan);
+    if (!sessions || sessions.length === 0) {
+      sessions = await dbService.getShishaSessions();
+    }
+    return { success: true, sessions: sessions || [] };
+  } catch(e) {
+    return { success: false, error: e.message, sessions: [] };
+  }
+});
+
+ipcMain.handle('stats:save-session', async (event, session) => {
+  try {
+    const savedSupabase = await supabaseService.saveShishaSession(session);
+    const localSessions = await dbService.getShishaSessions();
+    const idx = localSessions.findIndex(s => s.id === session.id);
+    if (idx >= 0) {
+      localSessions[idx] = session;
+    } else {
+      localSessions.unshift(session);
+    }
+    await dbService.saveShishaSessions(localSessions);
+    return { success: true, session: savedSupabase };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('stats:delete-session', async (event, id) => {
+  try {
+    await supabaseService.deleteShishaSession(id);
+    const localSessions = await dbService.getShishaSessions();
+    const filtered = localSessions.filter(s => s.id !== id);
+    await dbService.saveShishaSessions(filtered);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('stats:get-timer-state', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    let timerState = await supabaseService.getActiveTimerState(chan);
+    if (!timerState) {
+      timerState = await dbService.getActiveTimerState();
+    }
+    return { success: true, timerState };
+  } catch(e) {
+    return { success: false, error: e.message, timerState: null };
+  }
+});
+
+ipcMain.handle('stats:save-timer-state', async (event, { channel, timerState }) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    await supabaseService.saveActiveTimerState(chan, timerState);
+    await dbService.saveActiveTimerState(timerState);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
 // IPC Handlers for Database
 ipcMain.handle('db:get-catalog', async () => {
   return dbService.getCatalog();

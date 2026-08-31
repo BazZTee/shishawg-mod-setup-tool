@@ -726,6 +726,101 @@ class SupabaseService {
       return false;
     }
   }
+
+  // --- Shisha Sessions & Timer Methods ---
+  async getShishaSessions(channel = 'marved') {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('shisha_sessions')
+        .select('*')
+        .eq('channel', cleanChan)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    } catch(err) {
+      console.error('Supabase getShishaSessions error:', err.message);
+      return [];
+    }
+  }
+
+  async saveShishaSession(session) {
+    try {
+      const cleanChan = (session.channel || 'marved').toLowerCase().replace('#', '');
+      const row = {
+        id: session.id || ('sess_' + Date.now()),
+        channel: cleanChan,
+        head_num: session.headNum || 1,
+        tobacco: session.tobacco || '',
+        bowl: session.bowl || '',
+        pipe: session.pipe || '',
+        hmd: session.hmd || '',
+        person: session.person || 'Marvin',
+        duration_minutes: session.durationMinutes || 0,
+        coal_rotations: session.coalRotations || 0,
+        rating: session.rating || 0,
+        notes: session.notes || '',
+        started_at: session.startedAt ? new Date(session.startedAt).toISOString() : new Date().toISOString(),
+        ended_at: session.endedAt ? new Date(session.endedAt).toISOString() : new Date().toISOString(),
+        created_at: new Date().toISOString()
+      };
+      const { data, error } = await this.client
+        .from('shisha_sessions')
+        .upsert(row)
+        .select();
+      if (error) throw error;
+      return data && data[0] ? data[0] : row;
+    } catch(err) {
+      console.error('Supabase saveShishaSession error:', err.message);
+      return session;
+    }
+  }
+
+  async deleteShishaSession(id) {
+    try {
+      const { error } = await this.client
+        .from('shisha_sessions')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase deleteShishaSession error:', err.message);
+      return false;
+    }
+  }
+
+  async getActiveTimerState(channel = 'marved') {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('qna_settings')
+        .select('timer_state')
+        .eq('channel', cleanChan)
+        .maybeSingle();
+      if (error) throw error;
+      return data && data.timer_state ? data.timer_state : null;
+    } catch(err) {
+      return null;
+    }
+  }
+
+  async saveActiveTimerState(channel = 'marved', timerState) {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { error } = await this.client
+        .from('qna_settings')
+        .upsert({
+          channel: cleanChan,
+          timer_state: timerState,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'channel' });
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      return false;
+    }
+  }
 }
 
 module.exports = new SupabaseService();

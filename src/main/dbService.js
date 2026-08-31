@@ -1565,6 +1565,43 @@ class DatabaseService {
     }).catch(() => {});
     return this._gistQueue;
   }
+
+  // --- Shisha Sessions Local Persistence ---
+  getShishaSessions() {
+    const localFile = path.join(app.getPath('userData'), 'shisha_sessions.json');
+    try {
+      if (fs.existsSync(localFile)) {
+        return JSON.parse(fs.readFileSync(localFile, 'utf-8')) || [];
+      }
+    } catch(e) {}
+    return [];
+  }
+
+  saveShishaSessions(sessions) {
+    const localFile = path.join(app.getPath('userData'), 'shisha_sessions.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(sessions, null, 2), 'utf-8');
+    } catch(e) {}
+    return sessions;
+  }
+
+  getActiveTimerState() {
+    const localFile = path.join(app.getPath('userData'), 'shisha_timer.json');
+    try {
+      if (fs.existsSync(localFile)) {
+        return JSON.parse(fs.readFileSync(localFile, 'utf-8')) || null;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  saveActiveTimerState(timerState) {
+    const localFile = path.join(app.getPath('userData'), 'shisha_timer.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(timerState, null, 2), 'utf-8');
+    } catch(e) {}
+    return timerState;
+  }
 }
 
 module.exports = DatabaseService;

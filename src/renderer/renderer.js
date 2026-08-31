@@ -5758,6 +5758,7 @@ async function setQuestionStatus(questionId, newStatus) {
   q.status = newStatus;
   q.updatedAt = Date.now();
 
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
   if (newStatus === 'on_air') {
     // Reset any other question that was previously on_air
     qnaState.questions.forEach(item => {
@@ -5768,11 +5769,11 @@ async function setQuestionStatus(questionId, newStatus) {
     });
 
     qnaState.activeQuestion = q;
-    await ipcRenderer.invoke('qna:set-active', q);
+    await ipcRenderer.invoke('qna:set-active', q, chan);
     showToast(`Frage von @${q.displayName || q.login} ist jetzt LIVE ON-AIR! 📺`, 'success');
   } else if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
     qnaState.activeQuestion = null;
-    await ipcRenderer.invoke('qna:set-active', null);
+    await ipcRenderer.invoke('qna:set-active', null, chan);
   }
 
   await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
@@ -5781,9 +5782,10 @@ async function setQuestionStatus(questionId, newStatus) {
 }
 
 async function deleteQuestion(questionId) {
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
   if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
     qnaState.activeQuestion = null;
-    await ipcRenderer.invoke('qna:set-active', null);
+    await ipcRenderer.invoke('qna:set-active', null, chan);
   }
   qnaState.questions = qnaState.questions.filter(q => q.id !== questionId);
   await ipcRenderer.invoke('qna:save-questions', qnaState.questions);

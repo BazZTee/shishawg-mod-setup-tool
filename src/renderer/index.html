@@ -1213,18 +1213,29 @@
               <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
               🏠 Hauptmenü
             </button>
-            <span class="tool-breadcrumb">Dashboard ➔ <strong>🗳️ Live Twitch-Umfragen</strong></span>
+            
+            <!-- Segmented Control Tab Switcher -->
+            <div class="polls-segmented-nav">
+              <button id="tab-nav-polls" class="poll-tab-btn active" data-tab="polls">
+                <span class="poll-tab-icon">📊</span>
+                <span class="poll-tab-label">Umfrage erstellen</span>
+              </button>
+              <button id="tab-nav-predictions" class="poll-tab-btn" data-tab="predictions">
+                <span class="poll-tab-icon">🔮</span>
+                <span class="poll-tab-label">Vorhersage erstellen</span>
+              </button>
+            </div>
           </div>
 
           <div class="sub-header-actions">
-            <button id="btn-refresh-polls" class="btn btn-sm btn-secondary" title="Umfrage-Status manuell synchronisieren">
+            <button id="btn-refresh-polls" class="btn btn-sm btn-secondary" title="Status manuell synchronisieren">
               🔄 Aktualisieren
             </button>
           </div>
         </div>
 
-        <!-- Main Polls Grid Layout -->
-        <div class="polls-grid-container">
+        <!-- Main Polls Grid Layout (Mode 1: Umfragen) -->
+        <div id="panel-mode-polls" class="polls-grid-container">
 
           <!-- LEFT COLUMN: LIVE POLL MONITOR & PRESETS -->
           <div class="qna-main-panel">
@@ -1403,6 +1414,182 @@
 
               <div class="qna-card-body">
                 <div id="poll-saved-templates-list" class="poll-saved-templates-list">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+        </div>
+
+        <!-- Main Predictions Grid Layout (Mode 2: Vorhersagen) -->
+        <div id="panel-mode-predictions" class="polls-grid-container hidden">
+
+          <!-- LEFT COLUMN: LIVE PREDICTION MONITOR & PRESETS -->
+          <div class="qna-main-panel">
+
+            <!-- Card 1: Live Twitch Prediction Monitor -->
+            <section class="qna-card poll-active-card">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">🔮</span>
+                  <div>
+                    <h3>Live Twitch-Vorhersage</h3>
+                    <p class="qa-subtitle">Aktiver Wettstatus, Einsätze &amp; Gewinner-Auszahlung</p>
+                  </div>
+                </div>
+                <div id="prediction-live-indicator" class="qna-status-badge offline">
+                  <span class="status-dot"></span>
+                  <span class="status-text">Keine aktiv</span>
+                </div>
+              </div>
+
+              <div class="qna-card-body">
+                <div id="prediction-live-content" class="poll-live-content">
+                  <!-- Dynamic prediction content or empty state -->
+                  <div class="poll-empty-state">
+                    <span class="empty-icon">🔮</span>
+                    <p>Aktuell läuft keine Vorhersage im Twitch-Kanal.</p>
+                    <span class="empty-hint">Wähle eine Schnell-Vorlage unten oder erstelle rechts eine neue Vorhersage.</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Card 2: Quick Prediction Presets Grid -->
+            <section class="qna-card poll-presets-card">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">⚡</span>
+                  <div>
+                    <h3>Vorhersage-Vorlagen</h3>
+                    <p class="qa-subtitle">1-Klick Stream-Wetten für ShishaWG</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="qna-card-body">
+                <div class="poll-presets-grid">
+                  <button class="poll-preset-btn" data-prediction-preset="preset_prediction_drag">
+                    <span class="preset-icon">💨</span>
+                    <div class="preset-info">
+                      <strong>Drückt der Kopf?</strong>
+                      <span>Ja 🔥 vs. Nein 💨 (2 Min)</span>
+                    </div>
+                  </button>
+
+                  <button class="poll-preset-btn" data-prediction-preset="preset_prediction_taste">
+                    <span class="preset-icon">🌟</span>
+                    <div class="preset-info">
+                      <strong>10/10 Geschmack?</strong>
+                      <span>Safe 10/10 vs. Nope (2 Min)</span>
+                    </div>
+                  </button>
+
+                  <button class="poll-preset-btn" data-prediction-preset="preset_prediction_coal">
+                    <span class="preset-icon">🪵</span>
+                    <div class="preset-info">
+                      <strong>Kohle fällt runter?</strong>
+                      <span>Ja 💥 vs. Nein 🪵 (5 Min)</span>
+                    </div>
+                  </button>
+
+                  <button class="poll-preset-btn" data-prediction-preset="preset_prediction_speed">
+                    <span class="preset-icon">⚡</span>
+                    <div class="preset-info">
+                      <strong>Kopf fertig in 5 Min?</strong>
+                      <span>Ja ⚡ vs. Nein 🐢 (3 Min)</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- RIGHT COLUMN: PREDICTION CREATOR & SAVED TEMPLATES -->
+          <div class="qna-sidebar-panel">
+
+            <!-- Card 3: Prediction Creator -->
+            <section class="qna-card poll-creator-card">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">✍️</span>
+                  <div>
+                    <h3>Vorhersage erstellen</h3>
+                    <p class="qa-subtitle">Titel, Ausgänge &amp; Wettfenster festlegen und auf Twitch starten</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="qna-card-body">
+                <!-- Title Input -->
+                <div class="form-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label class="form-label" for="input-prediction-title">Titel der Vorhersage (Frage):</label>
+                    <span id="lbl-prediction-title-count" class="char-count">0/120</span>
+                  </div>
+                  <input type="text" id="input-prediction-title" placeholder="z. B. Wird der Kopf beim ersten Zug drücken?" maxlength="120">
+                </div>
+
+                <!-- Choices Container -->
+                <div class="form-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                    <label class="form-label">Ausgänge / Optionen (2–4):</label>
+                    <button id="btn-add-prediction-choice" class="btn btn-xs btn-secondary" title="Weitere Option hinzufügen">➕ Option</button>
+                  </div>
+                  <div id="prediction-choices-container" class="poll-choices-container">
+                    <div class="poll-choice-row">
+                      <span class="choice-num" style="background:#3b82f6; color:#fff; border-radius:4px; font-size:0.7rem; padding:2px 4px;">1</span>
+                      <input type="text" class="input-prediction-choice" placeholder="Option 1 (Blau - max. 25 Z.)" maxlength="25" value="Ja 🔥">
+                    </div>
+                    <div class="poll-choice-row">
+                      <span class="choice-num" style="background:#ec4899; color:#fff; border-radius:4px; font-size:0.7rem; padding:2px 4px;">2</span>
+                      <input type="text" class="input-prediction-choice" placeholder="Option 2 (Rosa - max. 25 Z.)" maxlength="25" value="Nein 💨">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Duration Row -->
+                <div class="form-group" style="margin-top:8px;">
+                  <label class="form-label">Wettfenster (Einsatz-Dauer):</label>
+                  <select id="select-prediction-duration" class="gw-select">
+                    <option value="30">30 Sekunden</option>
+                    <option value="60">60 Sekunden (1 Min.)</option>
+                    <option value="120" selected>120 Sekunden (2 Min. - Empfohlen)</option>
+                    <option value="180">180 Sekunden (3 Min.)</option>
+                    <option value="300">300 Sekunden (5 Min.)</option>
+                    <option value="600">600 Sekunden (10 Min.)</option>
+                  </select>
+                </div>
+
+                <!-- Actions -->
+                <div class="poll-action-buttons" style="display:flex; gap:10px; margin-top:14px;">
+                  <button id="btn-start-twitch-prediction" class="btn btn-primary" style="flex:2; justify-content:center; background:linear-gradient(135deg, #7c3aed, #4f46e5);">
+                    🚀 Vorhersage auf Twitch starten
+                  </button>
+                  <button id="btn-save-custom-prediction-template" class="btn btn-secondary" style="flex:1; justify-content:center;" title="Als benutzerdefinierte Vorlage speichern">
+                    💾 Vorlage
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            <!-- Card 4: Custom Prediction Templates Manager -->
+            <section class="qna-card poll-saved-templates-card">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">📁</span>
+                  <div>
+                    <h3>Gespeicherte Vorhersagen</h3>
+                    <p class="qa-subtitle">Eigene Vorhersage-Templates laden oder löschen</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="qna-card-body">
+                <div id="prediction-saved-templates-list" class="poll-saved-templates-list">
                   <!-- Dynamically populated -->
                 </div>
               </div>

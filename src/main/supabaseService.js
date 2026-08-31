@@ -3,19 +3,21 @@ if (typeof globalThis.WebSocket === 'undefined') {
   globalThis.WebSocket = WebSocket;
 }
 const { createClient } = require('@supabase/supabase-js');
+const { encryptAddress, decryptAddress, isEncrypted } = require('./crypto');
 
 const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODE3NjE2MywiZXhwIjoyMTAzNzUyMTYzfQ.MbwS0KXB78PjWq1dHxhrUyxQBPQEW1x9eeydTZC3Bg8';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QrSzf1SeHsgwIfbhbwQeGw_H7CkoJsV';
 
 class SupabaseService {
   constructor() {
-    this.client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    this.client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: { persistSession: false },
       realtime: {
         websocket: WebSocket,
         params: { eventsPerSecond: 20 }
       }
     });
+    this.supabase = this.client;
     this.mainWindow = null;
     this.channelSubscriptions = [];
   }
@@ -72,7 +74,16 @@ class SupabaseService {
         })
         .subscribe();
 
-      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel, bestrafungenChannel, settingsChannel);
+      const giveawayChannel = this.client
+        .channel('db-giveaway-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'giveaway_winners' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:giveaway-changed', payload);
+          }
+        })
+        .subscribe();
+
+      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel, bestrafungenChannel, settingsChannel, giveawayChannel);
       console.log('✅ Supabase Realtime WebSockets initialized in Electron.');
     } catch(e) {
       console.error('Failed to init Supabase realtime in Electron:', e);
@@ -383,16 +394,10 @@ class SupabaseService {
   async getWatchlist(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      let query = this.client
+      const { data, error } = await this.client
         .from('mod_watchlist')
-        .select('*');
-      
-      // Attempt to filter by channel if supported
-      try {
-        query = query.or(`channel.eq.${cleanChan},channel.is.null`);
-      } catch(e) {}
-
-      const { data, error } = await query.order('created_at', { ascending: false });
+        .select('*')
+        .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []).map(r => ({
         id: r.id,
@@ -411,16 +416,16 @@ class SupabaseService {
   async addToWatchlist(item, channel = 'marved') {
     try {
       const cleanChan = (channel || item.channel || 'marved').toLowerCase().replace('#', '');
+      const row = {
+        id: item.id || ('wl_' + Date.now()),
+        username: item.username,
+        added_by: item.addedBy || 'Mod',
+        reason: item.reason || '',
+        created_at: new Date(item.timestamp || Date.now()).toISOString()
+      };
       await this.client
         .from('mod_watchlist')
-        .upsert({
-          id: item.id || ('wl_' + Date.now()),
-          channel: cleanChan,
-          username: item.username,
-          added_by: item.addedBy || 'Mod',
-          reason: item.reason || '',
-          created_at: new Date(item.timestamp || Date.now()).toISOString()
-        }, { onConflict: 'id' });
+        .upsert(row, { onConflict: 'id' });
     } catch(err) {
       console.error('Supabase addToWatchlist error:', err.message);
     }
@@ -477,15 +482,9 @@ class SupabaseService {
   async getModChat(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      let query = this.client
+      const { data, error } = await this.client
         .from('mod_chat')
-        .select('*');
-
-      try {
-        query = query.or(`channel.eq.${cleanChan},channel.is.null`);
-      } catch(e) {}
-
-      const { data, error } = await query
+        .select('*')
         .order('created_at', { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -505,17 +504,16 @@ class SupabaseService {
 
   async sendModChatMessage(msg, channel = 'marved') {
     try {
-      const cleanChan = (channel || msg.channel || 'marved').toLowerCase().replace('#', '');
+      const row = {
+        id: msg.id || ('chat_' + Date.now()),
+        sender: msg.sender || 'Mod',
+        message: msg.message || '',
+        color: msg.color || '#00f0ff',
+        created_at: new Date(msg.timestamp || Date.now()).toISOString()
+      };
       await this.client
         .from('mod_chat')
-        .upsert({
-          id: msg.id || ('chat_' + Date.now()),
-          channel: cleanChan,
-          sender: msg.sender || 'Mod',
-          message: msg.message || '',
-          color: msg.color || '#00f0ff',
-          created_at: new Date(msg.timestamp || Date.now()).toISOString()
-        }, { onConflict: 'id' });
+        .upsert(row, { onConflict: 'id' });
     } catch(err) {
       console.error('Supabase sendModChatMessage error:', err.message);
     }
@@ -525,27 +523,59 @@ class SupabaseService {
   async getGiveaways(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      let query = this.client
+      const { data, error } = await this.client
         .from('giveaway_winners')
-        .select('*');
-
-      try {
-        query = query.or(`channel.eq.${cleanChan},channel.is.null`);
-      } catch(e) {}
-
-      const { data, error } = await query
+        .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return (data || []).map(r => ({
-        id: r.id,
-        channel: r.channel || cleanChan,
-        username: r.username,
-        displayName: r.display_name,
-        prize: r.prize,
-        status: r.status,
-        address: r.address,
-        timestamp: new Date(r.created_at).getTime()
-      }));
+      return (data || []).map(r => {
+        let decryptedAddr = null;
+        let needsEncryptionUpgrade = false;
+
+        if (r.address) {
+          if (typeof r.address === 'string') {
+            if (isEncrypted(r.address)) {
+              decryptedAddr = decryptAddress(r.address);
+            } else {
+              // Legacy unencrypted JSON string or raw text
+              try {
+                decryptedAddr = JSON.parse(r.address);
+              } catch(e) {
+                decryptedAddr = r.address;
+              }
+              needsEncryptionUpgrade = true;
+            }
+          } else if (typeof r.address === 'object') {
+            // Unencrypted jsonb object stored in Supabase
+            decryptedAddr = r.address;
+            needsEncryptionUpgrade = true;
+          }
+        }
+
+        // Retroactive encryption in Supabase if found unencrypted
+        if (needsEncryptionUpgrade && decryptedAddr && typeof decryptedAddr === 'object') {
+          const enc = encryptAddress(decryptedAddr);
+          if (enc) {
+            this.client
+              .from('giveaway_winners')
+              .update({ address: enc })
+              .eq('id', r.id)
+              .then(() => {})
+              .catch(() => {});
+          }
+        }
+
+        return {
+          id: r.id,
+          channel: r.channel || cleanChan,
+          username: r.username,
+          displayName: r.display_name,
+          prize: r.prize,
+          status: r.status,
+          address: decryptedAddr,
+          timestamp: new Date(r.created_at).getTime()
+        };
+      });
     } catch(err) {
       console.error('Supabase getGiveaways error:', err.message);
       return [];
@@ -555,20 +585,53 @@ class SupabaseService {
   async saveGiveawayWinner(winner, channel = 'marved') {
     try {
       const cleanChan = (channel || winner.channel || 'marved').toLowerCase().replace('#', '');
+      let addressToSave = null;
+      if (winner.address) {
+        if (typeof winner.address === 'object') {
+          addressToSave = encryptAddress(winner.address);
+        } else if (typeof winner.address === 'string') {
+          if (isEncrypted(winner.address)) {
+            addressToSave = winner.address;
+          } else {
+            try {
+              const parsed = JSON.parse(winner.address);
+              addressToSave = encryptAddress(parsed) || winner.address;
+            } catch(e) {
+              addressToSave = encryptAddress({ raw: winner.address }) || winner.address;
+            }
+          }
+        }
+      }
+
+      const row = {
+        id: winner.id || ('win_' + Date.now()),
+        username: winner.username || winner.user_login || winner.user_name || '',
+        display_name: winner.displayName || winner.user_name || winner.username || '',
+        prize: winner.prize || '',
+        status: winner.status || 'pending',
+        address: addressToSave,
+        created_at: new Date(winner.timestamp || winner.created_at || Date.now()).toISOString()
+      };
+
       await this.client
         .from('giveaway_winners')
-        .upsert({
-          id: winner.id || ('win_' + Date.now()),
-          channel: cleanChan,
-          username: winner.username,
-          display_name: winner.displayName || winner.username,
-          prize: winner.prize || '',
-          status: winner.status || 'pending',
-          address: winner.address || null,
-          created_at: new Date(winner.timestamp || Date.now()).toISOString()
-        }, { onConflict: 'id' });
+        .upsert(row, { onConflict: 'id' });
     } catch(err) {
       console.error('Supabase saveGiveawayWinner error:', err.message);
+    }
+  }
+
+  async deleteGiveawayWinner(id) {
+    try {
+      const { error } = await this.client
+        .from('giveaway_winners')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase deleteGiveawayWinner error:', err.message);
+      return false;
     }
   }
 

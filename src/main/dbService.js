@@ -2,9 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { app } = require('electron');
+const { decryptAddress, isEncrypted } = require('./crypto');
 
 const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
-const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
 
 const HOOKAHTOOLS_SUPABASE_HOST = 'qgusfuyfuwsdshsdruen.supabase.co';
 const HOOKAHTOOLS_SUPABASE_KEY = 'sb_publishable_XtRceZwP5FsZu2-GNuWkeQ_5AD_AU9y';
@@ -777,7 +777,7 @@ class DatabaseService {
         method: 'GET',
         headers: {
           'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${GIST_TOKEN}`
+          'Authorization': `token ${DatabaseService._gistToken || ''}`
         }
       };
 
@@ -891,7 +891,7 @@ class DatabaseService {
         method: 'PATCH',
         headers: {
           'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${GIST_TOKEN}`,
+          'Authorization': `token ${DatabaseService._gistToken || ''}`,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload)
         }
@@ -923,7 +923,7 @@ class DatabaseService {
           method: 'GET',
           headers: {
             'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-            'Authorization': `token ${GIST_TOKEN}`
+            'Authorization': `token ${DatabaseService._gistToken || ''}`
           }
         };
 
@@ -973,7 +973,7 @@ class DatabaseService {
         method: 'PATCH',
         headers: {
           'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${GIST_TOKEN}`,
+          'Authorization': `token ${DatabaseService._gistToken || ''}`,
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload)
         }
@@ -997,7 +997,7 @@ class DatabaseService {
         method: 'GET',
         headers: {
           'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${GIST_TOKEN}`,
+          'Authorization': `token ${DatabaseService._gistToken || ''}`,
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache'
         }
@@ -1141,6 +1141,16 @@ class DatabaseService {
   // Giveaway Winners & DSGVO Address Database
   async getGiveawayWinners() {
     const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
+    const decryptList = (arr) => {
+      if (!Array.isArray(arr)) return [];
+      return arr.map(w => {
+        if (w && w.address && typeof w.address === 'string' && isEncrypted(w.address)) {
+          return { ...w, address: decryptAddress(w.address) };
+        }
+        return w;
+      });
+    };
+
     let localList = [];
     try {
       if (fs.existsSync(localFile)) {
@@ -1157,13 +1167,13 @@ class DatabaseService {
           const remoteList = JSON.parse(f.content);
           if (Array.isArray(remoteList)) {
             fs.writeFileSync(localFile, JSON.stringify(remoteList, null, 2), 'utf-8');
-            return remoteList;
+            return decryptList(remoteList);
           }
         }
       }
     } catch(e) {}
 
-    return localList;
+    return decryptList(localList);
   }
 
   async saveGiveawayWinner(winnerObj) {
@@ -1552,7 +1562,7 @@ class DatabaseService {
           method: 'PATCH',
           headers: {
             'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-            'Authorization': `token ${GIST_TOKEN}`,
+            'Authorization': `token ${DatabaseService._gistToken || ''}`,
             'Content-Type': 'application/json',
             'Content-Length': Buffer.byteLength(payload)
           }
@@ -1603,5 +1613,10 @@ class DatabaseService {
     return timerState;
   }
 }
+
+DatabaseService._gistToken = '';
+DatabaseService.setGistToken = function(token) {
+  DatabaseService._gistToken = token;
+};
 
 module.exports = DatabaseService;

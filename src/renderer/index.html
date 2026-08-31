@@ -2399,6 +2399,26 @@
                 </div>
               </div>
 
+              <!-- GitHub PAT (Gist-Sync) -->
+              <div class="form-group" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <label class="form-label">🔑 GitHub PAT (Gist-Sync):</label>
+                <div class="input-action-row">
+                  <input type="password" id="input-gist-pat" 
+                         placeholder="ghp_..." 
+                         style="flex:1; font-family: monospace;"
+                         autocomplete="off">
+                  <button id="btn-save-gist-pat" class="btn btn-secondary btn-sm">
+                    💾 Speichern
+                  </button>
+                </div>
+                <span id="gist-pat-status" style="font-size:0.75rem; margin-top:4px; display:block; color: var(--text-secondary);">
+                  Prüfe Token...
+                </span>
+                <p style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">
+                  GitHub Personal Access Token mit Gist-Berechtigung. Wird lokal gespeichert, nie im Code.
+                </p>
+              </div>
+
               <!-- Footer Actions -->
               <div class="modal-footer-actions" style="margin-top:14px; display:flex; justify-content:space-between; align-items:center;">
                 <label class="toggle-switch checkbox-label" title="Dieses Profil als Standard beim Start der App laden">

@@ -1,12 +1,17 @@
-﻿const https = require('https');
+const https = require('https');
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QrSzf1SeHsgwIfbhbwQeGw_H7CkoJsV';
 const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
-const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
+const GIST_TOKEN = process.env.GIST_TOKEN || '';
+if (!GIST_TOKEN) {
+  console.error('Fehler: GIST_TOKEN Umgebungsvariable nicht gesetzt!');
+  console.error('Ausführen mit: GIST_TOKEN=ghp_... node scripts/migrate_part2.js');
+  process.exit(1);
+}
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: false } });
 
 function fetchGist() {
   return new Promise((resolve, reject) => {

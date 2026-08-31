@@ -66,6 +66,9 @@ function createWindow() {
   store = new SimpleStore();
   dbService = new DatabaseService();
 
+  const savedGistToken = store.get('gist_pat', '');
+  if (savedGistToken) DatabaseService.setGistToken(savedGistToken);
+
   const iconPath = path.join(__dirname, '../../build/icon.ico');
   const iconExists = fs.existsSync(iconPath);
 
@@ -633,15 +636,34 @@ ipcMain.handle('giveaway:stop-listener', async () => {
 
 ipcMain.handle('giveaway:get-winners', async () => {
   try {
-    const winners = await dbService.getGiveawayWinners();
+    const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
+    let winners = [];
+    if (supabaseService) {
+      const sbWinners = await supabaseService.getGiveaways(chan);
+      if (Array.isArray(sbWinners) && sbWinners.length > 0) {
+        winners = sbWinners;
+      }
+    }
+    if (winners.length === 0) {
+      winners = await dbService.getGiveawayWinners();
+    }
     return { success: true, winners };
   } catch(e) {
-    return { success: false, winners: [], error: e.message };
+    try {
+      const fallback = await dbService.getGiveawayWinners();
+      return { success: true, winners: fallback };
+    } catch(err) {
+      return { success: false, winners: [], error: e.message };
+    }
   }
 });
 
 ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
   try {
+    const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
+    if (supabaseService) {
+      await supabaseService.saveGiveawayWinner(winnerObj, winnerObj.channel || chan);
+    }
     const winners = await dbService.saveGiveawayWinner(winnerObj);
     return { success: true, winners };
   } catch(e) {
@@ -651,7 +673,14 @@ ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
 
 ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
   try {
+    const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
     const winners = await dbService.updateGiveawayWinner(id, updates);
+    if (supabaseService) {
+      const updatedItem = (winners || []).find(w => w.id === id);
+      if (updatedItem) {
+        await supabaseService.saveGiveawayWinner(updatedItem, updatedItem.channel || chan);
+      }
+    }
     return { success: true, winners };
   } catch(e) {
     return { success: false, error: e.message };
@@ -660,6 +689,9 @@ ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
 
 ipcMain.handle('giveaway:delete-winner', async (event, id) => {
   try {
+    if (supabaseService) {
+      await supabaseService.deleteGiveawayWinner(id);
+    }
     const winners = await dbService.deleteGiveawayWinner(id);
     return { success: true, winners };
   } catch(e) {
@@ -1075,6 +1107,18 @@ ipcMain.handle('db:auto-learn', async (event, setupData) => {
 ipcMain.handle('db:sync-github', async () => {
   const res = await dbService.syncWithGitHubCommunityCatalog();
   return res;
+});
+
+ipcMain.handle('settings:save-gist-token', async (event, token) => {
+  const clean = (token || '').trim();
+  store.set('gist_pat', clean);
+  DatabaseService.setGistToken(clean);
+  return { success: true };
+});
+
+ipcMain.handle('settings:get-gist-token', async () => {
+  const token = store.get('gist_pat', '');
+  return { hasToken: !!token, maskedToken: token ? token.slice(0, 8) + '...' : '' };
 });
 
 // IPC Handlers for Auto-Updater

@@ -346,14 +346,47 @@ function setupProfileEventListeners() {
       showToast(`Profil "${nameVal}" gespeichert! ⭐`, 'success');
     });
   }
+
+  document.getElementById('btn-save-gist-pat')?.addEventListener('click', async () => {
+    const val = document.getElementById('input-gist-pat')?.value?.trim();
+    if (!val || !val.startsWith('ghp_')) {
+      showToast('Ungültiger Token. Muss mit ghp_ beginnen.', 'error');
+      return;
+    }
+    const res = await ipcRenderer.invoke('settings:save-gist-token', val);
+    if (res && res.success) {
+      showToast('✅ GitHub Token gespeichert', 'success');
+      const inputEl = document.getElementById('input-gist-pat');
+      if (inputEl) inputEl.value = '';
+      const statusEl = document.getElementById('gist-pat-status');
+      if (statusEl) {
+        statusEl.textContent = '✅ Token hinterlegt (' + val.slice(0, 8) + '...)';
+        statusEl.style.color = '#22c55e';
+      }
+    }
+  });
 }
 
-function openStreamerProfilesModal() {
+async function openStreamerProfilesModal() {
   const modal = document.getElementById('modal-streamer-profiles');
   if (!modal) return;
   editingProfileId = activeProfileId;
   renderProfilesSidebar();
   loadProfileIntoEditor(editingProfileId);
+
+  try {
+    const gistInfo = await ipcRenderer.invoke('settings:get-gist-token');
+    const statusEl = document.getElementById('gist-pat-status');
+    if (statusEl) {
+      statusEl.textContent = gistInfo && gistInfo.hasToken 
+        ? `✅ Token hinterlegt (${gistInfo.maskedToken})` 
+        : '⚠️ Kein Token – Gist-Sync deaktiviert';
+      statusEl.style.color = gistInfo && gistInfo.hasToken ? '#22c55e' : '#f59e0b';
+    }
+  } catch (e) {
+    console.error('Error fetching gist token status:', e);
+  }
+
   modal.classList.remove('hidden');
 }
 
@@ -519,6 +552,14 @@ async function initApp() {
   // Check live stream status immediately & every 60 seconds
   checkLiveStreamStatus();
   setInterval(checkLiveStreamStatus, 60000);
+
+  // Check Gist sync token status on startup
+  try {
+    const gistInfo = await ipcRenderer.invoke('settings:get-gist-token');
+    if (!gistInfo || !gistInfo.hasToken) {
+      showToast('⚠️ Gist-Sync deaktiviert – Token in Profil-Einstellungen hinterlegen.', 'warning');
+    }
+  } catch (e) {}
 
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
@@ -6333,6 +6374,10 @@ ipcRenderer.on('supabase:settings-changed', () => {
 
 ipcRenderer.on('supabase:qna-changed', () => {
   loadQnAState();
+});
+
+ipcRenderer.on('supabase:giveaway-changed', () => {
+  loadGiveawayWinnersHistory();
 });
 
 function handleNewQnAQuestion(q) {

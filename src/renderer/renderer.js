@@ -6058,9 +6058,12 @@ function formatTimeAgo(timestamp) {
   return `vor ${diffHrs} Std.`;
 }
 
+let statsPersonFilter = 'all';
+let statsTypeFilter = 'all';
+let statsSearchQuery = '';
+
 function renderQnAStatsModal() {
   const cardsGrid = document.getElementById('qna-stats-cards-grid');
-  const timelineEl = document.getElementById('qna-stats-timeline');
   const elTotalQ = document.getElementById('stat-total-questions');
   const elTotalAns = document.getElementById('stat-total-answered');
   const elTotalSkip = document.getElementById('stat-total-skipped');
@@ -6129,63 +6132,134 @@ function renderQnAStatsModal() {
     }
   }
 
-  // Render Timeline / Activity Log
-  if (timelineEl) {
-    const events = [];
-
-    // Questions events
-    questions.forEach(q => {
-      if (q.status === 'answered' || q.status === 'rejected') {
-        const time = q.updatedAt || q.timestamp || Date.now();
-        const isAns = (q.status === 'answered');
-        events.push({
-          time,
-          icon: isAns ? '✅' : '⏭️',
-          person: q.answeredBy || 'Streamer',
-          title: isAns ? `hat Frage beantwortet` : `hat Frage übersprungen`,
-          detail: `„${q.question}“ (von @${q.displayName || q.login})`,
-          badgeColor: isAns ? '#10b981' : '#ef4444'
-        });
-      }
+  // Render Person Filter Buttons in Timeline Bar
+  const personFilterContainer = document.getElementById('qna-stats-filter-persons');
+  if (personFilterContainer) {
+    let pillsHtml = `
+      <button class="btn btn-xs ${statsPersonFilter === 'all' ? 'btn-primary' : 'btn-secondary'} btn-stats-person-filter" data-person="all">
+        Alle Personen
+      </button>
+    `;
+    allPersons.forEach(p => {
+      const isSel = (statsPersonFilter === p);
+      pillsHtml += `
+        <button class="btn btn-xs ${isSel ? 'btn-primary' : 'btn-secondary'} btn-stats-person-filter" data-person="${escapeHtml(p)}">
+          ${escapeHtml(p)}
+        </button>
+      `;
     });
+    personFilterContainer.innerHTML = pillsHtml;
 
-    // Bestrafungen events
-    bestrafungen.forEach(b => {
-      if (b.status === 'erledigt') {
-        const time = b.timestamp || Date.now();
-        events.push({
-          time,
-          icon: '🎡',
-          person: b.executedBy || 'Streamer',
-          title: `hat Bestrafungsrad-Challenge absolviert`,
-          detail: `„${b.name}“`,
-          badgeColor: '#f59e0b'
-        });
-      }
+    personFilterContainer.querySelectorAll('.btn-stats-person-filter').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        statsPersonFilter = e.currentTarget.getAttribute('data-person');
+        renderQnAStatsModal();
+      });
     });
+  }
 
-    events.sort((a, b) => b.time - a.time);
+  // Bind Type Filter & Search listeners once
+  const selType = document.getElementById('sel-stats-filter-type');
+  if (selType && !selType.dataset.bound) {
+    selType.dataset.bound = 'true';
+    selType.addEventListener('change', (e) => {
+      statsTypeFilter = e.target.value;
+      renderQnAStatsTimelineOnly();
+    });
+  }
 
-    if (events.length === 0) {
-      timelineEl.innerHTML = `<div style="text-align:center; color:var(--text-secondary); padding:20px; font-size:0.85rem;">Noch keine Aktivitäten in dieser Fragerunde verzeichnet.</div>`;
-    } else {
-      timelineEl.innerHTML = events.map(ev => {
-        const timeStr = new Date(ev.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-        return `
-          <div style="display:flex; align-items:flex-start; gap:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px; font-size:0.82rem;">
-            <span style="font-size:1.1rem; line-height:1.2;">${ev.icon}</span>
-            <div style="flex:1;">
-              <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
-                <span style="color:#38bdf8; font-weight:700;">${escapeHtml(ev.person)}</span>
-                <span style="color:var(--text-secondary);">${ev.title}</span>
-                <span style="margin-left:auto; font-size:0.75rem; color:rgba(255,255,255,0.4);">${timeStr}</span>
-              </div>
-              <div style="color:#e2e8f0; font-size:0.8rem; word-break:break-word;">${escapeHtml(ev.detail)}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
+  const inputSearch = document.getElementById('input-stats-search');
+  if (inputSearch && !inputSearch.dataset.bound) {
+    inputSearch.dataset.bound = 'true';
+    inputSearch.addEventListener('input', (e) => {
+      statsSearchQuery = (e.target.value || '').toLowerCase().trim();
+      renderQnAStatsTimelineOnly();
+    });
+  }
+
+  renderQnAStatsTimelineOnly();
+}
+
+function renderQnAStatsTimelineOnly() {
+  const timelineEl = document.getElementById('qna-stats-timeline');
+  if (!timelineEl) return;
+
+  const questions = qnaState.questions || [];
+  const bestrafungen = bestrafungenList || [];
+
+  const events = [];
+
+  // Questions events
+  questions.forEach(q => {
+    if (q.status === 'answered' || q.status === 'rejected') {
+      const time = q.updatedAt || q.timestamp || Date.now();
+      const isAns = (q.status === 'answered');
+      events.push({
+        type: isAns ? 'answered' : 'rejected',
+        time,
+        icon: isAns ? '✅' : '⏭️',
+        person: q.answeredBy || 'Unbekannt',
+        title: isAns ? `hat Frage beantwortet` : `hat Frage übersprungen`,
+        detail: `„${q.question}“ (von @${q.displayName || q.login})`,
+        badgeColor: isAns ? '#10b981' : '#ef4444'
+      });
     }
+  });
+
+  // Bestrafungen events
+  bestrafungen.forEach(b => {
+    if (b.status === 'erledigt') {
+      const time = b.timestamp || Date.now();
+      events.push({
+        type: 'bestrafung',
+        time,
+        icon: '🎡',
+        person: b.executedBy || 'Unbekannt',
+        title: `hat Bestrafungsrad-Challenge absolviert`,
+        detail: `„${b.name}“`,
+        badgeColor: '#f59e0b'
+      });
+    }
+  });
+
+  events.sort((a, b) => b.time - a.time);
+
+  // Apply filters
+  let filtered = events;
+  if (statsPersonFilter !== 'all') {
+    filtered = filtered.filter(ev => ev.person.toLowerCase() === statsPersonFilter.toLowerCase());
+  }
+  if (statsTypeFilter !== 'all') {
+    filtered = filtered.filter(ev => ev.type === statsTypeFilter);
+  }
+  if (statsSearchQuery) {
+    filtered = filtered.filter(ev => {
+      const p = ev.person.toLowerCase();
+      const d = ev.detail.toLowerCase();
+      const t = ev.title.toLowerCase();
+      return p.includes(statsSearchQuery) || d.includes(statsSearchQuery) || t.includes(statsSearchQuery);
+    });
+  }
+
+  if (filtered.length === 0) {
+    timelineEl.innerHTML = `<div style="text-align:center; color:var(--text-secondary); padding:20px; font-size:0.85rem;">Keine Aktivitäten für die ausgewählten Filterkriterien gefunden.</div>`;
+  } else {
+    timelineEl.innerHTML = filtered.map(ev => {
+      const timeStr = new Date(ev.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+      return `
+        <div style="display:flex; align-items:flex-start; gap:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px; font-size:0.82rem;">
+          <span style="font-size:1.1rem; line-height:1.2;">${ev.icon}</span>
+          <div style="flex:1;">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+              <span style="color:#38bdf8; font-weight:700;">${escapeHtml(ev.person)}</span>
+              <span style="color:var(--text-secondary);">${ev.title}</span>
+              <span style="margin-left:auto; font-size:0.75rem; color:rgba(255,255,255,0.4);">${timeStr}</span>
+            </div>
+            <div style="color:#e2e8f0; font-size:0.8rem; word-break:break-word;">${escapeHtml(ev.detail)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 }
 

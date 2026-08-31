@@ -83,7 +83,16 @@ class SupabaseService {
         })
         .subscribe();
 
-      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel, bestrafungenChannel, settingsChannel, giveawayChannel);
+      const catalogChannel = this.client
+        .channel('db-catalog-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'shishawg_catalog' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:catalog-changed', payload);
+          }
+        })
+        .subscribe();
+
+      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel, bestrafungenChannel, settingsChannel, giveawayChannel, catalogChannel);
       console.log('✅ Supabase Realtime WebSockets initialized in Electron.');
     } catch(e) {
       console.error('Failed to init Supabase realtime in Electron:', e);

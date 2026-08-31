@@ -1115,26 +1115,93 @@ ipcMain.handle('stats:save-timer-state', async (event, { channel, timerState }) 
 
 // IPC Handlers for Database
 ipcMain.handle('db:get-catalog', async () => {
+  if (supabaseService) {
+    try {
+      const remote = await supabaseService.getCatalog();
+      if (remote && Object.keys(remote).length > 0) {
+        dbService.mergeRemoteCatalog(remote);
+      }
+    } catch(e) {
+      console.warn('Failed to fetch remote catalog on db:get-catalog:', e.message);
+    }
+  }
   return dbService.getCatalog();
 });
 
 ipcMain.handle('db:add-item', async (event, { category, item }) => {
   const res = dbService.addItem(category, item);
-  return { success: res, catalog: dbService.getCatalog() };
+  const updatedCatalog = dbService.getCatalog();
+
+  if (res && supabaseService) {
+    try {
+      const catKey = (category === 'customTobacco') ? 'tobacco' : category;
+      const itemsToSync = (catKey === 'tobacco')
+        ? (updatedCatalog.customTobacco || [])
+        : (updatedCatalog[catKey] || []);
+      await supabaseService.saveCatalogCategory(catKey, itemsToSync);
+    } catch(e) {
+      console.warn('Failed to sync added item to Supabase:', e.message);
+    }
+  }
+
+  return { success: res, catalog: updatedCatalog };
 });
 
 ipcMain.handle('db:remove-item', async (event, { category, item }) => {
   const res = dbService.removeItem(category, item);
-  return { success: res, catalog: dbService.getCatalog() };
+  const updatedCatalog = dbService.getCatalog();
+
+  if (res && supabaseService) {
+    try {
+      const catKey = (category === 'customTobacco') ? 'tobacco' : category;
+      const itemsToSync = (catKey === 'tobacco')
+        ? (updatedCatalog.customTobacco || [])
+        : (updatedCatalog[catKey] || []);
+      await supabaseService.saveCatalogCategory(catKey, itemsToSync);
+    } catch(e) {
+      console.warn('Failed to sync removed item to Supabase:', e.message);
+    }
+  }
+
+  return { success: res, catalog: updatedCatalog };
 });
 
 ipcMain.handle('db:edit-item', async (event, { category, oldItem, newItem }) => {
   const res = dbService.editItem(category, oldItem, newItem);
-  return { success: res, catalog: dbService.getCatalog() };
+  const updatedCatalog = dbService.getCatalog();
+
+  if (res && supabaseService) {
+    try {
+      const catKey = (category === 'customTobacco') ? 'tobacco' : category;
+      const itemsToSync = (catKey === 'tobacco')
+        ? (updatedCatalog.customTobacco || [])
+        : (updatedCatalog[catKey] || []);
+      await supabaseService.saveCatalogCategory(catKey, itemsToSync);
+    } catch(e) {
+      console.warn('Failed to sync edited item to Supabase:', e.message);
+    }
+  }
+
+  return { success: res, catalog: updatedCatalog };
 });
 
 ipcMain.handle('db:auto-learn', async (event, setupData) => {
   const res = dbService.autoLearnSetup(setupData);
+  if (res && res.learned && supabaseService) {
+    try {
+      const catalog = dbService.getCatalog();
+      for (const cat of ['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'persons']) {
+        if (catalog[cat]) {
+          await supabaseService.saveCatalogCategory(cat, catalog[cat]);
+        }
+      }
+      if (catalog.customTobacco) {
+        await supabaseService.saveCatalogCategory('tobacco', catalog.customTobacco);
+      }
+    } catch(e) {
+      console.warn('Failed to sync auto-learned items to Supabase:', e.message);
+    }
+  }
   return { success: true, ...res };
 });
 
@@ -1142,13 +1209,20 @@ ipcMain.handle('db:sync-cloud', async () => {
   try {
     let hookahTobacco = [];
     if (dbService) {
-      hookahTobacco = await dbService.fetchHookahToolsTobacco();
+      hookahTobacco = await dbService.fetchHookahToolsTobacco(true);
     }
-    let remoteCatalog = null;
     if (supabaseService) {
-      remoteCatalog = await supabaseService.getCatalog();
+      const remoteCatalog = await supabaseService.getCatalog();
+      if (remoteCatalog && Object.keys(remoteCatalog).length > 0) {
+        dbService.mergeRemoteCatalog(remoteCatalog);
+      }
     }
-    return { success: true, hookahTobaccoCount: hookahTobacco?.length || 0, catalog: remoteCatalog };
+    const fullCatalog = dbService.getCatalog();
+    return {
+      success: true,
+      hookahTobaccoCount: fullCatalog.hookahTobacco?.length || 0,
+      catalog: fullCatalog
+    };
   } catch(e) {
     return { success: false, error: e.message };
   }

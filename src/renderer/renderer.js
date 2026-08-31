@@ -6329,6 +6329,15 @@ ipcRenderer.on('supabase:setup-changed', () => {
   }
 });
 
+ipcRenderer.on('supabase:catalog-changed', async () => {
+  state.catalog = await ipcRenderer.invoke('db:get-catalog');
+  updateDatalists();
+  const dbModal = document.getElementById('db-modal');
+  if (dbModal && !dbModal.classList.contains('hidden') && typeof renderCatalogList === 'function') {
+    renderCatalogList();
+  }
+});
+
 function handleNewQnAQuestion(q) {
   if (!q || !q.question) return;
 

@@ -67,9 +67,10 @@ function fetchSupabaseEndpoint(pathStr) {
 
 class DatabaseService {
   constructor() {
-    this.dbPath = path.join(app.getPath('userData'), 'setup_database.json');
-    this.hookahToolsTobaccoCachePath = path.join(app.getPath('userData'), 'hookahtools_tobacco_cache.json');
-    this.hookahToolsBrandsCachePath = path.join(app.getPath('userData'), 'hookahtools_brands_cache.json');
+    const userDataDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : path.join(process.cwd(), '.temp_user_data');
+    this.dbPath = path.join(userDataDir, 'setup_database.json');
+    this.hookahToolsTobaccoCachePath = path.join(userDataDir, 'hookahtools_tobacco_cache.json');
+    this.hookahToolsBrandsCachePath = path.join(userDataDir, 'hookahtools_brands_cache.json');
     this.hookahToolsSnapshotPath = path.join(__dirname, 'hookahtools_tobacco_snapshot.json');
     this.defaultCatalog = {
       persons: [
@@ -179,6 +180,10 @@ class DatabaseService {
 
   init() {
     try {
+      const dir = path.dirname(this.dbPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
       if (!fs.existsSync(this.dbPath)) {
         fs.writeFileSync(this.dbPath, JSON.stringify(this.defaultCatalog, null, 2), 'utf-8');
       }
@@ -358,6 +363,36 @@ class DatabaseService {
       console.error('Error saving catalog:', err);
       return false;
     }
+  }
+
+  mergeRemoteCatalog(remoteCatalog) {
+    if (!remoteCatalog || typeof remoteCatalog !== 'object') return this.getCatalog();
+    try {
+      const current = this.getCatalog();
+      const updated = {
+        pipes: Array.isArray(remoteCatalog.pipes) && remoteCatalog.pipes.length > 0 ? remoteCatalog.pipes : current.pipes,
+        bowls: Array.isArray(remoteCatalog.bowls) && remoteCatalog.bowls.length > 0 ? remoteCatalog.bowls : current.bowls,
+        vases: Array.isArray(remoteCatalog.vases) && remoteCatalog.vases.length > 0 ? remoteCatalog.vases : current.vases,
+        hmds: Array.isArray(remoteCatalog.hmds) && remoteCatalog.hmds.length > 0 ? remoteCatalog.hmds : current.hmds,
+        charcoal: Array.isArray(remoteCatalog.charcoal) && remoteCatalog.charcoal.length > 0 ? remoteCatalog.charcoal : current.charcoal,
+        persons: Array.isArray(remoteCatalog.persons) && remoteCatalog.persons.length > 0 ? remoteCatalog.persons : current.persons,
+        tastings: Array.isArray(remoteCatalog.tastings) && remoteCatalog.tastings.length > 0 ? remoteCatalog.tastings : current.tastings,
+        promos: Array.isArray(remoteCatalog.promos) && remoteCatalog.promos.length > 0 ? remoteCatalog.promos : current.promos
+      };
+
+      if (Array.isArray(remoteCatalog.tobacco) && remoteCatalog.tobacco.length > 0) {
+        updated.customTobacco = remoteCatalog.tobacco;
+      } else if (Array.isArray(remoteCatalog.customTobacco) && remoteCatalog.customTobacco.length > 0) {
+        updated.customTobacco = remoteCatalog.customTobacco;
+      } else {
+        updated.customTobacco = current.customTobacco;
+      }
+
+      this.saveCatalog(updated);
+    } catch (err) {
+      console.error('Error merging remote catalog:', err);
+    }
+    return this.getCatalog();
   }
 
   addItem(category, item) {

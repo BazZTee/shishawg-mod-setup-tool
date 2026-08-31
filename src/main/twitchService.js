@@ -857,6 +857,12 @@ class TwitchService {
     } catch(e) {
       parsedErr = errText;
     }
+
+    if (parsedErr.includes('must match the user ID found in the request')) {
+      const userLogin = this.user ? (this.user.display_name || this.user.login) : 'dein Account';
+      throw new Error(`Twitch erlaubt das Erstellen von Polls per API nur dem Kanal-Inhaber (#${chan}). Da du als @${userLogin} eingeloggt bist, kannst du zum Testen den Ziel-Kanal oben im Menü auf deinen eigenen Kanal (#${userLogin.toLowerCase()}) stellen.`);
+    }
+
     throw new Error(`Twitch Poll konnte nicht gestartet werden: ${parsedErr || res.statusText}`);
   }
 

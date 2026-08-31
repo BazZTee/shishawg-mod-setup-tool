@@ -1774,11 +1774,31 @@
             </div>
           </div>
 
-          <!-- History Feed / Log -->
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <!-- History Feed / Log Header -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin:0;">📜 Detaillierter Aktivitäten-Verlauf</h4>
             <button id="btn-copy-stats-summary" class="btn btn-xs btn-secondary" title="Zusammenfassung in die Zwischenablage kopieren">📋 Zusammenfassung kopieren</button>
           </div>
+
+          <!-- Filter Controls for Timeline -->
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 8px 12px;">
+            <!-- Person Filter Pills -->
+            <div id="qna-stats-filter-persons" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+              <!-- Dynamic: [Alle] [Marved] [Hasty] [Kai] -->
+            </div>
+
+            <!-- Type Filter Select & Search -->
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <select id="sel-stats-filter-type" class="form-control" style="height: 28px; font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; background: #1a1d2d; color: #fff; border: 1px solid rgba(255,255,255,0.15);">
+                <option value="all">Alle Aktivitäten</option>
+                <option value="answered">✅ Nur Beantwortet</option>
+                <option value="rejected">⏭️ Nur Übersprungen</option>
+                <option value="bestrafung">🎡 Nur Bestrafungen</option>
+              </select>
+              <input type="text" id="input-stats-search" placeholder="🔍 Filtern..." style="height: 28px; width: 130px; font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; background: #1a1d2d; color: #fff; border: 1px solid rgba(255,255,255,0.15);">
+            </div>
+          </div>
+
           <div id="qna-stats-timeline" style="max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
             <!-- Dynamically populated entries -->
           </div>

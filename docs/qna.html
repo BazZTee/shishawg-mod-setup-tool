@@ -176,7 +176,7 @@
     .streamer-nav-controls {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 12px;
     }
 
     .wheel-toggle-btn {
@@ -198,6 +198,25 @@
       accent-color: #8b5cf6;
     }
 
+    .btn-manual-sync {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #94a3b8;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-manual-sync:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
     /* Centered Stage Layout */
     .streamer-stage-container {
       flex: 1;
@@ -207,7 +226,7 @@
       justify-content: center;
       max-width: 800px;
       width: 100%;
-      margin: 40px auto;
+      margin: 30px auto;
       padding: 0 24px;
       text-align: center;
     }
@@ -601,6 +620,9 @@
       </div>
 
       <div class="streamer-nav-controls">
+        <button id="btn-prompter-refresh" class="btn-manual-sync" title="Daten manuell neu laden">
+          🔄 Sync
+        </button>
         <label class="wheel-toggle-btn" title="Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
           <input type="checkbox" id="prompter-wheel-toggle" checked>
           <span>🎡 Bestrafungsrad</span>
@@ -628,8 +650,8 @@
 
       <!-- Empty State Card -->
       <div id="prompter-no-active-box" class="prompter-empty-card">
-        <div class="prompter-empty-title">Keine offenen Fragen mehr vorhanden.</div>
-        <div class="prompter-empty-subtitle" id="prompter-total-count-sub">Alle Fragen wurden beantwortet!</div>
+        <div class="prompter-empty-title">Keine Frage aktuell live.</div>
+        <div class="prompter-empty-subtitle" id="prompter-total-count-sub">Klicke oben auf „Random Frage ziehen 🔀“ oder schalte im Mod-Tool eine Frage live!</div>
       </div>
 
       <!-- Active Drawn Question Card -->
@@ -750,8 +772,11 @@
         if (qRes.ok) {
           const qData = await qRes.json();
           if (Array.isArray(qData)) {
-            // Filter for targetChannel or fallback if channel matches
-            const filtered = qData.filter(r => !r.channel || r.channel.toLowerCase() === targetChannel);
+            // Include questions for targetChannel or all if only 1 channel exists
+            let filtered = qData.filter(r => !r.channel || r.channel.toLowerCase().replace('#', '') === targetChannel);
+            if (filtered.length === 0 && qData.length > 0) {
+              filtered = qData;
+            }
             currentQuestions = filtered.map(r => ({
               id: r.id,
               channel: r.channel,
@@ -772,13 +797,13 @@
 
       try {
         // 2. Fetch Settings
-        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?select=*&channel=eq.${encodeURIComponent(targetChannel)}&t=${Date.now()}`, {
+        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?select=*&order=updated_at.desc&t=${Date.now()}`, {
           headers: reqHeaders
         });
         if (sRes.ok) {
           const sData = await sRes.json();
           if (Array.isArray(sData) && sData.length > 0) {
-            const s = sData[0];
+            const s = sData.find(x => x.channel && x.channel.toLowerCase().replace('#', '') === targetChannel) || sData[0];
             if (Array.isArray(s.persons) && s.persons.length > 0) {
               qnaSettings.persons = s.persons;
             }
@@ -873,7 +898,6 @@
 
       const totalCount = currentQuestions.length;
       const subCounter = document.getElementById('prompter-total-count-sub');
-      if (subCounter) subCounter.textContent = `Alle ${totalCount} Fragen wurden beantwortet!`;
 
       const spotBox = document.getElementById('prompter-spotlight-box');
       const noActiveBox = document.getElementById('prompter-no-active-box');
@@ -893,6 +917,11 @@
       } else {
         if (spotBox) spotBox.style.display = 'none';
         if (noActiveBox) noActiveBox.style.display = 'flex';
+        if (subCounter) {
+          subCounter.textContent = (openCount > 0)
+            ? `${openCount} offene Fragen in der Warteschlange. Klicke auf „Random Frage ziehen 🔀“!`
+            : `Alle ${totalCount} Fragen wurden beantwortet!`;
+        }
       }
     }
 
@@ -911,6 +940,15 @@
           })
         });
       } catch(e) {}
+    }
+
+    const btnRefresh = document.getElementById('btn-prompter-refresh');
+    if (btnRefresh) {
+      btnRefresh.addEventListener('click', async () => {
+        btnRefresh.textContent = '⏳ Lädt...';
+        await syncAllData();
+        btnRefresh.textContent = '🔄 Sync';
+      });
     }
 
     const btnDraw = document.getElementById('btn-prompter-draw');

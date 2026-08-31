@@ -306,6 +306,7 @@
     const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
     const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
     let lastActiveId = null;
+    let lastUpdatedAt = null;
     let hideTimer = null;
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -328,14 +329,11 @@
 
     async function syncQnA() {
       try {
-        const res = await fetch(`https://api.github.com/gists/${GIST_ID}?_t=${Date.now()}`, {
-          headers: {
-            'Authorization': `Bearer ${GIST_TOKEN}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Cache-Control': 'no-cache'
-          }
-        });
-        if (!res.ok) return;
+        const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`);
+        if (!res.ok) {
+          console.warn('Gist fetch response not OK:', res.status);
+          return;
+        }
         const data = await res.json();
 
         // 1. Check active question
@@ -385,8 +383,9 @@
         return;
       }
 
-      if (activeQ.id !== lastActiveId) {
+      if (activeQ.id !== lastActiveId || (activeQ.updatedAt && activeQ.updatedAt !== lastUpdatedAt)) {
         lastActiveId = activeQ.id;
+        lastUpdatedAt = activeQ.updatedAt;
 
         const userNameEl = document.getElementById('hud-user-name');
         const userSubEl = document.getElementById('hud-user-sub');

@@ -638,11 +638,27 @@ function showView(targetViewId) {
   }
 }
 
+function highlightTwitchLoginButton() {
+  const btn = document.getElementById('btn-twitch-login');
+  if (!btn) return;
+  btn.classList.remove('pulse-highlight');
+  void btn.offsetWidth;
+  btn.classList.add('pulse-highlight');
+  setTimeout(() => {
+    btn.classList.remove('pulse-highlight');
+  }, 2400);
+}
+
 function setupHubNavigation() {
   // Tile clicks on Landing Page
   const hubTiles = document.querySelectorAll('.hub-tile-card');
   hubTiles.forEach(tile => {
     tile.addEventListener('click', () => {
+      if (!state.twitchUser) {
+        showToast('🔒 Bitte verbinde dich zuerst oben rechts mit Twitch!', 'warning');
+        highlightTwitchLoginButton();
+        return;
+      }
       const targetViewId = tile.getAttribute('data-target');
       if (targetViewId) showView(targetViewId);
     });
@@ -651,11 +667,24 @@ function setupHubNavigation() {
     tile.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
+        if (!state.twitchUser) {
+          showToast('🔒 Bitte verbinde dich zuerst oben rechts mit Twitch!', 'warning');
+          highlightTwitchLoginButton();
+          return;
+        }
         const targetViewId = tile.getAttribute('data-target');
         if (targetViewId) showView(targetViewId);
       }
     });
   });
+
+  // Connect Twitch banner button on landing page
+  const btnLandingConnect = document.getElementById('btn-landing-connect-twitch');
+  if (btnLandingConnect) {
+    btnLandingConnect.addEventListener('click', () => {
+      if (btnTwitchLogin) btnTwitchLogin.click();
+    });
+  }
 
   // Back buttons inside tool views
   const backButtons = document.querySelectorAll('.btn-back-hub');
@@ -790,14 +819,15 @@ async function checkTwitchAuth() {
       state.clientId = authData.clientId;
       inputClientId.value = state.clientId;
     }
-    updateTwitchUI();
   } else {
+    state.twitchUser = null;
     const cfg = await ipcRenderer.invoke('twitch:get-config');
     if (cfg && cfg.clientId) {
       state.clientId = cfg.clientId;
       inputClientId.value = state.clientId;
     }
   }
+  updateTwitchUI();
   updateChannelBotTooltips();
 }
 
@@ -816,6 +846,9 @@ function updateTwitchUI() {
   const previewModName = document.getElementById('preview-mod-name');
   const userColorPicker = document.getElementById('user-color-picker');
   const savedColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+  const hubTiles = document.querySelectorAll('.hub-tile-card');
+  const landingSubtitle = document.querySelector('.landing-subtitle');
+  const landingTwitchBanner = document.getElementById('landing-twitch-banner');
 
   if (state.twitchUser) {
     btnTwitchLogin.classList.add('hidden');
@@ -830,6 +863,24 @@ function updateTwitchUI() {
     if (userColorPicker) {
       userColorPicker.value = savedColor.startsWith('#') ? savedColor : '#FF7F00';
     }
+
+    if (landingTwitchBanner) landingTwitchBanner.classList.add('hidden');
+    if (landingSubtitle) landingSubtitle.textContent = 'Wähle ein Modul aus, um zu starten:';
+
+    // Unlock all tiles
+    hubTiles.forEach(tile => {
+      tile.classList.remove('locked');
+      tile.removeAttribute('aria-disabled');
+      const badge = tile.querySelector('.tile-badge');
+      if (badge && !badge.classList.contains('planned')) {
+        badge.className = 'tile-badge ready';
+        badge.textContent = 'Bereit / Aktiv';
+      }
+      const actionSpan = tile.querySelector('.tile-action span');
+      if (actionSpan) {
+        actionSpan.textContent = 'Tool öffnen ➔';
+      }
+    });
   } else {
     btnTwitchLogin.classList.remove('hidden');
     twitchUserBadge.classList.add('hidden');
@@ -837,6 +888,24 @@ function updateTwitchUI() {
       previewModName.textContent = 'Mod:';
       previewModName.style.color = savedColor;
     }
+
+    if (landingTwitchBanner) landingTwitchBanner.classList.remove('hidden');
+    if (landingSubtitle) landingSubtitle.textContent = 'Bitte verbinde dich zuerst mit Twitch, um auf die Module zuzugreifen:';
+
+    // Lock all tiles (grey out & non-clickable)
+    hubTiles.forEach(tile => {
+      tile.classList.add('locked');
+      tile.setAttribute('aria-disabled', 'true');
+      const badge = tile.querySelector('.tile-badge');
+      if (badge && !badge.classList.contains('planned')) {
+        badge.className = 'tile-badge locked';
+        badge.textContent = '🔒 Login erforderlich';
+      }
+      const actionSpan = tile.querySelector('.tile-action span');
+      if (actionSpan) {
+        actionSpan.textContent = '🔒 Twitch verbinden';
+      }
+    });
   }
 }
 
@@ -2286,6 +2355,7 @@ function setupEventListeners() {
     await ipcRenderer.invoke('twitch:logout');
     state.twitchUser = null;
     updateTwitchUI();
+    showView('view-landing');
     checkLiveStreamStatus();
     showToast('Erfolgreich von Twitch abgemeldet', 'info');
   });

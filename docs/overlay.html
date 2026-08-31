@@ -108,7 +108,6 @@
   <script>
     const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QrSzf1SeHsgwIfbhbwQeGw_H7CkoJsV';
-    const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
 
     let supabaseClient = null;
     try {
@@ -142,7 +141,6 @@
     }
 
     async function syncSetup() {
-      // 1. Try Supabase
       if (supabaseClient) {
         try {
           const { data, error } = await supabaseClient
@@ -153,33 +151,8 @@
 
           if (!error && data && data.setup_data) {
             handleNewData(data.setup_data);
-            return;
           }
         } catch(e) {}
-      }
-
-      // 2. Fallback: Gist
-      try {
-        const res = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/current_setup.json?t=${Date.now()}`);
-        if (!res.ok) return;
-        const parsed = await res.json();
-        
-        let channelSetup = null;
-        if (parsed && typeof parsed === 'object') {
-          if (parsed[targetChannel]) {
-            channelSetup = parsed[targetChannel];
-          } else if (targetChannel === 'marved' && parsed.commandText) {
-            channelSetup = parsed;
-          } else if (parsed.commandText && !parsed['marved']) {
-            channelSetup = parsed;
-          }
-        }
-
-        if (channelSetup) {
-          handleNewData(channelSetup);
-        }
-      } catch (err) {
-        console.error('Cloud Sync Error:', err);
       }
     }
 

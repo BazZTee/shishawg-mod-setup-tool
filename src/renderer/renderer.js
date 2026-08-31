@@ -346,25 +346,6 @@ function setupProfileEventListeners() {
       showToast(`Profil "${nameVal}" gespeichert! ⭐`, 'success');
     });
   }
-
-  document.getElementById('btn-save-gist-pat')?.addEventListener('click', async () => {
-    const val = document.getElementById('input-gist-pat')?.value?.trim();
-    if (!val || !val.startsWith('ghp_')) {
-      showToast('Ungültiger Token. Muss mit ghp_ beginnen.', 'error');
-      return;
-    }
-    const res = await ipcRenderer.invoke('settings:save-gist-token', val);
-    if (res && res.success) {
-      showToast('✅ GitHub Token gespeichert', 'success');
-      const inputEl = document.getElementById('input-gist-pat');
-      if (inputEl) inputEl.value = '';
-      const statusEl = document.getElementById('gist-pat-status');
-      if (statusEl) {
-        statusEl.textContent = '✅ Token hinterlegt (' + val.slice(0, 8) + '...)';
-        statusEl.style.color = '#22c55e';
-      }
-    }
-  });
 }
 
 async function openStreamerProfilesModal() {
@@ -373,20 +354,6 @@ async function openStreamerProfilesModal() {
   editingProfileId = activeProfileId;
   renderProfilesSidebar();
   loadProfileIntoEditor(editingProfileId);
-
-  try {
-    const gistInfo = await ipcRenderer.invoke('settings:get-gist-token');
-    const statusEl = document.getElementById('gist-pat-status');
-    if (statusEl) {
-      statusEl.textContent = gistInfo && gistInfo.hasToken 
-        ? `✅ Token hinterlegt (${gistInfo.maskedToken})` 
-        : '⚠️ Kein Token – Gist-Sync deaktiviert';
-      statusEl.style.color = gistInfo && gistInfo.hasToken ? '#22c55e' : '#f59e0b';
-    }
-  } catch (e) {
-    console.error('Error fetching gist token status:', e);
-  }
-
   modal.classList.remove('hidden');
 }
 
@@ -440,7 +407,7 @@ async function loadProfileIntoEditor(profileId) {
   if (inputTgChatId) inputTgChatId.value = p.telegram?.chatId || '';
   if (chkDefault) chkDefault.checked = !!p.isDefault;
 
-  // If Telegram token is empty, auto-fetch from Supabase / Gist config
+  // If Telegram token is empty, auto-fetch from Supabase config
   if ((!p.telegram || !p.telegram.botToken) && (inputTgToken && !inputTgToken.value)) {
     try {
       const tgCfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
@@ -553,14 +520,6 @@ async function initApp() {
   checkLiveStreamStatus();
   setInterval(checkLiveStreamStatus, 60000);
 
-  // Check Gist sync token status on startup
-  try {
-    const gistInfo = await ipcRenderer.invoke('settings:get-gist-token');
-    if (!gistInfo || !gistInfo.hasToken) {
-      showToast('⚠️ Gist-Sync deaktiviert – Token in Profil-Einstellungen hinterlegen.', 'warning');
-    }
-  } catch (e) {}
-
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
 
@@ -576,14 +535,14 @@ async function initApp() {
   const firstNameInput = document.querySelector('.input-p-name');
   if (firstNameInput) firstNameInput.focus();
 
-  // Auto-sync community catalog from GitHub & HookahTools on startup
+  // Auto-sync catalog from Cloud & HookahTools on startup
   setTimeout(async () => {
     try {
-      const res = await ipcRenderer.invoke('db:sync-github');
-      if (res && res.success) {
+      const res = await ipcRenderer.invoke('db:sync-cloud');
+      if (res && res.success && res.catalog) {
         state.catalog = res.catalog;
         updateDatalists();
-        const tobaccoMsg = res.tobaccoCount ? `${res.tobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
+        const tobaccoMsg = res.hookahTobaccoCount ? `${res.hookahTobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
         showToast(`Katalog synchronisiert (${tobaccoMsg} & Hardware)!`, 'success');
       }
     } catch(e) {}
@@ -2454,7 +2413,7 @@ function setupEventListeners() {
         checkAndAutoStartHeadSession(true);
       }
 
-      // Publish confirmed setup to OBS Overlay Server & Cloud Gist
+      // Publish confirmed setup to OBS Overlay Server & Cloud
       const kohleVal = (inputGlobalKohle ? inputGlobalKohle.value : '').trim();
       const extraVal = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
       ipcRenderer.invoke('obs:publish-setup', {
@@ -2714,19 +2673,19 @@ function setupEventListeners() {
     renderCatalogList();
   });
 
-  const btnSyncGithubDb = document.getElementById('btn-sync-github-db');
-  if (btnSyncGithubDb) {
-    btnSyncGithubDb.addEventListener('click', async () => {
-      btnSyncGithubDb.disabled = true;
-      btnSyncGithubDb.textContent = '🔄 Abgleich läuft...';
-      const res = await ipcRenderer.invoke('db:sync-github');
-      btnSyncGithubDb.disabled = false;
-      btnSyncGithubDb.textContent = '🔄 Sync (HookahTools + GitHub)';
+  const btnSyncCloudDb = document.getElementById('btn-sync-cloud-db') || document.getElementById('btn-sync-github-db');
+  if (btnSyncCloudDb) {
+    btnSyncCloudDb.addEventListener('click', async () => {
+      btnSyncCloudDb.disabled = true;
+      btnSyncCloudDb.textContent = '🔄 Abgleich läuft...';
+      const res = await ipcRenderer.invoke('db:sync-cloud');
+      btnSyncCloudDb.disabled = false;
+      btnSyncCloudDb.textContent = '🔄 Sync (HookahTools + Cloud)';
       if (res && res.success) {
-        state.catalog = res.catalog;
+        if (res.catalog) state.catalog = res.catalog;
         updateDatalists();
         renderCatalogList();
-        const tobaccoMsg = res.tobaccoCount ? `${res.tobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
+        const tobaccoMsg = res.hookahTobaccoCount ? `${res.hookahTobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
         showToast(`Katalog synchronisiert (${tobaccoMsg} & Hardware)!`, 'success');
       } else {
         showToast('Konnte Katalog nicht abgleichen', 'error');
@@ -2940,14 +2899,14 @@ function renderCatalogList() {
   catalogListItems.innerHTML = items.map((item, idx) => {
     const itemName = typeof item === 'string' ? item : item.name;
     const isElectricItem = typeof item === 'object' && item.isElectric;
-    const isGistTobacco = catKey === 'tobacco' && (typeof item === 'object' ? (item.source === 'gist' || item.isCustom) : true);
+    const isCustomTobacco = catKey === 'tobacco' && (typeof item === 'object' ? (item.source === 'custom' || item.isCustom) : true);
     const isHookahToolsTobacco = catKey === 'tobacco' && (typeof item === 'object' && item.source === 'hookahtools');
 
     let displayHtml = `<span>${escapeHtml(itemName)}${isElectricItem ? ' <span class="char-badge" style="color:var(--accent-cyan); margin-left:6px;">⚡ Elektro</span>' : ''}</span>`;
     
     if (catKey === 'tobacco') {
-      if (isGistTobacco) {
-        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-gist" title="Eigene Custom-Sorte (bearbeitbar & löschbar)">🟢 Custom</span></span>`;
+      if (isCustomTobacco) {
+        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-custom" title="Eigene Custom-Sorte (bearbeitbar & löschbar)">🟢 Custom</span></span>`;
       } else if (isHookahToolsTobacco) {
         displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-ht" title="Automatisch von HookahTools.de synchronisiert">🌐 HookahTools</span></span>`;
       }
@@ -2975,7 +2934,7 @@ function renderCatalogList() {
       `;
     }
 
-    const itemClass = (catKey === 'tobacco' && isGistTobacco) ? 'catalog-item item-source-gist catalog-item-fade' : 'catalog-item catalog-item-fade';
+    const itemClass = (catKey === 'tobacco' && isCustomTobacco) ? 'catalog-item item-source-custom catalog-item-fade' : 'catalog-item catalog-item-fade';
 
     return `
       <div class="${itemClass}" id="catalog-item-${idx}">

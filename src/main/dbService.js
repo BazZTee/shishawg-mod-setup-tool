@@ -4,8 +4,6 @@ const https = require('https');
 const { app } = require('electron');
 const { decryptAddress, isEncrypted } = require('./crypto');
 
-const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
-
 const HOOKAHTOOLS_SUPABASE_HOST = 'qgusfuyfuwsdshsdruen.supabase.co';
 const HOOKAHTOOLS_SUPABASE_KEY = 'sb_publishable_XtRceZwP5FsZu2-GNuWkeQ_5AD_AU9y';
 
@@ -285,7 +283,7 @@ class DatabaseService {
     const hookahTobacco = hookahData.flavors || [];
 
     // Build unified tobacco list
-    // 1. Custom / Gist tobacco entries first (marked as source: 'gist', isCustom: true)
+    // 1. Custom tobacco entries first (marked as source: 'custom', isCustom: true)
     const combinedTobacco = [];
     const seenNames = new Set();
 
@@ -294,7 +292,7 @@ class DatabaseService {
       if (!name) continue;
       combinedTobacco.push({
         name,
-        source: 'gist',
+        source: 'custom',
         isCustom: true
       });
       seenNames.add(name.toLowerCase());
@@ -329,9 +327,6 @@ class DatabaseService {
       currentData.customTobacco = customTobacco;
       currentData.tobacco = customTobacco;
       fs.writeFileSync(this.dbPath, JSON.stringify(currentData, null, 2), 'utf-8');
-
-      // Push updated customTobacco to Gist
-      this.pushToGist(currentData).catch(() => {});
       return true;
     } catch(e) {
       return false;
@@ -358,7 +353,6 @@ class DatabaseService {
       };
 
       fs.writeFileSync(this.dbPath, JSON.stringify(toSave, null, 2), 'utf-8');
-      this.pushToGist(toSave).catch(() => {});
       return true;
     } catch (err) {
       console.error('Error saving catalog:', err);
@@ -765,291 +759,15 @@ class DatabaseService {
     return localCache.flavors && localCache.flavors.length > 0 ? localCache.flavors : null;
   }
 
-  async syncWithGitHubCommunityCatalog() {
-    // 1. Fetch Tobacco from HookahTools Supabase
-    const hookahTobacco = await this.fetchHookahToolsTobacco();
-
-    // 2. Fetch Hardware & Custom Tobacco from GitHub Gist
-    return new Promise((resolve) => {
-      const options = {
-        hostname: 'api.github.com',
-        path: `/gists/${GIST_ID}`,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${DatabaseService._gistToken || ''}`
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-          try {
-            let localData = {};
-            if (fs.existsSync(this.dbPath)) {
-              localData = JSON.parse(fs.readFileSync(this.dbPath, 'utf-8') || '{}');
-            }
-
-            if (res.statusCode === 200) {
-              const parsed = JSON.parse(body);
-              const gistFile = parsed.files && (parsed.files['shishawg_catalog.json'] || parsed.files[Object.keys(parsed.files)[0]]);
-              if (gistFile && gistFile.content) {
-                const remoteCatalog = JSON.parse(gistFile.content);
-                const categories = ['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'tastings', 'promos'];
-                for (const cat of categories) {
-                  if (remoteCatalog[cat] && Array.isArray(remoteCatalog[cat])) {
-                    const cleanedList = remoteCatalog[cat]
-                      .map(item => {
-                        if (typeof item === 'object' && item !== null) return item;
-                        const str = (typeof item === 'string' ? item : (item.name || item)).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-                        return str;
-                      })
-                      .filter(Boolean);
-                    cleanedList.sort((a, b) => {
-                      const nameA = typeof a === 'string' ? a : a.name;
-                      const nameB = typeof b === 'string' ? b : b.name;
-                      return nameA.localeCompare(nameB, 'de');
-                    });
-                    localData[cat] = cleanedList;
-                  }
-                }
-
-                // Sync custom tobacco from Gist
-                if (Array.isArray(remoteCatalog.tobacco)) {
-                  const cleanedGistTobacco = remoteCatalog.tobacco
-                    .map(item => (typeof item === 'string' ? item : (item.name || '')).trim())
-                    .filter(Boolean);
-                  cleanedGistTobacco.sort((a, b) => a.localeCompare(b, 'de'));
-                  localData.customTobacco = cleanedGistTobacco;
-                  localData.tobacco = cleanedGistTobacco;
-                }
-              }
-            }
-
-            fs.writeFileSync(this.dbPath, JSON.stringify(localData, null, 2), 'utf-8');
-
-            const fullCatalog = this.getCatalog();
-            resolve({
-              success: true,
-              addedCount: 0,
-              customTobaccoCount: fullCatalog.customTobacco ? fullCatalog.customTobacco.length : 0,
-              hookahTobaccoCount: fullCatalog.hookahTobacco ? fullCatalog.hookahTobacco.length : 0,
-              tobaccoCount: fullCatalog.tobacco ? fullCatalog.tobacco.length : 0,
-              catalog: fullCatalog
-            });
-          } catch (err) {
-            resolve({ success: false, addedCount: 0, catalog: this.getCatalog() });
-          }
-        });
-      });
-
-      req.on('error', () => {
-        const fullCatalog = this.getCatalog();
-        resolve({
-          success: Array.isArray(hookahTobacco),
-          addedCount: 0,
-          customTobaccoCount: fullCatalog.customTobacco ? fullCatalog.customTobacco.length : 0,
-          hookahTobaccoCount: fullCatalog.hookahTobacco ? fullCatalog.hookahTobacco.length : 0,
-          tobaccoCount: fullCatalog.tobacco ? fullCatalog.tobacco.length : 0,
-          catalog: fullCatalog
-        });
-      });
-
-      req.end();
-    });
-  }
-
-  async pushToGist(catalog) {
-    return new Promise((resolve, reject) => {
-      const customTobaccoList = Array.isArray(catalog.customTobacco)
-        ? catalog.customTobacco
-        : (Array.isArray(catalog.tobacco) ? catalog.tobacco.filter(t => typeof t === 'string' || t.isCustom).map(t => typeof t === 'string' ? t : t.name) : []);
-
-      const gistPayload = {
-        pipes: catalog.pipes || [],
-        bowls: catalog.bowls || [],
-        vases: catalog.vases || [],
-        hmds: catalog.hmds || [],
-        charcoal: catalog.charcoal || [],
-        tastings: catalog.tastings || [],
-        promos: catalog.promos || [],
-        tobacco: customTobaccoList
-      };
-
-      const payload = JSON.stringify({
-        files: {
-          'shishawg_catalog.json': {
-            content: JSON.stringify(gistPayload, null, 2)
-          }
-        }
-      });
-
-      const options = {
-        hostname: 'api.github.com',
-        path: `/gists/${GIST_ID}`,
-        method: 'PATCH',
-        headers: {
-          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${DatabaseService._gistToken || ''}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload)
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        if (res.statusCode === 200) {
-          resolve(true);
-        } else {
-          reject(new Error(`Gist status: ${res.statusCode}`));
-        }
-      });
-
-      req.on('error', (err) => reject(err));
-      req.write(payload);
-      req.end();
-    });
-  }
-
-  async publishLiveSetupToGist(setupPayload, targetChannel = 'marved') {
-    return new Promise(async (resolve) => {
-      const chan = (targetChannel || setupPayload.channel || 'marved').toLowerCase().replace('#', '').trim();
-      let currentMap = {};
-
-      try {
-        const getOptions = {
-          hostname: 'api.github.com',
-          path: `/gists/${GIST_ID}`,
-          method: 'GET',
-          headers: {
-            'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-            'Authorization': `token ${DatabaseService._gistToken || ''}`
-          }
-        };
-
-        const existingRaw = await new Promise((res) => {
-          const r = https.request(getOptions, (resp) => {
-            let data = '';
-            resp.on('data', chunk => data += chunk);
-            resp.on('end', () => res(data));
-          });
-          r.on('error', () => res(''));
-          r.end();
-        });
-
-        if (existingRaw) {
-          const parsedGist = JSON.parse(existingRaw);
-          const f = parsedGist.files && parsedGist.files['current_setup.json'];
-          if (f && f.content) {
-            const parsedContent = JSON.parse(f.content);
-            if (parsedContent && typeof parsedContent === 'object') {
-              if (parsedContent.commandText && !parsedContent[chan]) {
-                currentMap['marved'] = parsedContent;
-              } else {
-                currentMap = parsedContent;
-              }
-            }
-          }
-        }
-      } catch(e) {}
-
-      currentMap[chan] = {
-        channel: chan,
-        updatedAt: new Date().toISOString(),
-        ...setupPayload
-      };
-
-      const payload = JSON.stringify({
-        files: {
-          'current_setup.json': {
-            content: JSON.stringify(currentMap, null, 2)
-          }
-        }
-      });
-
-      const options = {
-        hostname: 'api.github.com',
-        path: `/gists/${GIST_ID}`,
-        method: 'PATCH',
-        headers: {
-          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${DatabaseService._gistToken || ''}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload)
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        resolve(res.statusCode === 200);
-      });
-      req.on('error', () => resolve(false));
-      req.write(payload);
-      req.end();
-    });
-  }
-
-  // Fetch raw Gist JSON string (with cache busting for instant real-time sync)
-  fetchGistRaw() {
-    return new Promise((resolve) => {
-      const options = {
-        hostname: 'api.github.com',
-        path: `/gists/${GIST_ID}?_t=${Date.now()}`,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${DatabaseService._gistToken || ''}`,
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      };
-      const req = https.request(options, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            resolve(body);
-          } else {
-            resolve(null);
-          }
-        });
-      });
-      req.on('error', () => resolve(null));
-      req.end();
-    });
-  }
-
-  // Mod-Chat Messages
+  // Mod-Chat Messages (Local Offline Fallback)
   async getModChatMessages() {
     const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
-    let localMsgs = [];
     try {
       if (fs.existsSync(localFile)) {
-        localMsgs = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+        return JSON.parse(fs.readFileSync(localFile, 'utf-8'));
       }
     } catch(e) {}
-
-    // Fetch latest from Gist
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['mod_chat_messages.json'];
-        if (f && f.content) {
-          const remoteMsgs = JSON.parse(f.content);
-          if (Array.isArray(remoteMsgs)) {
-            // Merge unique messages by id
-            const map = new Map();
-            localMsgs.forEach(m => map.set(m.id, m));
-            remoteMsgs.forEach(m => map.set(m.id, m));
-            const merged = Array.from(map.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)).slice(-100);
-            fs.writeFileSync(localFile, JSON.stringify(merged, null, 2), 'utf-8');
-            return merged;
-          }
-        }
-      }
-    } catch(e) {}
-
-    return localMsgs;
+    return [];
   }
 
   async sendModChatMessage(msgObj) {
@@ -1062,14 +780,11 @@ class DatabaseService {
     } catch(e) {}
 
     msgs.push(msgObj);
-    msgs = msgs.slice(-100); // keep last 100 messages
+    msgs = msgs.slice(-100);
 
     try {
       fs.writeFileSync(localFile, JSON.stringify(msgs, null, 2), 'utf-8');
     } catch(e) {}
-
-    // Push to Gist asynchronously
-    this.pushFileToGist('mod_chat_messages.json', JSON.stringify(msgs, null, 2)).catch(() => {});
     return msgs;
   }
 
@@ -1078,36 +793,18 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify([], null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('mod_chat_messages.json', JSON.stringify([], null, 2)).catch(() => {});
     return [];
   }
 
-  // Watchlist
+  // Watchlist (Local Offline Fallback)
   async getWatchlist() {
     const localFile = path.join(app.getPath('userData'), 'mod_watchlist.json');
-    let localList = [];
     try {
       if (fs.existsSync(localFile)) {
-        localList = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+        return JSON.parse(fs.readFileSync(localFile, 'utf-8'));
       }
     } catch(e) {}
-
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['mod_watchlist.json'];
-        if (f && f.content) {
-          const remoteList = JSON.parse(f.content);
-          if (Array.isArray(remoteList)) {
-            fs.writeFileSync(localFile, JSON.stringify(remoteList, null, 2), 'utf-8');
-            return remoteList;
-          }
-        }
-      }
-    } catch(e) {}
-
-    return localList;
+    return [];
   }
 
   async saveWatchlist(list) {
@@ -1115,7 +812,6 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('mod_watchlist.json', JSON.stringify(list, null, 2)).catch(() => {});
     return list;
   }
 
@@ -1138,7 +834,7 @@ class DatabaseService {
     return markers;
   }
 
-  // Giveaway Winners & DSGVO Address Database
+  // Giveaway Winners & DSGVO Address Database (Local Offline Fallback)
   async getGiveawayWinners() {
     const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
     const decryptList = (arr) => {
@@ -1155,21 +851,6 @@ class DatabaseService {
     try {
       if (fs.existsSync(localFile)) {
         localList = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['giveaway_winners.json'];
-        if (f && f.content) {
-          const remoteList = JSON.parse(f.content);
-          if (Array.isArray(remoteList)) {
-            fs.writeFileSync(localFile, JSON.stringify(remoteList, null, 2), 'utf-8');
-            return decryptList(remoteList);
-          }
-        }
       }
     } catch(e) {}
 
@@ -1195,7 +876,6 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('giveaway_winners.json', JSON.stringify(list, null, 2)).catch(() => {});
     return list;
   }
 
@@ -1214,7 +894,6 @@ class DatabaseService {
       try {
         fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
       } catch(e) {}
-      this.pushFileToGist('giveaway_winners.json', JSON.stringify(list, null, 2)).catch(() => {});
     }
     return list;
   }
@@ -1232,7 +911,6 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('giveaway_winners.json', JSON.stringify(list, null, 2)).catch(() => {});
     return list;
   }
 
@@ -1283,28 +961,13 @@ class DatabaseService {
     });
   }
 
-  // Telegram & Giveaway Portal Config (Synced across all mods via Gist)
+  // Telegram & Giveaway Portal Config (Local Offline Fallback)
   async getTelegramConfig() {
     const localFile = path.join(app.getPath('userData'), 'telegram_config.json');
     let cfg = { botToken: '', chatId: '', claimUrl: '' };
     try {
       if (fs.existsSync(localFile)) {
         cfg = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['telegram_config.json'];
-        if (f && f.content) {
-          const remoteCfg = JSON.parse(f.content);
-          if (remoteCfg) {
-            cfg = { ...cfg, ...remoteCfg };
-            fs.writeFileSync(localFile, JSON.stringify(cfg, null, 2), 'utf-8');
-          }
-        }
       }
     } catch(e) {}
 
@@ -1320,11 +983,10 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(cfg, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('telegram_config.json', JSON.stringify(cfg, null, 2)).catch(() => {});
     return cfg;
   }
 
-  // --- Q&A Questions & Moderation (Synced via Gist) ---
+  // --- Q&A Questions & Moderation (Local Offline Fallback) ---
   async getQnAQuestions() {
     const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
     let questions = [];
@@ -1334,37 +996,7 @@ class DatabaseService {
       }
     } catch(e) {}
 
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['qna_questions.json'];
-        if (f && f.content) {
-          const remoteQuestions = JSON.parse(f.content);
-          if (Array.isArray(remoteQuestions)) {
-            // Merge local and remote questions by ID using updatedAt
-            const qMap = new Map();
-            for (const q of questions) {
-              if (q && q.id) qMap.set(q.id, q);
-            }
-            for (const rq of remoteQuestions) {
-              if (rq && rq.id) {
-                const existing = qMap.get(rq.id);
-                const rqTime = rq.updatedAt || rq.timestamp || 0;
-                const exTime = existing ? (existing.updatedAt || existing.timestamp || 0) : 0;
-                if (!existing || rqTime >= exTime) {
-                  qMap.set(rq.id, rq);
-                }
-              }
-            }
-            questions = Array.from(qMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
-          }
-        }
-      }
-    } catch(e) {}
-
-    return questions;
+    return Array.isArray(questions) ? questions : [];
   }
 
   async saveQnAQuestions(questions) {
@@ -1377,7 +1009,6 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(updatedQuestions, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('qna_questions.json', JSON.stringify(updatedQuestions, null, 2)).catch(() => {});
     return updatedQuestions;
   }
 
@@ -1387,7 +1018,6 @@ class DatabaseService {
       let questions = await this.getQnAQuestions();
       questions = questions.filter(q => q.id !== questionId);
       fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
-      this.pushFileToGist('qna_questions.json', JSON.stringify(questions, null, 2)).catch(() => {});
       return true;
     } catch(e) {
       return false;
@@ -1398,7 +1028,6 @@ class DatabaseService {
     const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
     try {
       fs.writeFileSync(localFile, JSON.stringify([], null, 2), 'utf-8');
-      this.pushFileToGist('qna_questions.json', JSON.stringify([], null, 2)).catch(() => {});
       return true;
     } catch(e) {
       return false;
@@ -1411,7 +1040,6 @@ class DatabaseService {
       let questions = await this.getQnAQuestions();
       questions = questions.filter(q => q.status !== 'answered');
       fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
-      this.pushFileToGist('qna_questions.json', JSON.stringify(questions, null, 2)).catch(() => {});
       return true;
     } catch(e) {
       return false;
@@ -1432,29 +1060,6 @@ class DatabaseService {
       }
     } catch(e) {}
 
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['qna_active.json'];
-        if (f && f.content) {
-          const remoteRaw = JSON.parse(f.content);
-          let remoteData = { active: null, updatedAt: 0 };
-          if (remoteRaw && typeof remoteRaw === 'object' && 'active' in remoteRaw) {
-            remoteData = remoteRaw;
-          } else {
-            remoteData = { active: remoteRaw || null, updatedAt: (remoteRaw && (remoteRaw.updatedAt || remoteRaw.timestamp)) || 0 };
-          }
-
-          // Only overwrite local if remote has a strictly newer timestamp
-          if ((remoteData.updatedAt || 0) > (localData.updatedAt || 0)) {
-            localData = remoteData;
-            fs.writeFileSync(localFile, JSON.stringify(localData, null, 2), 'utf-8');
-          }
-        }
-      }
-    } catch(e) {}
-
     return localData.active;
   }
 
@@ -1467,11 +1072,10 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(data, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('qna_active.json', JSON.stringify(data, null, 2)).catch(() => {});
     return activeObj;
   }
 
-  // --- Poll Templates (Presets + Custom synced via Gist) ---
+  // --- Poll Templates (Presets + Custom local fallback) ---
   getDefaultPollTemplates() {
     return [
       {
@@ -1517,21 +1121,6 @@ class DatabaseService {
       }
     } catch(e) {}
 
-    try {
-      const gistData = await this.fetchGistRaw();
-      if (gistData) {
-        const parsed = JSON.parse(gistData);
-        const f = parsed.files && parsed.files['poll_templates.json'];
-        if (f && f.content) {
-          const remoteTemplates = JSON.parse(f.content);
-          if (Array.isArray(remoteTemplates) && remoteTemplates.length > 0) {
-            templates = remoteTemplates;
-            fs.writeFileSync(localFile, JSON.stringify(templates, null, 2), 'utf-8');
-          }
-        }
-      }
-    } catch(e) {}
-
     return templates;
   }
 
@@ -1540,40 +1129,7 @@ class DatabaseService {
     try {
       fs.writeFileSync(localFile, JSON.stringify(templates, null, 2), 'utf-8');
     } catch(e) {}
-    this.pushFileToGist('poll_templates.json', JSON.stringify(templates, null, 2)).catch(() => {});
     return templates;
-  }
-
-  // Queue for Gist pushes to prevent race conditions & 409 conflicts
-  pushFileToGist(filename, content) {
-    if (!this._gistQueue) {
-      this._gistQueue = Promise.resolve();
-    }
-    this._gistQueue = this._gistQueue.then(() => {
-      return new Promise((resolve) => {
-        const payload = JSON.stringify({
-          files: {
-            [filename]: { content }
-          }
-        });
-        const options = {
-          hostname: 'api.github.com',
-          path: `/gists/${GIST_ID}`,
-          method: 'PATCH',
-          headers: {
-            'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-            'Authorization': `token ${DatabaseService._gistToken || ''}`,
-            'Content-Type': 'application/json',
-            'Content-Length': Buffer.byteLength(payload)
-          }
-        };
-        const req = https.request(options, (res) => resolve(res.statusCode === 200));
-        req.on('error', () => resolve(false));
-        req.write(payload);
-        req.end();
-      });
-    }).catch(() => {});
-    return this._gistQueue;
   }
 
   // --- Shisha Sessions Local Persistence ---
@@ -1613,10 +1169,5 @@ class DatabaseService {
     return timerState;
   }
 }
-
-DatabaseService._gistToken = '';
-DatabaseService.setGistToken = function(token) {
-  DatabaseService._gistToken = token;
-};
 
 module.exports = DatabaseService;

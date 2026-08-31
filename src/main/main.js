@@ -66,9 +66,6 @@ function createWindow() {
   store = new SimpleStore();
   dbService = new DatabaseService();
 
-  const savedGistToken = store.get('gist_pat', '');
-  if (savedGistToken) DatabaseService.setGistToken(savedGistToken);
-
   const iconPath = path.join(__dirname, '../../build/icon.ico');
   const iconExists = fs.existsSync(iconPath);
 
@@ -361,7 +358,7 @@ ipcMain.handle('profiles:get-all', async () => {
     let profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
     const activeId = store.get('active_profile_id', profiles[0]?.id || 'prof_shishawg');
 
-    // Auto-fetch Telegram config from Supabase / Gist / Store if empty
+    // Auto-fetch Telegram config from Supabase / Store if empty
     for (const prof of profiles) {
       if (!prof.telegram || !prof.telegram.botToken || !prof.telegram.chatId) {
         try {
@@ -1124,21 +1121,20 @@ ipcMain.handle('db:auto-learn', async (event, setupData) => {
   return { success: true, ...res };
 });
 
-ipcMain.handle('db:sync-github', async () => {
-  const res = await dbService.syncWithGitHubCommunityCatalog();
-  return res;
-});
-
-ipcMain.handle('settings:save-gist-token', async (event, token) => {
-  const clean = (token || '').trim();
-  store.set('gist_pat', clean);
-  DatabaseService.setGistToken(clean);
-  return { success: true };
-});
-
-ipcMain.handle('settings:get-gist-token', async () => {
-  const token = store.get('gist_pat', '');
-  return { hasToken: !!token, maskedToken: token ? token.slice(0, 8) + '...' : '' };
+ipcMain.handle('db:sync-cloud', async () => {
+  try {
+    let hookahTobacco = [];
+    if (dbService) {
+      hookahTobacco = await dbService.fetchHookahToolsTobacco();
+    }
+    let remoteCatalog = null;
+    if (supabaseService) {
+      remoteCatalog = await supabaseService.getCatalog();
+    }
+    return { success: true, hookahTobaccoCount: hookahTobacco?.length || 0, catalog: remoteCatalog };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
 });
 
 // IPC Handlers for Auto-Updater
@@ -1377,15 +1373,10 @@ ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
     fs.writeFileSync(textFilePath, setupPayload.commandText || '', 'utf-8');
   } catch(e) {}
 
-  // Publish to GitHub Gist for cloud access (channel-separated)
-  const channel = setupPayload.channel || (twitchService ? twitchService.targetChannel : 'marved');
-  dbService.publishLiveSetupToGist(setupPayload, channel).catch(() => {});
-
   return {
     success: true,
     localUrl: 'http://localhost:18942/overlay',
-    textFilePath,
-    gistUrl: 'https://gist.githubusercontent.com/raw/111d0abf0b0e66e2ca635c3aa8d05eb7/current_setup.json'
+    textFilePath
   };
 });
 
@@ -1393,8 +1384,7 @@ ipcMain.handle('obs:get-info', async () => {
   const textFilePath = path.join(app.getPath('userData'), 'current_setup.txt');
   return {
     localUrl: 'http://localhost:18942/overlay',
-    textFilePath,
-    gistUrl: 'https://gist.github.com/111d0abf0b0e66e2ca635c3aa8d05eb7'
+    textFilePath
   };
 });
 

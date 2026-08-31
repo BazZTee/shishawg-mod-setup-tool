@@ -2264,8 +2264,8 @@
         <div class="modal-header">
           <h3>Datenbank & Autovervollständigung</h3>
           <div style="display:flex; gap:10px; align-items:center;">
-            <button id="btn-sync-github-db" class="btn btn-secondary btn-sm" title="Synchronisiert Tabak mit HookahTools.de und Hardware mit der Community-Datenbank">
-              🔄 Sync (HookahTools + GitHub)
+            <button id="btn-sync-cloud-db" class="btn btn-secondary btn-sm" title="Synchronisiert Tabak mit HookahTools.de und Cloud-Katalog">
+              🔄 Sync (HookahTools + Cloud)
             </button>
             <button id="btn-close-db-modal" class="btn-icon">✕</button>
           </div>
@@ -2397,26 +2397,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-
-              <!-- GitHub PAT (Gist-Sync) -->
-              <div class="form-group" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
-                <label class="form-label">🔑 GitHub PAT (Gist-Sync):</label>
-                <div class="input-action-row">
-                  <input type="password" id="input-gist-pat" 
-                         placeholder="ghp_..." 
-                         style="flex:1; font-family: monospace;"
-                         autocomplete="off">
-                  <button id="btn-save-gist-pat" class="btn btn-secondary btn-sm">
-                    💾 Speichern
-                  </button>
-                </div>
-                <span id="gist-pat-status" style="font-size:0.75rem; margin-top:4px; display:block; color: var(--text-secondary);">
-                  Prüfe Token...
-                </span>
-                <p style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">
-                  GitHub Personal Access Token mit Gist-Berechtigung. Wird lokal gespeichert, nie im Code.
-                </p>
               </div>
 
               <!-- Footer Actions -->

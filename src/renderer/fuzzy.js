@@ -166,10 +166,10 @@ function fuzzyFilterList(query, list, minScore = 0.45) {
 
     let score = 0;
 
-    // Check metadata tags (custom / gist / hookahtools)
+    // Check metadata tags (custom / hookahtools)
     if (typeof entry === 'object') {
       const src = (entry.source || '').toLowerCase();
-      if ((q === 'custom' || q === 'gist' || q === 'eigen' || q === 'eigene' || q === 'community') && (src === 'gist' || entry.isCustom)) {
+      if ((q === 'custom' || q === 'eigen' || q === 'eigene' || q === 'community') && (src === 'custom' || entry.isCustom)) {
         score = 1.0;
       } else if ((q === 'hookahtools' || q === 'hookah' || q === 'ht' || q === 'superbase' || q === 'supabase') && src === 'hookahtools') {
         score = 1.0;

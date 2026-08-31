@@ -326,8 +326,6 @@
     const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QrSzf1SeHsgwIfbhbwQeGw_H7CkoJsV';
     const CLIENT_ID = '440sjk1dkut7ltxkf7b3p267dekbpu';
-    const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
-    const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
 
     // Parse URL params or OAuth state
     let params = new URLSearchParams(window.location.search);
@@ -451,55 +449,7 @@
         submittedAt: Date.now()
       };
 
-      try {
-        const gResp = await fetch(`https://api.github.com/gists/${GIST_ID}?_t=${Date.now()}`, {
-          headers: {
-            'Authorization': `Bearer ${GIST_TOKEN}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        });
-        let winners = [];
-        if (gResp.ok) {
-          const gData = await gResp.json();
-          if (gData.files && gData.files['giveaway_winners.json']) {
-            winners = JSON.parse(gData.files['giveaway_winners.json'].content || '[]');
-          }
-        }
-
-        const idx = winners.findIndex(w => w.id === winId || (targetUser && (w.username || '').toLowerCase() === targetUser));
-        if (idx >= 0) {
-          winners[idx].address = addressData;
-          winners[idx].status = 'address_received';
-        } else {
-          winners.unshift({
-            id: winId,
-            username: targetUser || (verifiedUser ? verifiedUser.login : 'gewinner'),
-            displayName: (verifiedUser ? verifiedUser.display_name : targetUser) || 'Gewinner',
-            prize: prize,
-            timestamp: Date.now(),
-            status: 'address_received',
-            address: addressData
-          });
-        }
-
-        const patchResp = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
-          method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${GIST_TOKEN}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            files: {
-              'giveaway_winners.json': { content: JSON.stringify(winners, null, 2) }
-            }
-          })
-        });
-      } catch(gistErr) {
-        console.warn('Gist save error:', gistErr);
-      }
-
-      // 2. Also submit directly to Supabase Database
+      // Submit directly to Supabase Database
       try {
         if (window.supabase) {
           const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);

@@ -2358,7 +2358,7 @@ input[type="checkbox"]:checked ~ .toggle-slider::before {
 }
 
 /* Source Badges in Database Management Modal */
-.badge-source-gist {
+.badge-source-custom {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2373,7 +2373,7 @@ input[type="checkbox"]:checked ~ .toggle-slider::before {
   letter-spacing: 0.3px;
 }
 
-.catalog-item.item-source-gist {
+.catalog-item.item-source-custom {
   border-left: 3px solid #10b981;
   background: rgba(16, 185, 129, 0.05);
 }

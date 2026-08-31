@@ -494,7 +494,7 @@ class SupabaseService {
         channel: r.channel || cleanChan,
         senderName: r.sender || 'Mod',
         senderColor: r.color || '#00f0ff',
-        senderAvatar: 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png',
+        senderAvatar: '',
         text: r.message || '',
         timestamp: new Date(r.created_at).getTime()
       }));

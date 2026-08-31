@@ -4083,11 +4083,22 @@ let watchlistItems = [];
 let lastRenderedMessagesCount = 0;
 let lastMessagesSignature = '';
 
+const modAvatarCache = new Map();
+
+function getInitialsAvatarSvg(name, color = '#7c3aed') {
+  const clean = (name || 'Mod').replace(/^@/, '').trim();
+  const letter = clean.charAt(0).toUpperCase() || 'M';
+  const bg = color || '#7c3aed';
+  return `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="${encodeURIComponent(bg)}"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="28" font-weight="800" fill="%23ffffff">${encodeURIComponent(letter)}</text></svg>`;
+}
+
 function getActiveModInfo() {
   const customColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#00f0ff');
   const customModName = localStorage.getItem('swg_custom_mod_name');
   const senderName = customModName || (state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod');
-  const senderAvatar = state.twitchUser && state.twitchUser.profile_image_url ? state.twitchUser.profile_image_url : 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+  const senderAvatar = (state.twitchUser && state.twitchUser.profile_image_url)
+    ? state.twitchUser.profile_image_url
+    : getInitialsAvatarSvg(senderName, customColor);
 
   return { name: senderName, avatar: senderAvatar, color: customColor };
 }
@@ -4217,7 +4228,12 @@ function updateModHQUserInfo() {
   }
   const chatLoggedAvatar = document.getElementById('chat-logged-avatar');
   if (chatLoggedAvatar) {
-    chatLoggedAvatar.src = modInfo.avatar;
+    const fallbackSvg = getInitialsAvatarSvg(modInfo.name, modInfo.color);
+    chatLoggedAvatar.onerror = function() {
+      this.onerror = null;
+      this.src = fallbackSvg;
+    };
+    chatLoggedAvatar.src = modInfo.avatar || fallbackSvg;
     chatLoggedAvatar.classList.remove('hidden');
   }
 }
@@ -4254,7 +4270,7 @@ function renderModChatMessages(messages) {
   }
 
   // Create signature to compare
-  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}`).join('|');
+  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}-${m.text}`).join('|');
   if (sig === lastMessagesSignature) {
     // Absolutely no changes, do NOT re-render DOM to prevent any flickering!
     return;
@@ -4274,11 +4290,33 @@ function renderModChatMessages(messages) {
     const isOwn = currentUserName && msg.senderName && msg.senderName.toLowerCase() === currentUserName;
     const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const senderColor = msg.senderColor || '#00f0ff';
-    const avatarSrc = msg.senderAvatar || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+    const cleanSender = (msg.senderName || 'Mod').toLowerCase().trim();
+    const fallbackSvg = getInitialsAvatarSvg(msg.senderName, senderColor);
+
+    let avatarSrc = msg.senderAvatar;
+    if (!avatarSrc || avatarSrc.includes('user-default-pictures')) {
+      if (isOwn && currentMod.avatar && !currentMod.avatar.startsWith('data:image/svg')) {
+        avatarSrc = currentMod.avatar;
+      } else if (modAvatarCache.has(cleanSender)) {
+        avatarSrc = modAvatarCache.get(cleanSender);
+      } else {
+        avatarSrc = fallbackSvg;
+        if (cleanSender && cleanSender !== 'mod') {
+          ipcRenderer.invoke('twitch:get-user-info', cleanSender).then(res => {
+            const url = res?.user?.profile_image_url || res?.profile_image_url;
+            if (url) {
+              modAvatarCache.set(cleanSender, url);
+              const els = modChatMessages.querySelectorAll(`img.chat-msg-avatar[data-sender="${cleanSender}"]`);
+              els.forEach(el => { el.src = url; });
+            }
+          }).catch(() => {});
+        }
+      }
+    }
 
     html += `
       <div class="mod-chat-msg-row ${isOwn ? 'outgoing' : 'incoming'}">
-        <img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(msg.senderName)}" class="chat-msg-avatar" onerror="this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png'">
+        <img src="${escapeHtml(avatarSrc)}" data-sender="${escapeHtml(cleanSender)}" alt="${escapeHtml(msg.senderName)}" class="chat-msg-avatar" onerror="this.onerror=null; this.src='${escapeHtml(fallbackSvg)}';">
         <div class="chat-bubble">
           <div class="chat-bubble-header">
             <span class="chat-sender-name" style="color: ${escapeHtml(senderColor)}">${escapeHtml(msg.senderName || 'Mod')}</span>

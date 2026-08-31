@@ -329,19 +329,12 @@
 
     async function syncQnA() {
       try {
-        const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`);
-        if (!res.ok) {
-          console.warn('Gist fetch response not OK:', res.status);
-          return;
-        }
-        const data = await res.json();
-
-        // 1. Check active question
-        const activeFile = data.files && data.files['qna_active.json'];
+        // Fetch directly from raw Gist CDN (unlimited requests, zero rate limits)
+        const activeRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_active.json?t=${Date.now()}`);
         let activeQ = null;
-        if (activeFile && activeFile.content) {
+        if (activeRes.ok) {
           try {
-            const rawActive = JSON.parse(activeFile.content);
+            const rawActive = await activeRes.json();
             if (rawActive && typeof rawActive === 'object' && 'active' in rawActive) {
               activeQ = rawActive.active;
             } else {
@@ -350,12 +343,14 @@
           } catch(e) {}
         }
 
-        // 2. Check all questions (for upcoming in screen mode)
-        const questionsFile = data.files && data.files['qna_questions.json'];
+        // In screen mode, also fetch upcoming questions
         let allQuestions = [];
-        if (questionsFile && questionsFile.content) {
+        if (mode === 'screen') {
           try {
-            allQuestions = JSON.parse(questionsFile.content);
+            const qRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_questions.json?t=${Date.now()}`);
+            if (qRes.ok) {
+              allQuestions = await qRes.json();
+            }
           } catch(e) {}
         }
 
@@ -402,6 +397,8 @@
         if (userModEl) userModEl.style.display = activeQ.isMod ? 'inline-block' : 'none';
 
         if (textEl) {
+          const isLong = (activeQ.question || '').length > 100;
+          textEl.style.fontSize = isLong ? '16px' : '20px';
           textEl.textContent = `„${activeQ.question}“`;
         }
 
@@ -432,13 +429,18 @@
           spotContainer.innerHTML = '<div class="prompter-empty">Aktuell ist keine Frage live geschaltet. Moderatoren schalten Fragen frei...</div>';
         } else {
           const userColor = activeQ.userColor || '#00f0ff';
+          const qText = activeQ.question || '';
+          const isLong = qText.length > 100;
+          const isVeryLong = qText.length > 200;
+          const fontSize = isVeryLong ? '22px' : (isLong ? '26px' : '32px');
+
           spotContainer.innerHTML = `
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-              <span style="font-size:20px; font-weight:800; color:${userColor};">@${activeQ.displayName || activeQ.login}</span>
+              <span style="font-size:20px; font-weight:800; color:${userColor};">@${escapeHtml(activeQ.displayName || activeQ.login)}</span>
               ${activeQ.isSub ? '<span class="qna-badge-sub">SUB</span>' : ''}
               ${activeQ.isMod ? '<span class="qna-badge-mod">MOD</span>' : ''}
             </div>
-            <div class="prompter-big-question">„${escapeHtml(activeQ.question)}“</div>
+            <div class="prompter-big-question" style="font-size:${fontSize}; word-break:break-word; overflow-wrap:break-word; line-height:1.4;">„${escapeHtml(qText)}“</div>
           `;
         }
       }
@@ -449,12 +451,12 @@
           upcomingContainer.innerHTML = '<div class="prompter-empty" style="padding:15px; font-size:14px;">Keine weiteren Fragen in der Warteschlange.</div>';
         } else {
           upcomingContainer.innerHTML = '';
-          approved.slice(0, 5).forEach(q => {
+          approved.slice(0, 6).forEach(q => {
             const item = document.createElement('div');
             item.className = 'prompter-upcoming-item';
             item.innerHTML = `
               <span class="user">@${escapeHtml(q.displayName || q.login)}</span>
-              <span class="text">„${escapeHtml(q.question)}“</span>
+              <span class="text" style="word-break:break-word; overflow-wrap:break-word;">„${escapeHtml(q.question)}“</span>
             `;
             upcomingContainer.appendChild(item);
           });

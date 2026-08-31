@@ -130,27 +130,23 @@
 
     async function syncSetup() {
       try {
-        const res = await fetch(`https://api.github.com/gists/${GIST_ID}?t=${Date.now()}`);
+        const res = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/current_setup.json?t=${Date.now()}`);
         if (!res.ok) return;
-        const data = await res.json();
-        const file = data.files && data.files['current_setup.json'];
-        if (file && file.content) {
-          const parsed = JSON.parse(file.content);
-          // Look for channel-specific entry first, fallback to legacy root or marved
-          let channelSetup = null;
-          if (parsed && typeof parsed === 'object') {
-            if (parsed[targetChannel]) {
-              channelSetup = parsed[targetChannel];
-            } else if (targetChannel === 'marved' && parsed.commandText) {
-              channelSetup = parsed;
-            } else if (parsed.commandText && !parsed['marved']) {
-              channelSetup = parsed;
-            }
+        const parsed = await res.json();
+        
+        let channelSetup = null;
+        if (parsed && typeof parsed === 'object') {
+          if (parsed[targetChannel]) {
+            channelSetup = parsed[targetChannel];
+          } else if (targetChannel === 'marved' && parsed.commandText) {
+            channelSetup = parsed;
+          } else if (parsed.commandText && !parsed['marved']) {
+            channelSetup = parsed;
           }
+        }
 
-          if (channelSetup) {
-            handleNewData(channelSetup);
-          }
+        if (channelSetup) {
+          handleNewData(channelSetup);
         }
       } catch (err) {
         console.error('Cloud Sync Error:', err);

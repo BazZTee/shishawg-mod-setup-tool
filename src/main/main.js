@@ -6,6 +6,7 @@ const http = require('http');
 const https = require('https');
 const TwitchService = require('./twitchService');
 const DatabaseService = require('./dbService');
+const supabaseService = require('./supabaseService');
 
 // State for Live OBS Overlay
 let latestLiveSetup = {
@@ -82,6 +83,9 @@ function createWindow() {
     },
     autoHideMenuBar: true
   });
+
+  supabaseService.setMainWindow(mainWindow);
+  supabaseService.initRealtimeListeners();
 
   twitchService = new TwitchService(mainWindow, store);
 
@@ -547,9 +551,13 @@ ipcMain.handle('qna:stop-listener', async () => {
   return twitchService.stopQnAListener();
 });
 
-ipcMain.handle('qna:get-questions', async () => {
+ipcMain.handle('qna:get-questions', async (event, channel) => {
   try {
-    const questions = await dbService.getQnAQuestions();
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    let questions = await supabaseService.getQnAQuestions(chan);
+    if (!questions || questions.length === 0) {
+      questions = await dbService.getQnAQuestions();
+    }
     return { success: true, questions };
   } catch(e) {
     return { success: false, error: e.message, questions: [] };
@@ -558,6 +566,7 @@ ipcMain.handle('qna:get-questions', async () => {
 
 ipcMain.handle('qna:save-questions', async (event, questions) => {
   try {
+    supabaseService.saveAllQnAQuestions(questions).catch(() => {});
     const saved = await dbService.saveQnAQuestions(questions);
     return { success: true, questions: saved };
   } catch(e) {
@@ -565,17 +574,23 @@ ipcMain.handle('qna:save-questions', async (event, questions) => {
   }
 });
 
-ipcMain.handle('qna:get-active', async () => {
+ipcMain.handle('qna:get-active', async (event, channel) => {
   try {
-    const active = await dbService.getActiveQnAQuestion();
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    let active = await supabaseService.getActiveQnAQuestion(chan);
+    if (!active) {
+      active = await dbService.getActiveQnAQuestion();
+    }
     return { success: true, active };
   } catch(e) {
     return { success: false, error: e.message, active: null };
   }
 });
 
-ipcMain.handle('qna:set-active', async (event, activeObj) => {
+ipcMain.handle('qna:set-active', async (event, activeObj, channel) => {
   try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    await supabaseService.setActiveQnAQuestion(chan, activeObj);
     const active = await dbService.setActiveQnAQuestion(activeObj);
     return { success: true, active };
   } catch(e) {

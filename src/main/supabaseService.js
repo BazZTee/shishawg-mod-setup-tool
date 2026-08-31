@@ -1,0 +1,290 @@
+﻿const { createClient } = require('@supabase/supabase-js');
+
+const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
+
+class SupabaseService {
+  constructor() {
+    this.client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false },
+      realtime: { params: { eventsPerSecond: 20 } }
+    });
+    this.mainWindow = null;
+    this.channelSubscriptions = [];
+  }
+
+  setMainWindow(win) {
+    this.mainWindow = win;
+  }
+
+  // --- Realtime WebSocket Subscriptions for Electron ---
+  initRealtimeListeners() {
+    try {
+      const qnaChannel = this.client
+        .channel('db-qna-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_questions' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:qna-changed', payload);
+          }
+        })
+        .subscribe();
+
+      const setupChannel = this.client
+        .channel('db-setup-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'stream_setups' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:setup-changed', payload);
+          }
+        })
+        .subscribe();
+
+      const chatChannel = this.client
+        .channel('db-chat-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'mod_chat' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:chat-changed', payload);
+          }
+        })
+        .subscribe();
+
+      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel);
+      console.log('✅ Supabase Realtime WebSockets initialized in Electron.');
+    } catch(e) {
+      console.error('Failed to init Supabase realtime in Electron:', e);
+    }
+  }
+
+  // --- Q&A Questions CRUD ---
+  async getQnAQuestions(channel = 'marved') {
+    try {
+      const { data, error } = await this.client
+        .from('qna_questions')
+        .select('*')
+        .eq('channel', channel.toLowerCase().replace('#', ''))
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        channel: r.channel,
+        login: r.login,
+        displayName: r.display_name,
+        userColor: r.user_color,
+        userId: r.user_id,
+        isSub: r.is_sub,
+        isMod: r.is_mod,
+        question: r.question,
+        status: r.status,
+        duplicateCount: r.duplicate_count || 1,
+        duplicateUsers: r.duplicate_users || [],
+        timestamp: new Date(r.created_at).getTime(),
+        updatedAt: new Date(r.updated_at).getTime()
+      }));
+    } catch(err) {
+      console.error('Supabase getQnAQuestions error:', err.message);
+      return [];
+    }
+  }
+
+  async upsertQnAQuestion(q) {
+    try {
+      const row = {
+        id: q.id,
+        channel: (q.channel || 'marved').toLowerCase().replace('#', ''),
+        login: q.login || '',
+        display_name: q.displayName || q.login || '',
+        user_color: q.userColor || '',
+        user_id: q.userId || '',
+        is_sub: !!q.isSub,
+        is_mod: !!q.isMod,
+        question: q.question || '',
+        status: q.status || 'pending',
+        duplicate_count: q.duplicateCount || 1,
+        duplicate_users: q.duplicateUsers || [],
+        updated_at: new Date(q.updatedAt || Date.now()).toISOString()
+      };
+      if (q.timestamp) {
+        row.created_at = new Date(q.timestamp).toISOString();
+      }
+
+      const { data, error } = await this.client
+        .from('qna_questions')
+        .upsert(row, { onConflict: 'id' })
+        .select();
+
+      if (error) throw error;
+      return data;
+    } catch(err) {
+      console.error('Supabase upsertQnAQuestion error:', err.message);
+      return null;
+    }
+  }
+
+  async saveAllQnAQuestions(questions) {
+    if (!Array.isArray(questions) || questions.length === 0) return [];
+    try {
+      const rows = questions.map(q => ({
+        id: q.id,
+        channel: (q.channel || 'marved').toLowerCase().replace('#', ''),
+        login: q.login || '',
+        display_name: q.displayName || q.login || '',
+        user_color: q.userColor || '',
+        user_id: q.userId || '',
+        is_sub: !!q.isSub,
+        is_mod: !!q.isMod,
+        question: q.question || '',
+        status: q.status || 'pending',
+        duplicate_count: q.duplicateCount || 1,
+        duplicate_users: q.duplicateUsers || [],
+        created_at: new Date(q.timestamp || Date.now()).toISOString(),
+        updated_at: new Date(q.updatedAt || Date.now()).toISOString()
+      }));
+
+      const { data, error } = await this.client
+        .from('qna_questions')
+        .upsert(rows, { onConflict: 'id' })
+        .select();
+
+      if (error) throw error;
+      return data;
+    } catch(err) {
+      console.error('Supabase saveAllQnAQuestions error:', err.message);
+      return [];
+    }
+  }
+
+  async setQnAStatus(questionId, status) {
+    try {
+      const { data, error } = await this.client
+        .from('qna_questions')
+        .update({
+          status: status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', questionId)
+        .select();
+
+      if (error) throw error;
+      return data;
+    } catch(err) {
+      console.error('Supabase setQnAStatus error:', err.message);
+      return null;
+    }
+  }
+
+  async getActiveQnAQuestion(channel = 'marved') {
+    try {
+      const { data, error } = await this.client
+        .from('qna_questions')
+        .select('*')
+        .eq('channel', channel.toLowerCase().replace('#', ''))
+        .eq('status', 'on_air')
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      if (data && data.length > 0) {
+        const r = data[0];
+        return {
+          id: r.id,
+          channel: r.channel,
+          login: r.login,
+          displayName: r.display_name,
+          userColor: r.user_color,
+          userId: r.user_id,
+          isSub: r.is_sub,
+          isMod: r.is_mod,
+          question: r.question,
+          status: r.status,
+          duplicateCount: r.duplicate_count || 1,
+          duplicateUsers: r.duplicate_users || [],
+          timestamp: new Date(r.created_at).getTime(),
+          updatedAt: new Date(r.updated_at).getTime()
+        };
+      }
+      return null;
+    } catch(err) {
+      console.error('Supabase getActiveQnAQuestion error:', err.message);
+      return null;
+    }
+  }
+
+  async setActiveQnAQuestion(channel = 'marved', questionObj) {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      
+      // 1. Reset all other questions on this channel that are currently on_air to approved
+      await this.client
+        .from('qna_questions')
+        .update({ status: 'approved', updated_at: new Date().toISOString() })
+        .eq('channel', cleanChan)
+        .eq('status', 'on_air');
+
+      // 2. If a new question is to be set on_air
+      if (questionObj && questionObj.id) {
+        await this.client
+          .from('qna_questions')
+          .update({ status: 'on_air', updated_at: new Date().toISOString() })
+          .eq('id', questionObj.id);
+      }
+      return questionObj;
+    } catch(err) {
+      console.error('Supabase setActiveQnAQuestion error:', err.message);
+      return questionObj;
+    }
+  }
+
+  async deleteQnAQuestion(questionId) {
+    try {
+      const { error } = await this.client
+        .from('qna_questions')
+        .delete()
+        .eq('id', questionId);
+
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase deleteQnAQuestion error:', err.message);
+      return false;
+    }
+  }
+
+  // --- Stream Setups CRUD ---
+  async getStreamSetup(channel = 'marved') {
+    try {
+      const { data, error } = await this.client
+        .from('stream_setups')
+        .select('*')
+        .eq('channel', channel.toLowerCase().replace('#', ''))
+        .maybeSingle();
+
+      if (error) throw error;
+      return data ? data.setup_data : null;
+    } catch(err) {
+      console.error('Supabase getStreamSetup error:', err.message);
+      return null;
+    }
+  }
+
+  async saveStreamSetup(channel = 'marved', setupData) {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('stream_setups')
+        .upsert({
+          channel: cleanChan,
+          setup_data: setupData,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'channel' })
+        .select();
+
+      if (error) throw error;
+      return setupData;
+    } catch(err) {
+      console.error('Supabase saveStreamSetup error:', err.message);
+      return setupData;
+    }
+  }
+}
+
+module.exports = new SupabaseService();

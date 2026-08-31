@@ -198,25 +198,6 @@
       accent-color: #8b5cf6;
     }
 
-    .btn-manual-sync {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-      color: #94a3b8;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .btn-manual-sync:hover {
-      color: #ffffff;
-      background: rgba(255, 255, 255, 0.1);
-    }
-
     /* Centered Stage Layout */
     .streamer-stage-container {
       flex: 1;
@@ -436,28 +417,6 @@
       transform: scale(1.04);
     }
 
-    /* Status Bar Footer */
-    .streamer-status-footer {
-      padding: 12px 24px;
-      font-size: 12px;
-      color: #64748b;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 16px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-      background: #0a0c13;
-    }
-
-    .status-badge-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 6px #10b981;
-    }
-
     /* =========================================================
        SPINNING WHEEL MODAL (GLÜCKSRAD)
        ========================================================= */
@@ -620,9 +579,6 @@
       </div>
 
       <div class="streamer-nav-controls">
-        <button id="btn-prompter-refresh" class="btn-manual-sync" title="Daten manuell neu laden">
-          🔄 Sync
-        </button>
         <label class="wheel-toggle-btn" title="Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
           <input type="checkbox" id="prompter-wheel-toggle" checked>
           <span>🎡 Bestrafungsrad</span>
@@ -680,15 +636,6 @@
         </div>
       </div>
     </main>
-
-    <!-- Footer Status -->
-    <footer class="streamer-status-footer">
-      <span><span class="status-badge-dot"></span> <span id="status-conn-label">Supabase Live</span></span>
-      <span>•</span>
-      <span id="status-questions-label">0 Fragen</span>
-      <span>•</span>
-      <span id="status-sync-time">Sync: Läuft...</span>
-    </footer>
   </div>
 
   <!-- SPINNING WHEEL MODAL -->
@@ -765,14 +712,14 @@
 
     async function syncAllData() {
       try {
-        // 1. Fetch Questions
-        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&order=created_at.desc&t=${Date.now()}`, {
-          headers: reqHeaders
+        // 1. Fetch Questions (No URL query params that break PostgREST)
+        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&order=created_at.desc`, {
+          headers: reqHeaders,
+          cache: 'no-store'
         });
         if (qRes.ok) {
           const qData = await qRes.json();
           if (Array.isArray(qData)) {
-            // Include questions for targetChannel or all if only 1 channel exists
             let filtered = qData.filter(r => !r.channel || r.channel.toLowerCase().replace('#', '') === targetChannel);
             if (filtered.length === 0 && qData.length > 0) {
               filtered = qData;
@@ -791,14 +738,13 @@
             activeQuestion = currentQuestions.find(q => q.status === 'on_air') || null;
           }
         }
-      } catch(e) {
-        console.warn('Questions fetch error:', e);
-      }
+      } catch(e) {}
 
       try {
         // 2. Fetch Settings
-        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?select=*&order=updated_at.desc&t=${Date.now()}`, {
-          headers: reqHeaders
+        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?select=*&order=updated_at.desc`, {
+          headers: reqHeaders,
+          cache: 'no-store'
         });
         if (sRes.ok) {
           const sData = await sRes.json();
@@ -814,14 +760,13 @@
             qnaSettings.displayDuration = s.display_duration || 10;
           }
         }
-      } catch(e) {
-        console.warn('Settings fetch error:', e);
-      }
+      } catch(e) {}
 
       try {
         // 3. Fetch Bestrafungen
-        const bRes = await fetch(`${SUPABASE_REST}/bestrafungen?select=*&order=created_at.desc&t=${Date.now()}`, {
-          headers: reqHeaders
+        const bRes = await fetch(`${SUPABASE_REST}/bestrafungen?select=*&order=created_at.desc`, {
+          headers: reqHeaders,
+          cache: 'no-store'
         });
         if (bRes.ok) {
           const bData = await bRes.json();
@@ -829,19 +774,7 @@
             bestrafungen = bData;
           }
         }
-      } catch(e) {
-        console.warn('Bestrafungen fetch error:', e);
-      }
-
-      const syncTimeEl = document.getElementById('status-sync-time');
-      if (syncTimeEl) {
-        syncTimeEl.textContent = 'Sync: ' + new Date().toLocaleTimeString('de-DE');
-      }
-      const questionsLabelEl = document.getElementById('status-questions-label');
-      if (questionsLabelEl) {
-        const onAirCount = activeQuestion ? 1 : 0;
-        questionsLabelEl.textContent = `${currentQuestions.length} Fragen (${onAirCount} Live)`;
-      }
+      } catch(e) {}
 
       renderCurrentView();
     }
@@ -940,15 +873,6 @@
           })
         });
       } catch(e) {}
-    }
-
-    const btnRefresh = document.getElementById('btn-prompter-refresh');
-    if (btnRefresh) {
-      btnRefresh.addEventListener('click', async () => {
-        btnRefresh.textContent = '⏳ Lädt...';
-        await syncAllData();
-        btnRefresh.textContent = '🔄 Sync';
-      });
     }
 
     const btnDraw = document.getElementById('btn-prompter-draw');
@@ -1254,7 +1178,7 @@
     }
 
     syncAllData();
-    setInterval(syncAllData, 1500);
+    setInterval(syncAllData, 1000);
   </script>
 </body>
 </html>

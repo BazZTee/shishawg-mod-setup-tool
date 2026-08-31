@@ -679,14 +679,6 @@ function setupHubNavigation() {
     });
   });
 
-  // Connect Twitch banner button on landing page
-  const btnLandingConnect = document.getElementById('btn-landing-connect-twitch');
-  if (btnLandingConnect) {
-    btnLandingConnect.addEventListener('click', () => {
-      if (btnTwitchLogin) btnTwitchLogin.click();
-    });
-  }
-
   // Back buttons inside tool views
   const backButtons = document.querySelectorAll('.btn-back-hub');
   backButtons.forEach(btn => {

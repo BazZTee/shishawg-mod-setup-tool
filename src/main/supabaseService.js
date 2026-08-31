@@ -1,4 +1,4 @@
-﻿const { createClient } = require('@supabase/supabase-js');
+const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
@@ -283,6 +283,218 @@ class SupabaseService {
     } catch(err) {
       console.error('Supabase saveStreamSetup error:', err.message);
       return setupData;
+    }
+  }
+
+  // --- Catalog CRUD ---
+  async getCatalog() {
+    try {
+      const { data, error } = await this.client
+        .from('shishawg_catalog')
+        .select('*');
+      if (error) throw error;
+      const catalog = {};
+      (data || []).forEach(row => {
+        catalog[row.category] = row.items;
+      });
+      return catalog;
+    } catch(err) {
+      console.error('Supabase getCatalog error:', err.message);
+      return null;
+    }
+  }
+
+  async saveCatalogCategory(category, items) {
+    try {
+      await this.client
+        .from('shishawg_catalog')
+        .upsert({
+          category,
+          items: Array.isArray(items) ? items : [],
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'category' });
+    } catch(err) {
+      console.error('Supabase saveCatalogCategory error:', err.message);
+    }
+  }
+
+  // --- Mod Watchlist CRUD ---
+  async getWatchlist() {
+    try {
+      const { data, error } = await this.client
+        .from('mod_watchlist')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        username: r.username,
+        addedBy: r.added_by,
+        reason: r.reason,
+        timestamp: new Date(r.created_at).getTime()
+      }));
+    } catch(err) {
+      console.error('Supabase getWatchlist error:', err.message);
+      return [];
+    }
+  }
+
+  async addToWatchlist(item) {
+    try {
+      await this.client
+        .from('mod_watchlist')
+        .upsert({
+          id: item.id || ('wl_' + Date.now()),
+          username: item.username,
+          added_by: item.addedBy || 'Mod',
+          reason: item.reason || '',
+          created_at: new Date(item.timestamp || Date.now()).toISOString()
+        }, { onConflict: 'id' });
+    } catch(err) {
+      console.error('Supabase addToWatchlist error:', err.message);
+    }
+  }
+
+  async removeFromWatchlist(id) {
+    try {
+      await this.client
+        .from('mod_watchlist')
+        .delete()
+        .eq('id', id);
+    } catch(err) {
+      console.error('Supabase removeFromWatchlist error:', err.message);
+    }
+  }
+
+  // --- Telegram Config CRUD ---
+  async getTelegramConfig() {
+    try {
+      const { data, error } = await this.client
+        .from('telegram_config')
+        .select('*')
+        .eq('id', 'default')
+        .maybeSingle();
+      if (error) throw error;
+      return data ? { botToken: data.bot_token, chatId: data.chat_id, claimUrl: data.claim_url } : null;
+    } catch(err) {
+      console.error('Supabase getTelegramConfig error:', err.message);
+      return null;
+    }
+  }
+
+  async saveTelegramConfig(config) {
+    try {
+      await this.client
+        .from('telegram_config')
+        .upsert({
+          id: 'default',
+          bot_token: config.botToken || '',
+          chat_id: config.chatId || '',
+          claim_url: config.claimUrl || '',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+    } catch(err) {
+      console.error('Supabase saveTelegramConfig error:', err.message);
+    }
+  }
+
+  // --- Mod Chat CRUD ---
+  async getModChat() {
+    try {
+      const { data, error } = await this.client
+        .from('mod_chat')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return (data || []).reverse().map(r => ({
+        id: r.id,
+        sender: r.sender,
+        message: r.message,
+        color: r.color,
+        timestamp: new Date(r.created_at).getTime()
+      }));
+    } catch(err) {
+      console.error('Supabase getModChat error:', err.message);
+      return [];
+    }
+  }
+
+  async sendModChatMessage(msg) {
+    try {
+      await this.client
+        .from('mod_chat')
+        .upsert({
+          id: msg.id || ('chat_' + Date.now()),
+          sender: msg.sender || 'Mod',
+          message: msg.message || '',
+          color: msg.color || '#00f0ff',
+          created_at: new Date(msg.timestamp || Date.now()).toISOString()
+        }, { onConflict: 'id' });
+    } catch(err) {
+      console.error('Supabase sendModChatMessage error:', err.message);
+    }
+  }
+
+  // --- Giveaway Winners CRUD ---
+  async getGiveaways() {
+    try {
+      const { data, error } = await this.client
+        .from('giveaway_winners')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        username: r.username,
+        displayName: r.display_name,
+        prize: r.prize,
+        status: r.status,
+        address: r.address,
+        timestamp: new Date(r.created_at).getTime()
+      }));
+    } catch(err) {
+      console.error('Supabase getGiveaways error:', err.message);
+      return [];
+    }
+  }
+
+  async saveGiveawayWinner(winner) {
+    try {
+      await this.client
+        .from('giveaway_winners')
+        .upsert({
+          id: winner.id || ('win_' + Date.now()),
+          username: winner.username,
+          display_name: winner.displayName || winner.username,
+          prize: winner.prize || '',
+          status: winner.status || 'pending',
+          address: winner.address || null,
+          created_at: new Date(winner.timestamp || Date.now()).toISOString()
+        }, { onConflict: 'id' });
+    } catch(err) {
+      console.error('Supabase saveGiveawayWinner error:', err.message);
+    }
+  }
+
+  // --- Poll Templates CRUD ---
+  async getPollTemplates() {
+    try {
+      const { data, error } = await this.client
+        .from('poll_templates')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        title: r.title,
+        choices: r.choices,
+        duration: r.duration,
+        isPreset: r.is_preset
+      }));
+    } catch(err) {
+      console.error('Supabase getPollTemplates error:', err.message);
+      return [];
     }
   }
 }

@@ -219,7 +219,7 @@ class TwitchService {
       });
 
       this.authServer.listen(port, () => {
-        const scopes = encodeURIComponent('chat:read chat:edit channel:moderate moderation:read user:read:email');
+        const scopes = encodeURIComponent('chat:read chat:edit channel:moderate moderation:read user:read:email clips:edit channel:manage:broadcast channel:manage:polls channel:read:polls');
         const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scopes}`;
         shell.openExternal(authUrl);
         resolve(authUrl);
@@ -737,7 +737,19 @@ class TwitchService {
                 const text = rest.substring(colonIdx + 2).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().toLowerCase();
                 const kw = this.giveawayKeyword;
 
-                if (text === kw || text.startsWith(kw + ' ') || text.includes(kw)) {
+                // Ignore start/stop announcement messages from bot or broadcaster
+                const isAnnouncement = text.includes('giveaway gestartet') || 
+                                       text.includes('giveaway beendet') ||
+                                       text.includes('schreibt ' + kw) ||
+                                       text.includes('um teilzunehmen');
+
+                if (isAnnouncement) return;
+
+                // Match keyword: exactly equal to keyword, or start with keyword, or word token matches
+                const tokens = text.split(/\s+/);
+                const matchesKeyword = (text === kw) || text.startsWith(kw + ' ') || tokens.includes(kw);
+
+                if (matchesKeyword) {
                   const displayName = tags['display-name'] || login;
                   const color = tags['color'] || '#00f0ff';
                   const badges = tags['badges'] || '';
@@ -775,6 +787,244 @@ class TwitchService {
         this.giveawayWs.close();
       } catch(e) {}
       this.giveawayWs = null;
+    }
+    return { success: true };
+  }
+
+  // --- Twitch Helix Polls API ---
+  async createPoll(title, choices, duration = 60, channelPointsVoting = false, channelPointsPerVote = 100, channel = this.targetChannel) {
+    if (!this.accessToken || !this.clientId) {
+      throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
+    }
+
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(chan);
+    if (!broadcasterId) throw new Error(`Kanal-ID für #${chan} konnte nicht ermittelt werden.`);
+
+    const cleanTitle = (title || '').trim();
+    if (!cleanTitle || cleanTitle.length > 60) {
+      throw new Error('Poll-Titel ist erforderlich (max. 60 Zeichen).');
+    }
+
+    const formattedChoices = (choices || [])
+      .map(c => typeof c === 'string' ? { title: c.trim() } : { title: (c.title || '').trim() })
+      .filter(c => c.title.length > 0);
+
+    if (formattedChoices.length < 2 || formattedChoices.length > 5) {
+      throw new Error('Eine Twitch-Umfrage benötigt 2 bis 5 Auswahlmöglichkeiten.');
+    }
+
+    for (const c of formattedChoices) {
+      if (c.title.length > 25) {
+        throw new Error(`Auswahl "${c.title}" ist zu lang (max. 25 Zeichen erlaubt).`);
+      }
+    }
+
+    const bodyData = {
+      broadcaster_id: broadcasterId,
+      title: cleanTitle,
+      choices: formattedChoices,
+      duration: parseInt(duration, 10) || 60
+    };
+
+    if (channelPointsVoting) {
+      bodyData.channel_points_voting_enabled = true;
+      bodyData.channel_points_per_vote = parseInt(channelPointsPerVote, 10) || 100;
+    }
+
+    const res = await fetch('https://api.twitch.tv/helix/polls', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(bodyData)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        return { success: true, poll: data.data[0] };
+      }
+    }
+
+    const errText = await res.text();
+    let parsedErr = '';
+    try {
+      const j = JSON.parse(errText);
+      parsedErr = j.message || j.error;
+    } catch(e) {
+      parsedErr = errText;
+    }
+    throw new Error(`Twitch Poll konnte nicht gestartet werden: ${parsedErr || res.statusText}`);
+  }
+
+  async getActivePoll(channel = this.targetChannel) {
+    if (!this.accessToken || !this.clientId) return null;
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(chan);
+    if (!broadcasterId) return null;
+
+    try {
+      const res = await fetch(`https://api.twitch.tv/helix/polls?broadcaster_id=${broadcasterId}&first=1`, {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Client-Id': this.clientId
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.data && data.data.length > 0) {
+          return data.data[0];
+        }
+      }
+    } catch(e) {
+      console.error('Error fetching active poll:', e);
+    }
+    return null;
+  }
+
+  async endPoll(pollId, status = 'TERMINATED', channel = this.targetChannel) {
+    if (!this.accessToken || !this.clientId) {
+      throw new Error('Nicht mit Twitch verbunden.');
+    }
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(chan);
+    if (!broadcasterId) throw new Error(`Kanal-ID für #${chan} nicht gefunden.`);
+
+    const res = await fetch('https://api.twitch.tv/helix/polls', {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        broadcaster_id: broadcasterId,
+        id: pollId,
+        status: status // 'TERMINATED' or 'ARCHIVED'
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.data && data.data.length > 0) {
+        return { success: true, poll: data.data[0] };
+      }
+    }
+
+    const errText = await res.text();
+    throw new Error(`Poll konnte nicht beendet werden: ${errText}`);
+  }
+
+  // --- Q&A Twitch Chat Listener ---
+  startQnAListener(channel = this.targetChannel) {
+    this.stopQnAListener();
+
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+
+    try {
+      this.qnaWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+      this.qnaUserCooldowns = new Map();
+
+      this.qnaWs.on('open', () => {
+        this.qnaWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+        const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+        this.qnaWs.send(`NICK ${nick}`);
+        this.qnaWs.send(`JOIN #${chan}`);
+      });
+
+      this.qnaWs.on('message', (data) => {
+        const rawLines = data.toString().split(/\r\n|\r|\n/);
+        for (const line of rawLines) {
+          const raw = line.trim();
+          if (!raw) continue;
+
+          if (raw.startsWith('PING')) {
+            if (this.qnaWs && this.qnaWs.readyState === WebSocket.OPEN) {
+              this.qnaWs.send('PONG :tmi.twitch.tv');
+            }
+            continue;
+          }
+
+          if (raw.includes('PRIVMSG')) {
+            let tags = {};
+            let rest = raw;
+
+            if (rest.startsWith('@')) {
+              const spaceIdx = rest.indexOf(' ');
+              if (spaceIdx > 0) {
+                const tagStr = rest.substring(1, spaceIdx);
+                rest = rest.substring(spaceIdx + 1);
+                tagStr.split(';').forEach(kv => {
+                  const eqIdx = kv.indexOf('=');
+                  if (eqIdx > 0) {
+                    tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
+                  }
+                });
+              }
+            }
+
+            const privIdx = rest.indexOf(' PRIVMSG ');
+            if (privIdx > 0) {
+              let senderPart = rest.substring(0, privIdx);
+              if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
+              const exclIdx = senderPart.indexOf('!');
+              const login = (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
+
+              const colonIdx = rest.indexOf(' :', privIdx);
+              if (colonIdx > 0 && login) {
+                const rawMsg = rest.substring(colonIdx + 2).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+                
+                // Check if message is a Q&A trigger command: !frage, !q, !question
+                const match = rawMsg.match(/^!(?:frage|q|question)(?:\s+(.+)|$)/i);
+                if (match) {
+                  const questionText = (match[1] || '').trim();
+                  if (questionText.length < 3) return; // ignore empty / too short triggers
+
+                  const displayName = tags['display-name'] || login;
+                  const color = tags['color'] || '#00f0ff';
+                  const badges = tags['badges'] || '';
+                  const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
+                  const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
+
+                  const questionObj = {
+                    id: 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+                    login,
+                    displayName,
+                    userColor: color,
+                    userId: tags['user-id'] || '',
+                    isMod,
+                    isSub,
+                    badges,
+                    question: questionText,
+                    timestamp: Date.now(),
+                    status: 'pending', // pending, approved, on_air, answered, rejected
+                    channel: chan
+                  };
+
+                  this.sendToRenderer('qna:new-question', questionObj);
+                }
+              }
+            }
+          }
+        }
+      });
+
+      this.qnaWs.on('error', () => {});
+      return { success: true, channel: chan };
+    } catch(e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  stopQnAListener() {
+    if (this.qnaWs) {
+      try {
+        this.qnaWs.close();
+      } catch(e) {}
+      this.qnaWs = null;
     }
     return { success: true };
   }

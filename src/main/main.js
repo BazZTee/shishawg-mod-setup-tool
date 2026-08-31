@@ -3,6 +3,7 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const TwitchService = require('./twitchService');
 const DatabaseService = require('./dbService');
 
@@ -324,6 +325,77 @@ ipcMain.handle('twitch:get-chatters', async (event, channel) => {
   return await twitchService.getChatters(channel);
 });
 
+// YouTube Live Search IPC Handler for ShishaWG Channel & Topics
+ipcMain.handle('youtube:search', async (event, query) => {
+  if (!query || typeof query !== 'string' || query.trim().length < 2) return [];
+  const cleanQuery = query.trim();
+  const searchTerm = cleanQuery.toLowerCase().includes('shishawg') ? cleanQuery : `shishawg ${cleanQuery}`;
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm)}`;
+
+  return new Promise((resolve) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const match = data.match(/var ytInitialData = ({.*?});<\/script>/s) || data.match(/ytInitialData\s*=\s*({.*?});/s);
+          if (!match) return resolve([]);
+          const json = JSON.parse(match[1]);
+          const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+          const items = [];
+          if (contents) {
+            for (const section of contents) {
+              const itemSection = section.itemSectionRenderer?.contents;
+              if (itemSection) {
+                for (const item of itemSection) {
+                  if (item.videoRenderer) {
+                    const vr = item.videoRenderer;
+                    const videoId = vr.videoId;
+                    const title = vr.title?.runs?.[0]?.text || '';
+                    const desc = vr.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map(r => r.text).join('') || vr.descriptionSnippet?.runs?.map(r => r.text).join('') || '';
+                    const channelName = vr.ownerText?.runs?.[0]?.text || '';
+                    const lengthText = vr.lengthText?.simpleText || '';
+                    const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+                    items.push({
+                      id: videoId,
+                      videoId: videoId,
+                      title: title,
+                      url: `https://youtu.be/${videoId}`,
+                      desc: desc,
+                      channel: channelName,
+                      duration: lengthText,
+                      thumb: thumb,
+                      category: channelName.toLowerCase().includes('shishawg') ? 'ShishaWG' : 'YouTube',
+                      isLiveResult: true
+                    });
+                    if (items.length >= 10) break;
+                  }
+                }
+              }
+              if (items.length >= 10) break;
+            }
+          }
+          resolve(items);
+        } catch(err) {
+          resolve([]);
+        }
+      });
+    });
+
+    req.on('error', () => resolve([]));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve([]);
+    });
+  });
+});
+
 // Mod-Chat IPC Handlers
 ipcMain.handle('modchat:get-messages', async () => {
   try {
@@ -466,6 +538,97 @@ ipcMain.handle('giveaway:get-telegram-config', async () => {
   return { botToken, chatId, claimUrl };
 });
 
+// Q&A Fragensammler IPC Handlers
+ipcMain.handle('qna:start-listener', async (event, channel) => {
+  return twitchService.startQnAListener(channel);
+});
+
+ipcMain.handle('qna:stop-listener', async () => {
+  return twitchService.stopQnAListener();
+});
+
+ipcMain.handle('qna:get-questions', async () => {
+  try {
+    const questions = await dbService.getQnAQuestions();
+    return { success: true, questions };
+  } catch(e) {
+    return { success: false, error: e.message, questions: [] };
+  }
+});
+
+ipcMain.handle('qna:save-questions', async (event, questions) => {
+  try {
+    const saved = await dbService.saveQnAQuestions(questions);
+    return { success: true, questions: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:get-active', async () => {
+  try {
+    const active = await dbService.getActiveQnAQuestion();
+    return { success: true, active };
+  } catch(e) {
+    return { success: false, error: e.message, active: null };
+  }
+});
+
+ipcMain.handle('qna:set-active', async (event, activeObj) => {
+  try {
+    const active = await dbService.setActiveQnAQuestion(activeObj);
+    return { success: true, active };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Twitch Polls & Vorlagen IPC Handlers
+ipcMain.handle('polls:create', async (event, { title, choices, duration, channelPointsVoting, channelPointsPerVote, channel }) => {
+  try {
+    const res = await twitchService.createPoll(title, choices, duration, channelPointsVoting, channelPointsPerVote, channel);
+    return { success: true, poll: res.poll };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('polls:get-active', async (event, channel) => {
+  try {
+    const poll = await twitchService.getActivePoll(channel);
+    return { success: true, poll };
+  } catch(e) {
+    return { success: false, error: e.message, poll: null };
+  }
+});
+
+ipcMain.handle('polls:end', async (event, { pollId, status, channel }) => {
+  try {
+    const res = await twitchService.endPoll(pollId, status, channel);
+    return { success: true, poll: res.poll };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('polls:get-templates', async () => {
+  try {
+    const templates = await dbService.getPollTemplates();
+    return { success: true, templates };
+  } catch(e) {
+    return { success: false, error: e.message, templates: [] };
+  }
+});
+
+ipcMain.handle('polls:save-templates', async (event, templates) => {
+  try {
+    const saved = await dbService.savePollTemplates(templates);
+    return { success: true, templates: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
 // IPC Handlers for Database
 ipcMain.handle('db:get-catalog', async () => {
   return dbService.getCatalog();
@@ -559,6 +722,15 @@ function startObsServer() {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(latestLiveSetup.commandText || '');
       return;
+    }
+
+    if (url === '/qna' || url === '/qna.html' || url === '/prompter') {
+      const qnaPath = path.join(__dirname, '../../docs/qna.html');
+      if (fs.existsSync(qnaPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(fs.readFileSync(qnaPath, 'utf-8'));
+        return;
+      }
     }
 
     // Default: Return the HUD Overlay HTML

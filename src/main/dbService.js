@@ -1298,6 +1298,10 @@ class DatabaseService {
       }
     } catch(e) {}
 
+    if (!cfg.claimUrl) {
+      cfg.claimUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
+    }
+
     return cfg;
   }
 
@@ -1308,6 +1312,189 @@ class DatabaseService {
     } catch(e) {}
     this.pushFileToGist('telegram_config.json', JSON.stringify(cfg, null, 2)).catch(() => {});
     return cfg;
+  }
+
+  // --- Q&A Questions & Moderation (Synced via Gist) ---
+  async getQnAQuestions() {
+    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+    let questions = [];
+    try {
+      if (fs.existsSync(localFile)) {
+        questions = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+      }
+    } catch(e) {}
+
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['qna_questions.json'];
+        if (f && f.content) {
+          const remoteQuestions = JSON.parse(f.content);
+          if (Array.isArray(remoteQuestions)) {
+            // Merge local and remote questions by ID using updatedAt
+            const qMap = new Map();
+            for (const q of questions) {
+              if (q && q.id) qMap.set(q.id, q);
+            }
+            for (const rq of remoteQuestions) {
+              if (rq && rq.id) {
+                const existing = qMap.get(rq.id);
+                const rqTime = rq.updatedAt || rq.timestamp || 0;
+                const exTime = existing ? (existing.updatedAt || existing.timestamp || 0) : 0;
+                if (!existing || rqTime >= exTime) {
+                  qMap.set(rq.id, rq);
+                }
+              }
+            }
+            questions = Array.from(qMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
+          }
+        }
+      }
+    } catch(e) {}
+
+    return questions;
+  }
+
+  async saveQnAQuestions(questions) {
+    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+    const now = Date.now();
+    const updatedQuestions = (questions || []).map(q => ({
+      ...q,
+      updatedAt: q.updatedAt || now
+    }));
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(updatedQuestions, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('qna_questions.json', JSON.stringify(updatedQuestions, null, 2)).catch(() => {});
+    return updatedQuestions;
+  }
+
+  async getActiveQnAQuestion() {
+    const localFile = path.join(app.getPath('userData'), 'qna_active.json');
+    let localData = { active: null, updatedAt: 0 };
+    try {
+      if (fs.existsSync(localFile)) {
+        const raw = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+        if (raw && typeof raw === 'object' && 'active' in raw) {
+          localData = raw;
+        } else {
+          localData = { active: raw || null, updatedAt: (raw && (raw.updatedAt || raw.timestamp)) || 0 };
+        }
+      }
+    } catch(e) {}
+
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['qna_active.json'];
+        if (f && f.content) {
+          const remoteRaw = JSON.parse(f.content);
+          let remoteData = { active: null, updatedAt: 0 };
+          if (remoteRaw && typeof remoteRaw === 'object' && 'active' in remoteRaw) {
+            remoteData = remoteRaw;
+          } else {
+            remoteData = { active: remoteRaw || null, updatedAt: (remoteRaw && (remoteRaw.updatedAt || remoteRaw.timestamp)) || 0 };
+          }
+
+          // Only overwrite local if remote has a strictly newer timestamp
+          if ((remoteData.updatedAt || 0) > (localData.updatedAt || 0)) {
+            localData = remoteData;
+            fs.writeFileSync(localFile, JSON.stringify(localData, null, 2), 'utf-8');
+          }
+        }
+      }
+    } catch(e) {}
+
+    return localData.active;
+  }
+
+  async setActiveQnAQuestion(activeObj) {
+    const localFile = path.join(app.getPath('userData'), 'qna_active.json');
+    const data = {
+      active: activeObj,
+      updatedAt: Date.now()
+    };
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(data, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('qna_active.json', JSON.stringify(data, null, 2)).catch(() => {});
+    return activeObj;
+  }
+
+  // --- Poll Templates (Presets + Custom synced via Gist) ---
+  getDefaultPollTemplates() {
+    return [
+      {
+        id: 'preset_setup_rating',
+        title: 'Wie bewertet ihr das aktuelle Setup?',
+        choices: ['10/10 Perfekt 🔥', '8/10 Sehr gut 👍', '5/10 Geht so 🤔', '0/10 Ausleeren 💀'],
+        duration: 60,
+        isPreset: true
+      },
+      {
+        id: 'preset_next_bowl',
+        title: 'Welcher Kopf soll als nächstes geraucht werden?',
+        choices: ['Oblako Phunnel', 'Hookain LiT LiP', 'Vandenberg V1', 'Kaloud Samsaris'],
+        duration: 60,
+        isPreset: true
+      },
+      {
+        id: 'preset_tobacco_direction',
+        title: 'Welche Geschmacksrichtung soll in den Kopf?',
+        choices: ['Fruchtig / Süß 🍇', 'Cremig / Teigig 🍦', 'Frisch / Ice ❄️', 'Doppelapfel / Anis 🍏'],
+        duration: 60,
+        isPreset: true
+      },
+      {
+        id: 'preset_coal_check',
+        title: 'Kohle nachlegen oder neuer Kopf?',
+        choices: ['Neue Kohlen drauf! 🪵', 'Neuer Kopf muss her! 💨', 'Passt noch so 👍'],
+        duration: 60,
+        isPreset: true
+      }
+    ];
+  }
+
+  async getPollTemplates() {
+    const localFile = path.join(app.getPath('userData'), 'poll_templates.json');
+    let templates = this.getDefaultPollTemplates();
+    try {
+      if (fs.existsSync(localFile)) {
+        const loaded = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+        if (Array.isArray(loaded) && loaded.length > 0) {
+          templates = loaded;
+        }
+      }
+    } catch(e) {}
+
+    try {
+      const gistData = await this.fetchGistRaw();
+      if (gistData) {
+        const parsed = JSON.parse(gistData);
+        const f = parsed.files && parsed.files['poll_templates.json'];
+        if (f && f.content) {
+          const remoteTemplates = JSON.parse(f.content);
+          if (Array.isArray(remoteTemplates) && remoteTemplates.length > 0) {
+            templates = remoteTemplates;
+            fs.writeFileSync(localFile, JSON.stringify(templates, null, 2), 'utf-8');
+          }
+        }
+      }
+    } catch(e) {}
+
+    return templates;
+  }
+
+  async savePollTemplates(templates) {
+    const localFile = path.join(app.getPath('userData'), 'poll_templates.json');
+    try {
+      fs.writeFileSync(localFile, JSON.stringify(templates, null, 2), 'utf-8');
+    } catch(e) {}
+    this.pushFileToGist('poll_templates.json', JSON.stringify(templates, null, 2)).catch(() => {});
+    return templates;
   }
 
   // Helper for pushing arbitrary files to Gist

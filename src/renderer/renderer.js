@@ -144,6 +144,11 @@ async function initApp() {
     console.error('Error setting up Giveaways:', e);
   }
   try {
+    setupQnAListeners();
+  } catch (e) {
+    console.error('Error setting up Q&A & Umfragen:', e);
+  }
+  try {
     setupUpdaterEvents();
   } catch (e) {
     console.error('Error setting up updater:', e);
@@ -240,6 +245,25 @@ function showView(targetViewId) {
     if (giveawaySyncInterval) {
       clearInterval(giveawaySyncInterval);
       giveawaySyncInterval = null;
+    }
+  }
+
+  // If opening Q&A & Umfragen, load state & start live sync
+  if (targetViewId === 'view-qna') {
+    unreadQnACount = 0;
+    const badge = document.getElementById('hub-qna-unread');
+    if (badge) {
+      badge.classList.add('hidden');
+      badge.textContent = '0';
+    }
+    loadQnAState();
+    if (!qnaSyncInterval) {
+      qnaSyncInterval = setInterval(loadQnAState, 2500);
+    }
+  } else {
+    if (qnaSyncInterval) {
+      clearInterval(qnaSyncInterval);
+      qnaSyncInterval = null;
     }
   }
 }
@@ -441,7 +465,10 @@ function initDefaultPersons() {
       pipe: '',
       bowl: '',
       hmd: '',
-      tobaccos: ['']
+      tobaccos: [''],
+      tobaccoAmounts: [''],
+      tobaccoUnit: 'g',
+      showTobaccoAmounts: false
     }
   ];
 }
@@ -458,7 +485,10 @@ function renderPersonsGrid() {
         pipe: '',
         bowl: '',
         hmd: '',
-        tobaccos: ['']
+        tobaccos: [''],
+        tobaccoAmounts: [''],
+        tobaccoUnit: 'g',
+        showTobaccoAmounts: false
       };
       state.persons[i] = p;
     }
@@ -466,21 +496,36 @@ function renderPersonsGrid() {
     if (!p.tobaccos || p.tobaccos.length === 0) {
       p.tobaccos = [''];
     }
+    if (!p.tobaccoAmounts) {
+      p.tobaccoAmounts = p.tobaccos.map(() => '');
+    }
+    if (!p.tobaccoUnit) {
+      p.tobaccoUnit = 'g';
+    }
 
     const card = document.createElement('div');
     card.className = 'person-card';
     card.setAttribute('data-index', i);
 
     // Build Tobacco Slot HTML
-    const tobaccoSlotsHtml = (p.tobaccos || ['']).map((tVal, tIdx) => `
+    const tobaccoSlotsHtml = (p.tobaccos || ['']).map((tVal, tIdx) => {
+      const amtVal = (p.tobaccoAmounts && p.tobaccoAmounts[tIdx] !== undefined) ? p.tobaccoAmounts[tIdx] : '';
+      const unit = p.tobaccoUnit || 'g';
+      return `
       <div class="tobacco-slot-row">
         <div class="clearable-input-wrapper" style="flex:1;">
           <input type="text" class="input-p-tob" data-pindex="${i}" data-tindex="${tIdx}" list="list-tobacco" value="${escapeHtml(tVal)}" placeholder="Tabak ${tIdx + 1}">
           <button class="btn-clear-field ${tVal ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
         </div>
+        ${p.showTobaccoAmounts ? `
+        <div class="tobacco-amount-input-wrapper">
+          <input type="text" class="input-p-tob-amount" data-pindex="${i}" data-tindex="${tIdx}" value="${escapeHtml(amtVal)}" placeholder="${unit === '%' ? '50%' : '12g'}">
+        </div>
+        ` : ''}
         ${tIdx > 0 ? `<button class="btn-icon btn-remove-tobacco-slot" data-pindex="${i}" data-tindex="${tIdx}" title="Tabaksortenslot entfernen">✕</button>` : ''}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     const isElectric = !!p.isElectric;
     const isOptionalOpen = state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor);
@@ -563,7 +608,21 @@ function renderPersonsGrid() {
       </div>
 
       <div class="input-group full-width tobacco-mix-wrapper">
-        <label>Tabaksorte(n):</label>
+        <div class="tobacco-header-bar">
+          <label style="margin-bottom:0;">Tabaksorte(n):</label>
+          <div class="tobacco-amount-toggle-group">
+            <label class="tobacco-amount-switch-label" title="Mischverhältnis oder Mengenangaben (% oder g) aktivieren">
+              <input type="checkbox" class="chk-p-tob-amount" data-pindex="${i}" ${p.showTobaccoAmounts ? 'checked' : ''}>
+              <span>⚖️ Mengen</span>
+            </label>
+            ${p.showTobaccoAmounts ? `
+              <div class="unit-selector-pills">
+                <button type="button" class="btn-unit-pill ${p.tobaccoUnit === 'g' ? 'active' : ''}" data-pindex="${i}" data-unit="g">g</button>
+                <button type="button" class="btn-unit-pill ${p.tobaccoUnit === '%' ? 'active' : ''}" data-pindex="${i}" data-unit="%">%</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
         <div class="tobacco-mix-inputs">
           ${tobaccoSlotsHtml}
         </div>
@@ -591,6 +650,9 @@ function attachCardInputListeners() {
           // Seamless Auto-expand: typing into the last slot automatically appends a new empty slot!
           if (tobIdx === state.persons[personIdx].tobaccos.length - 1 && e.target.value.trim() !== '') {
             state.persons[personIdx].tobaccos.push('');
+            if (state.persons[personIdx].tobaccoAmounts) {
+              state.persons[personIdx].tobaccoAmounts.push('');
+            }
             renderPersonsGrid();
             const newInputs = document.querySelectorAll(`.input-p-tob[data-pindex="${personIdx}"]`);
             if (newInputs[tobIdx]) {
@@ -598,6 +660,15 @@ function attachCardInputListeners() {
               newInputs[tobIdx].setSelectionRange(e.target.value.length, e.target.value.length);
             }
           }
+        }
+      } else if (e.target.classList.contains('input-p-tob-amount')) {
+        const personIdx = parseInt(e.target.getAttribute('data-pindex'));
+        const tobIdx = parseInt(e.target.getAttribute('data-tindex'));
+        if (!isNaN(personIdx) && state.persons[personIdx]) {
+          if (!state.persons[personIdx].tobaccoAmounts) {
+            state.persons[personIdx].tobaccoAmounts = [];
+          }
+          state.persons[personIdx].tobaccoAmounts[tobIdx] = e.target.value;
         }
       } else if (!isNaN(pIdx) && state.persons[pIdx]) {
         const p = state.persons[pIdx];
@@ -645,6 +716,37 @@ function attachCardInputListeners() {
     });
   });
 
+  // Tobacco Amount Checkbox Toggle Listener
+  document.querySelectorAll('.chk-p-tob-amount').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
+      if (!isNaN(pIdx) && state.persons[pIdx]) {
+        state.persons[pIdx].showTobaccoAmounts = e.currentTarget.checked;
+        if (!state.persons[pIdx].tobaccoAmounts) {
+          state.persons[pIdx].tobaccoAmounts = state.persons[pIdx].tobaccos.map(() => '');
+        }
+        if (!state.persons[pIdx].tobaccoUnit) {
+          state.persons[pIdx].tobaccoUnit = 'g';
+        }
+        renderPersonsGrid();
+        generateCommandString();
+      }
+    });
+  });
+
+  // Tobacco Amount Unit Toggle Pills (g / %)
+  document.querySelectorAll('.btn-unit-pill').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
+      const unit = e.currentTarget.getAttribute('data-unit');
+      if (!isNaN(pIdx) && state.persons[pIdx]) {
+        state.persons[pIdx].tobaccoUnit = unit;
+        renderPersonsGrid();
+        generateCommandString();
+      }
+    });
+  });
+
   // Remove Tobacco Slot Button
   document.querySelectorAll('.btn-remove-tobacco-slot').forEach(btn => {
     btn.addEventListener('click', (e) => {
@@ -652,8 +754,12 @@ function attachCardInputListeners() {
       const tIdx = parseInt(e.currentTarget.getAttribute('data-tindex'));
       if (!isNaN(pIdx) && state.persons[pIdx] && state.persons[pIdx].tobaccos[tIdx] !== undefined) {
         state.persons[pIdx].tobaccos.splice(tIdx, 1);
+        if (state.persons[pIdx].tobaccoAmounts && state.persons[pIdx].tobaccoAmounts[tIdx] !== undefined) {
+          state.persons[pIdx].tobaccoAmounts.splice(tIdx, 1);
+        }
         if (state.persons[pIdx].tobaccos.length === 0) {
           state.persons[pIdx].tobaccos = [''];
+          if (state.persons[pIdx].tobaccoAmounts) state.persons[pIdx].tobaccoAmounts = [''];
         }
         renderPersonsGrid();
         generateCommandString();
@@ -672,7 +778,7 @@ function attachCardInputListeners() {
           updatePersonCountLabel();
         } else {
           // If only 1 person, clear fields of the remaining card
-          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
+          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], tobaccoAmounts: [''], tobaccoUnit: 'g', showTobaccoAmounts: false, isElectric: false };
         }
         renderPersonsGrid();
         generateCommandString();
@@ -800,9 +906,31 @@ function generateCommandString() {
     if (bowlVal) personSegments.push(bowlVal);
     if (hmdVal && !isElec) personSegments.push(hmdVal);
 
-    const tobaccos = (p.tobaccos || [])
-      .map(t => (t || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
-      .filter(Boolean);
+    // Kohle (Magic Charcoal) placed directly behind HMD!
+    if (!isElec && kohle) {
+      personSegments.push(kohle);
+    }
+
+    const tobaccos = [];
+    const rawTobaccos = p.tobaccos || [];
+    const rawAmounts = p.tobaccoAmounts || [];
+    const showAmt = !!p.showTobaccoAmounts;
+    const unit = p.tobaccoUnit || 'g';
+
+    for (let tIdx = 0; tIdx < rawTobaccos.length; tIdx++) {
+      let tVal = (rawTobaccos[tIdx] || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (!tVal) continue;
+      const amtVal = (rawAmounts[tIdx] || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (showAmt && amtVal) {
+        const cleanAmt = amtVal.replace(/[^0-9.,]/g, '').trim();
+        if (cleanAmt) {
+          tVal = `${tVal} (${cleanAmt}${unit})`;
+        } else {
+          tVal = `${tVal} (${amtVal})`;
+        }
+      }
+      tobaccos.push(tVal);
+    }
 
     if (tobaccos.length > 0) {
       let tobStr = '';
@@ -815,11 +943,6 @@ function generateCommandString() {
         tobStr = `${tobaccos.join(', ')} und ${last}`;
       }
       personSegments.push(tobStr);
-    }
-
-    // If mixed setup (traditional + electric), place the charcoal on the traditional setup!
-    if (isMixedSetup && !isElec && kohle) {
-      personSegments.push(kohle);
     }
 
     if (personSegments.length > 0 || pName) {
@@ -836,7 +959,6 @@ function generateCommandString() {
   let fullCommand = `!editsetup ${parts.join(' // ')}`;
 
   const globalParts = [];
-  if (kohle && !isMixedSetup) globalParts.push(kohle);
   if (extra) globalParts.push(extra);
 
   if (globalParts.length > 0) {
@@ -870,6 +992,48 @@ function generateCommandString() {
       commandLengthBadge.textContent = `${len} / 500`;
     }
   }
+}
+
+// Smart Tobacco String Splitter (splits by comma, ' und ', ' & ', ' + ')
+function splitTobaccoString(str) {
+  if (!str) return [];
+  const normalized = str
+    .replace(/\s+und\s+/gi, ', ')
+    .replace(/\s*&\s*/g, ', ')
+    .replace(/\s*\+\s*/g, ', ');
+  return normalized.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+// Parse individual tobacco item for amount and unit e.g. "MustH - Pynkman (12g)", "Pinkman 12 Gramm", "50%"
+function parseTobaccoItem(item) {
+  let name = (item || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+  let amount = '';
+  let unit = 'g';
+  let hasAmount = false;
+
+  // Check for bracketed amount e.g. "(12g)", "(12 g)", "(50%)"
+  const bracketMatch = name.match(/\(([^)]+)\)$/);
+  if (bracketMatch) {
+    const inner = bracketMatch[1].trim();
+    const amtMatch = inner.match(/^(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
+    if (amtMatch) {
+      amount = amtMatch[1].replace(',', '.');
+      unit = (amtMatch[2] && amtMatch[2].startsWith('%')) ? '%' : 'g';
+      hasAmount = true;
+      name = name.substring(0, bracketMatch.index).trim();
+    }
+  } else {
+    // Check for trailing amount e.g. "12g", "12 Gramm", "12 g", "50%", "50 %"
+    const trailingMatch = name.match(/\s+(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
+    if (trailingMatch && trailingMatch[2]) {
+      amount = trailingMatch[1].replace(',', '.');
+      unit = trailingMatch[2].startsWith('%') ? '%' : 'g';
+      hasAmount = true;
+      name = name.substring(0, trailingMatch.index).trim();
+    }
+  }
+
+  return { name, amount, unit, hasAmount };
 }
 
 // Clean & Robust Parser for Chat Setup Messages
@@ -908,11 +1072,24 @@ function parseChatSetupMessage(rawText) {
 
       let pipe = '';
       let tobaccos = [];
+      let tobaccoAmounts = [];
+      let hasAmounts = false;
+      let unit = 'g';
 
-      if (pSetup.includes('&')) {
-        const parts = pSetup.split('&').map(x => x.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim());
-        pipe = parts[0];
-        if (parts[1]) tobaccos.push(parts[1]);
+      if (pSetup.includes('&') || pSetup.includes(',') || pSetup.includes(' und ')) {
+        const rawTobs = splitTobaccoString(pSetup);
+        pipe = rawTobs.shift() || '';
+        rawTobs.forEach(tRaw => {
+          const parsedItem = parseTobaccoItem(tRaw);
+          if (parsedItem.name) {
+            tobaccos.push(parsedItem.name);
+            tobaccoAmounts.push(parsedItem.amount);
+            if (parsedItem.hasAmount) {
+              hasAmounts = true;
+              unit = parsedItem.unit;
+            }
+          }
+        });
       } else {
         pipe = pSetup;
       }
@@ -922,46 +1099,78 @@ function parseChatSetupMessage(rawText) {
         pipe: pipe,
         bowl: '',
         hmd: '',
-        tobaccos: tobaccos.length > 0 ? tobaccos : ['']
+        tobaccos: tobaccos.length > 0 ? tobaccos : [''],
+        tobaccoAmounts: tobaccoAmounts.length > 0 ? tobaccoAmounts : [''],
+        tobaccoUnit: unit,
+        showTobaccoAmounts: hasAmounts
       });
-    } else if (seg.toLowerCase().includes('!kohle') || seg.toLowerCase().includes('kohle') || seg.toLowerCase().includes('cubes')) {
+    } else if (seg.toLowerCase().includes('!kohle') || seg.toLowerCase().includes('kohle') || seg.toLowerCase().includes('cubes') || seg.toLowerCase().includes('zauberwürfel') || seg.toLowerCase().includes('charcoal')) {
       globalKohle = seg;
     } else if (seg.toLowerCase().includes('tasting') || seg.toLowerCase().includes('no aroma')) {
       globalExtra = seg;
-    } else if (seg.toLowerCase().includes('hmd') || seg.toLowerCase().includes('grani') || seg.toLowerCase().includes('lotus')) {
+    } else if (seg.toLowerCase().includes('hmd') || seg.toLowerCase().includes('grani') || seg.toLowerCase().includes('lotus') || seg.toLowerCase().includes('onmo') || seg.toLowerCase().includes('ao 912')) {
       sharedHmd = seg;
-    } else if (seg.toLowerCase().includes('bowl') || seg.toLowerCase().includes('phunnel') || seg.toLowerCase().includes('shot')) {
-      if (seg.includes('und') && (seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('darkside'))) {
-        const parts = seg.split('und').map(x => x.trim());
-        if (parsedPersons.length > 0) {
-          if (!parsedPersons[0].tobaccos[0] || parsedPersons[0].tobaccos[0] === '') {
-            parsedPersons[0].tobaccos[0] = parts[0];
-          } else {
-            parsedPersons[0].tobaccos.push(parts[0]);
-          }
-          if (parts[1]) sharedBowl = parts[1];
-        } else {
-          sharedBowl = seg;
-        }
-      } else {
-        sharedBowl = seg;
-      }
+    } else if (seg.toLowerCase().includes('bowl') || seg.toLowerCase().includes('phunnel') || seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('mehrloch') || seg.toLowerCase().includes('cosmo')) {
+      sharedBowl = seg;
     } else {
-      if (parsedPersons.length > 0) {
-        if (!parsedPersons[0].tobaccos[0]) {
-          parsedPersons[0].tobaccos[0] = seg;
+      // Tobacco segment (e.g. "MustH - Pynkman, Blackburn - Green T und Kismet - Black Lavender")
+      const currentPerson = parsedPersons.length > 0 ? parsedPersons[parsedPersons.length - 1] : null;
+      const rawTobs = splitTobaccoString(seg);
+
+      if (currentPerson && (!currentPerson.pipe || currentPerson.tobaccos[0])) {
+        // If first person has no pipe yet and this doesn't look like a mix, assign as pipe
+        if (!currentPerson.pipe && rawTobs.length === 1 && !rawTobs[0].includes('-')) {
+          currentPerson.pipe = seg;
         } else {
-          parsedPersons[0].tobaccos.push(seg);
+          // Append tobacco items
+          rawTobs.forEach(tRaw => {
+            const parsedItem = parseTobaccoItem(tRaw);
+            if (parsedItem.name) {
+              if (currentPerson.tobaccos.length === 1 && !currentPerson.tobaccos[0]) {
+                currentPerson.tobaccos[0] = parsedItem.name;
+                currentPerson.tobaccoAmounts[0] = parsedItem.amount;
+              } else {
+                currentPerson.tobaccos.push(parsedItem.name);
+                currentPerson.tobaccoAmounts.push(parsedItem.amount);
+              }
+              if (parsedItem.hasAmount) {
+                currentPerson.showTobaccoAmounts = true;
+                currentPerson.tobaccoUnit = parsedItem.unit;
+              }
+            }
+          });
         }
-      } else {
-        // Fallback: create default Person 1 (Marvin) if no colon was present
-        parsedPersons.push({
+      } else if (!currentPerson) {
+        // Create default Person 1 (Marvin)
+        const newPerson = {
           name: 'Marvin',
-          pipe: seg,
+          pipe: '',
           bowl: '',
           hmd: '',
-          tobaccos: ['']
-        });
+          tobaccos: [],
+          tobaccoAmounts: [],
+          tobaccoUnit: 'g',
+          showTobaccoAmounts: false
+        };
+
+        if (rawTobs.length === 1 && !rawTobs[0].includes('-')) {
+          newPerson.pipe = seg;
+          newPerson.tobaccos = [''];
+          newPerson.tobaccoAmounts = [''];
+        } else {
+          rawTobs.forEach(tRaw => {
+            const parsedItem = parseTobaccoItem(tRaw);
+            if (parsedItem.name) {
+              newPerson.tobaccos.push(parsedItem.name);
+              newPerson.tobaccoAmounts.push(parsedItem.amount);
+              if (parsedItem.hasAmount) {
+                newPerson.showTobaccoAmounts = true;
+                newPerson.tobaccoUnit = parsedItem.unit;
+              }
+            }
+          });
+        }
+        parsedPersons.push(newPerson);
       }
     }
   }
@@ -973,7 +1182,10 @@ function parseChatSetupMessage(rawText) {
       pipe: segments[0] || '',
       bowl: sharedBowl,
       hmd: sharedHmd,
-      tobaccos: segments.length > 1 ? [segments[1]] : ['']
+      tobaccos: segments.length > 1 ? [segments[1]] : [''],
+      tobaccoAmounts: [''],
+      tobaccoUnit: 'g',
+      showTobaccoAmounts: false
     });
   }
 
@@ -1378,22 +1590,59 @@ function matchNotesToForm(text) {
 
     const isPersonTok = (tok) => allKnownPersons.includes(tok) || (matchedName && matchedName.toLowerCase() === tok);
 
-    // Step 2: Multi-Word Tobacco Scanning (2-word & 3-word phrases on remaining tokens)
-    const matchedTobaccos = [];
+    // Step 2 & 3: Multi-Word and Single-Token Tobacco Scanning with Amount Detection
+    let detectedUnit = 'g';
+    const tobaccoMatchesWithAmounts = [];
+
+    function extractAmountFollowing(lastIdx) {
+      const nextIdx = lastIdx + 1;
+      if (nextIdx >= tokens.length) return '';
+      const nextTok = tokens[nextIdx];
+      if (usedIndices.has(nextIdx)) return '';
+
+      // Check format like '13g', '3g', '50%', '13.5g'
+      const mInline = nextTok.match(/^(\d+(?:[.,]\d+)?)(g|gramm|%|prozent)?$/i);
+      if (mInline) {
+        const num = mInline[1].replace(',', '.');
+        const unit = mInline[2] ? mInline[2].toLowerCase() : '';
+        if (unit.includes('%') || unit.includes('prozent')) {
+          detectedUnit = '%';
+        } else if (unit) {
+          detectedUnit = 'g';
+        }
+        usedIndices.add(nextIdx);
+
+        // Check if next token is unit (e.g. '13' followed by 'g' / 'gramm' / '%')
+        if (!unit && nextIdx + 1 < tokens.length && !usedIndices.has(nextIdx + 1)) {
+          const uTok = tokens[nextIdx + 1];
+          if (/^(g|gramm|%|prozent)$/i.test(uTok)) {
+            if (/^(%|prozent)$/i.test(uTok)) detectedUnit = '%';
+            else detectedUnit = 'g';
+            usedIndices.add(nextIdx + 1);
+          }
+        }
+        return num;
+      }
+      return '';
+    }
+
+    // 2. Multi-word phrase scanning (3-word & 2-word)
     for (let i = 0; i <= tokens.length - 3; i++) {
       if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
       if (isPersonTok(tokens[i]) || isPersonTok(tokens[i + 1]) || isPersonTok(tokens[i + 2])) continue;
       const w3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
       const syn = SHISHA_SYNONYMS[w3];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
-        matchedTobaccos.push(syn);
         usedIndices.add(i); usedIndices.add(i + 1); usedIndices.add(i + 2);
+        const amt = extractAmountFollowing(i + 2);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: syn, amount: amt });
         continue;
       }
       const m = findBestFuzzyMatch(w3, catalog.tobacco || [], 0.75);
       if (m) {
-        matchedTobaccos.push(m.name);
         usedIndices.add(i); usedIndices.add(i + 1); usedIndices.add(i + 2);
+        const amt = extractAmountFollowing(i + 2);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: m.name, amount: amt });
       }
     }
 
@@ -1403,14 +1652,16 @@ function matchNotesToForm(text) {
       const w2 = `${tokens[i]} ${tokens[i + 1]}`;
       const syn = SHISHA_SYNONYMS[w2];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
-        matchedTobaccos.push(syn);
         usedIndices.add(i); usedIndices.add(i + 1);
+        const amt = extractAmountFollowing(i + 1);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: syn, amount: amt });
         continue;
       }
       const m = findBestFuzzyMatch(w2, catalog.tobacco || [], 0.75);
       if (m) {
-        matchedTobaccos.push(m.name);
         usedIndices.add(i); usedIndices.add(i + 1);
+        const amt = extractAmountFollowing(i + 1);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: m.name, amount: amt });
       }
     }
 
@@ -1433,16 +1684,27 @@ function matchNotesToForm(text) {
 
       const syn = SHISHA_SYNONYMS[tok];
       if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
-        if (!matchedTobaccos.includes(syn)) matchedTobaccos.push(syn);
         usedIndices.add(i);
+        const amt = extractAmountFollowing(i);
+        if (!tobaccoMatchesWithAmounts.some(t => t.name === syn)) {
+          tobaccoMatchesWithAmounts.push({ firstIdx: i, name: syn, amount: amt });
+        }
         continue;
       }
       const m = findBestFuzzyMatch(tok, catalog.tobacco || [], 0.70);
-      if (m && !matchedTobaccos.includes(m.name)) {
-        matchedTobaccos.push(m.name);
+      if (m && !tobaccoMatchesWithAmounts.some(t => t.name === m.name)) {
         usedIndices.add(i);
+        const amt = extractAmountFollowing(i);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: m.name, amount: amt });
       }
     }
+
+    // Sort tobaccos by position in text
+    tobaccoMatchesWithAmounts.sort((a, b) => a.firstIdx - b.firstIdx);
+
+    const matchedTobaccos = tobaccoMatchesWithAmounts.map(t => t.name);
+    const matchedAmounts = tobaccoMatchesWithAmounts.map(t => t.amount || '');
+    const hasAmounts = matchedAmounts.some(a => a && a.trim() !== '');
 
     newPersons.push({
       name: matchedName,
@@ -1452,6 +1714,9 @@ function matchNotesToForm(text) {
       vessel,
       vesselColor: '',
       tobaccos: matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''],
+      showTobaccoAmounts: hasAmounts,
+      tobaccoAmounts: hasAmounts ? [...matchedAmounts, ''] : [],
+      tobaccoUnit: detectedUnit || 'g',
       isElectric
     });
   }
@@ -2785,7 +3050,6 @@ function setupQuickActionsListeners() {
               qaInputRaidTarget.value = ch.display_name;
               qaRaidSuggestions.classList.add('hidden');
 
-              // Show selected target card
               if (qaRaidSelectedTarget) {
                 qaRaidSelectedTarget.classList.remove('hidden');
                 if (qaRaidTargetAvatar) qaRaidTargetAvatar.src = ch.thumbnail_url || '';
@@ -2874,8 +3138,8 @@ function setupQuickActionsListeners() {
 
   if (btnSaveCustomCmd) {
     btnSaveCustomCmd.addEventListener('click', () => {
-      const label = inputCustomCmdLabel.value.trim();
-      const command = inputCustomCmdText.value.trim();
+      const label = inputCustomCmdLabel ? inputCustomCmdLabel.value.trim() : '';
+      const command = inputCustomCmdText ? inputCustomCmdText.value.trim() : '';
 
       if (!label || !command) {
         showToast('Bitte fülle Beschriftung und Befehl aus.', 'error');
@@ -2890,8 +3154,435 @@ function setupQuickActionsListeners() {
       });
       saveQuickCommands();
       renderQuickCommands();
-      qaCustomCmdModal.classList.add('hidden');
+      if (qaCustomCmdModal) qaCustomCmdModal.classList.add('hidden');
       showToast(`Quick-Command '${label}' hinzugefügt!`, 'success');
+    });
+  }
+
+  // Initialize YouTube Video Finder
+  setupYouTubeVideoFinder();
+}
+
+// =========================================================================
+// SHISHAWG YOUTUBE VIDEO-FINDER & QUICK-SHARE
+// =========================================================================
+
+const qaYtSearchInput = document.getElementById('qa-yt-search-input');
+const btnQaClearYtSearch = document.getElementById('btn-qa-clear-yt-search');
+const qaYtPinnedGrid = document.getElementById('qa-yt-pinned-grid');
+const qaYtSuggestionsList = document.getElementById('qa-yt-suggestions-list');
+const btnQaAddCustomVideo = document.getElementById('btn-qa-add-custom-video');
+const qaCustomYtModal = document.getElementById('qa-custom-yt-modal');
+const btnCloseQaYtModal = document.getElementById('btn-close-qa-yt-modal');
+const btnCancelCustomYt = document.getElementById('btn-cancel-custom-yt');
+const btnSaveCustomYt = document.getElementById('btn-save-custom-yt');
+const inputCustomYtUrl = document.getElementById('input-custom-yt-url');
+const inputCustomYtTitle = document.getElementById('input-custom-yt-title');
+const inputCustomYtCategory = document.getElementById('input-custom-yt-category');
+
+const DEFAULT_SHISHAWG_VIDEOS = [
+  {
+    id: 'yt-phunnel-guide',
+    title: 'Der ultimative Phunnel Kopfbau Guide (Schritt für Schritt)',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Kopfbau',
+    desc: 'Perfekter Durchzug & Hitzeverteilung im Phunnel-Kopf. Tabak locker flockig verteilen & Alufolie / HMD.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-hmd-guide',
+    title: 'HMD Guide: AO 912 vs ONMO vs Na Grani im Hitzetest',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'HMD',
+    desc: 'Welcher HMD passt zu welchem Setup? Hitzeentwicklung, Aluguss vs. Edelstahl und Kohleverbrauch.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-kohle-guide',
+    title: 'Kohle richtig anmachen & Hitze managen (Magic Charcoal)',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Kohle',
+    desc: 'Tipps zum schnellen & gleichmäßigen Durchglühen der Naturkohlen ohne Aschebildung oder Eigengeschmack.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-darkblend-tipps',
+    title: 'Darkblend für Einsteiger: MustH & Blackburn rauchen ohne Kratzen',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Tabak',
+    desc: 'Bauweise, Hitzetoleranz und Tipps für starken Grundtabak. So schmeckt Darkblend intensiv & smooth.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-mehrloch-guide',
+    title: 'Mehrlochkopf / Traditional Bowl richtig bauen & rauchen',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Kopfbau',
+    desc: 'Fluffig oder leicht angedrückt? Alles über Durchzug, Alufolie vs. Kamin und HMD auf Mehrlochköpfen.',
+    pinned: false,
+    isDefault: true
+  },
+  {
+    id: 'yt-reinigung-guide',
+    title: 'Shisha, Bowl & Schläuche richtig reinigen',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Pflege',
+    desc: 'Schmand und Ablagerungen sauber entfernen – für dauerhaft frischen Durchzug & puren Geschmack.',
+    pinned: false,
+    isDefault: true
+  },
+  {
+    id: 'yt-fehler-guide',
+    title: 'Die 5 häufigsten Fehler beim Shisha Kopfbau & wie man sie vermeidet',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Tutorial',
+    desc: 'Warum der Kopf kratzt, anbrennt oder zu wenig Rauch liefert – Fehleranalyse & Soforthilfe.',
+    pinned: false,
+    isDefault: true
+  }
+];
+
+let youtubeVideos = [];
+
+function extractYouTubeVideoId(url) {
+  if (!url) return '';
+  const clean = url.trim();
+  const match = clean.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|(?:embed|v|shorts)\/))([\w-]{11})/i);
+  if (match) return match[1];
+  if (/^[\w-]{11}$/.test(clean)) return clean;
+  return '';
+}
+
+function loadYouTubeVideos() {
+  try {
+    const saved = localStorage.getItem('swg_youtube_videos');
+    if (saved) {
+      youtubeVideos = JSON.parse(saved);
+    } else {
+      youtubeVideos = [...DEFAULT_SHISHAWG_VIDEOS];
+    }
+  } catch(e) {
+    youtubeVideos = [...DEFAULT_SHISHAWG_VIDEOS];
+  }
+  renderYouTubeBoard();
+}
+
+let ytSearchDebounce = null;
+let lastLiveQuery = '';
+let liveSearchResults = [];
+
+function renderYouTubeBoard(isLiveSearch = false) {
+  if (!qaYtPinnedGrid) return;
+
+  const rawQuery = (qaYtSearchInput ? qaYtSearchInput.value : '');
+  const searchQuery = rawQuery.toLowerCase().trim();
+
+  // 1. Render Pinned Videos Bar
+  qaYtPinnedGrid.innerHTML = '';
+  const pinnedVideos = youtubeVideos.filter(v => v.pinned);
+  if (pinnedVideos.length === 0) {
+    qaYtPinnedGrid.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">Keine Favoriten angeheftet. Klicke in der Suche bei einem Video auf "📌".</span>';
+  } else {
+    pinnedVideos.forEach(v => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-yt-pinned';
+      btn.title = `Klicken zum Posten im Chat:\n"${v.title}"\n(${v.url})`;
+      btn.innerHTML = `💬 ${escapeHtml(v.title.length > 34 ? v.title.substring(0, 34) + '...' : v.title)}`;
+      btn.addEventListener('click', () => postYouTubeVideoToChat(v));
+      qaYtPinnedGrid.appendChild(btn);
+    });
+  }
+
+  // 2. Suggestions List
+  if (!qaYtSuggestionsList) return;
+
+  if (!searchQuery) {
+    qaYtSuggestionsList.classList.add('hidden');
+    qaYtSuggestionsList.innerHTML = '';
+    liveSearchResults = [];
+    lastLiveQuery = '';
+    return;
+  }
+
+  // Combine local videos and live results (deduplicating by videoId / URL)
+  const localFiltered = youtubeVideos.filter(v => {
+    const titleMatch = (v.title || '').toLowerCase().includes(searchQuery);
+    const catMatch = (v.category || '').toLowerCase().includes(searchQuery);
+    const descMatch = (v.desc || '').toLowerCase().includes(searchQuery);
+    return titleMatch || catMatch || descMatch;
+  });
+
+  const combined = [...localFiltered];
+  const seenUrls = new Set(localFiltered.map(v => v.url.toLowerCase()));
+
+  liveSearchResults.forEach(liveVid => {
+    if (!seenUrls.has(liveVid.url.toLowerCase())) {
+      seenUrls.add(liveVid.url.toLowerCase());
+      combined.push(liveVid);
+    }
+  });
+
+  qaYtSuggestionsList.innerHTML = '';
+  qaYtSuggestionsList.classList.remove('hidden');
+
+  if (combined.length === 0) {
+    if (!isLiveSearch) {
+      qaYtSuggestionsList.innerHTML = `
+        <div style="text-align:center; padding: 14px; color: var(--text-muted); font-size: 0.85rem;">
+          ⏳ Suche auf ShishaWG YouTube-Kanal nach "<strong>${escapeHtml(searchQuery)}</strong>"...
+        </div>
+      `;
+    } else {
+      qaYtSuggestionsList.innerHTML = `
+        <div style="text-align:center; padding: 16px; color: var(--text-muted); font-size: 0.85rem;">
+          🔍 Kein YouTube-Video zu "<strong>${escapeHtml(searchQuery)}</strong>" gefunden.
+          <br><button id="btn-qa-yt-add-from-search" class="btn btn-secondary btn-sm" style="margin-top:8px;">➕ Video-Link manuell hinzufügen</button>
+        </div>
+      `;
+      const btnAddSearch = document.getElementById('btn-qa-yt-add-from-search');
+      if (btnAddSearch) {
+        btnAddSearch.addEventListener('click', () => {
+          if (qaCustomYtModal) qaCustomYtModal.classList.remove('hidden');
+          if (inputCustomYtTitle) inputCustomYtTitle.value = rawQuery;
+          if (inputCustomYtCategory) inputCustomYtCategory.value = 'Tutorial';
+        });
+      }
+    }
+    return;
+  }
+
+  combined.forEach(video => {
+    const item = document.createElement('div');
+    item.className = 'qa-yt-suggestion-item';
+
+    const videoId = video.videoId || extractYouTubeVideoId(video.url);
+    const thumbUrl = video.thumb || (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : '');
+    const isPinned = youtubeVideos.some(v => v.url === video.url && v.pinned);
+
+    item.innerHTML = `
+      <div class="qa-yt-sugg-left">
+        ${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" class="qa-yt-thumb-mini" alt="Thumb" onerror="this.style.display='none'">` : '<div class="qa-yt-icon-badge">▶</div>'}
+        <div class="qa-yt-sugg-content">
+          <div class="qa-yt-sugg-title-row">
+            <span class="qa-yt-category-tag">${escapeHtml(video.category || (video.channel || 'ShishaWG'))}</span>
+            <span class="qa-yt-sugg-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</span>
+          </div>
+          <div class="qa-yt-sugg-desc" title="${escapeHtml(video.desc || video.url)}">${escapeHtml(video.desc || video.url)}</div>
+        </div>
+      </div>
+      <div class="qa-yt-sugg-actions">
+        <button class="btn-yt-share" title="Diesen Video-Link direkt im Twitch-Chat posten">
+          💬 In Chat
+        </button>
+        <button class="btn-icon btn-yt-pin-toggle ${isPinned ? 'pinned' : ''}" title="${isPinned ? 'Von Favoriten lösen' : 'Oben als Favorit anheften'}">
+          ${isPinned ? '📌' : '☆'}
+        </button>
+        <button class="btn-icon btn-yt-copy" title="Link kopieren" style="padding:6px 8px; font-size:0.8rem; background:rgba(255,255,255,0.06); border-radius:6px;">
+          📋
+        </button>
+        <button class="btn-icon btn-yt-open" title="Auf YouTube ansehen" style="padding:6px 8px; font-size:0.8rem; background:rgba(255,255,255,0.06); border-radius:6px;">
+          🔗
+        </button>
+        ${!video.isDefault && !video.isLiveResult ? `
+          <button class="btn-icon btn-yt-delete" title="Video löschen" style="padding:6px 8px; font-size:0.8rem; color:#ef4444; background:rgba(239,68,68,0.1); border-radius:6px;">
+            ✕
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    // Share button listener
+    const btnShare = item.querySelector('.btn-yt-share');
+    if (btnShare) {
+      btnShare.addEventListener('click', () => postYouTubeVideoToChat(video));
+    }
+
+    // Pin toggle listener
+    const btnPin = item.querySelector('.btn-yt-pin-toggle');
+    if (btnPin) {
+      btnPin.addEventListener('click', () => {
+        let existing = youtubeVideos.find(v => v.url === video.url);
+        if (existing) {
+          existing.pinned = !existing.pinned;
+        } else {
+          youtubeVideos.push({
+            id: 'yt-' + (video.videoId || Date.now()),
+            title: video.title,
+            url: video.url,
+            videoId: video.videoId || '',
+            category: video.category || 'ShishaWG',
+            desc: video.desc || '',
+            pinned: true,
+            isDefault: false
+          });
+        }
+        saveYouTubeVideos();
+        renderYouTubeBoard(true);
+        showToast('Favorit aktualisiert', 'info');
+      });
+    }
+
+    // Copy link listener
+    const btnCopy = item.querySelector('.btn-yt-copy');
+    if (btnCopy) {
+      btnCopy.addEventListener('click', () => {
+        navigator.clipboard.writeText(video.url);
+        showToast('Video-Link in Zwischenablage kopiert!', 'info');
+      });
+    }
+
+    // Open link listener
+    const btnOpen = item.querySelector('.btn-yt-open');
+    if (btnOpen) {
+      btnOpen.addEventListener('click', () => {
+        ipcRenderer.invoke('app:open-external', video.url);
+      });
+    }
+
+    // Delete custom video
+    const btnDel = item.querySelector('.btn-yt-delete');
+    if (btnDel) {
+      btnDel.addEventListener('click', () => {
+        youtubeVideos = youtubeVideos.filter(v => v.id !== video.id && v.url !== video.url);
+        saveYouTubeVideos();
+        renderYouTubeBoard(true);
+        showToast('Video gelöscht', 'info');
+      });
+    }
+
+    qaYtSuggestionsList.appendChild(item);
+  });
+}
+
+async function postYouTubeVideoToChat(video) {
+  if (!video || !video.url) return;
+  try {
+    const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const message = `🎥 Video-Tipp von Marvin: "${video.title}" 👉 ${video.url}`;
+    const res = await ipcRenderer.invoke('twitch:send-chat', { message, channel });
+    if (res && res.success) {
+      showToast(`Video im Chat gepostet: ${video.title}`, 'success');
+    } else {
+      showToast(res.error || 'Fehler beim Senden', 'error');
+    }
+  } catch(err) {
+    showToast(err.message || 'Fehler beim Senden in Chat', 'error');
+  }
+}
+
+function setupYouTubeVideoFinder() {
+  loadYouTubeVideos();
+
+  // Live Search input listener with Debounce & YouTube Live API
+  if (qaYtSearchInput) {
+    qaYtSearchInput.addEventListener('input', () => {
+      const q = qaYtSearchInput.value.trim();
+      if (btnQaClearYtSearch) {
+        btnQaClearYtSearch.classList.toggle('hidden', !q);
+      }
+
+      renderYouTubeBoard(false);
+
+      if (ytSearchDebounce) clearTimeout(ytSearchDebounce);
+      if (q.length >= 2) {
+        ytSearchDebounce = setTimeout(async () => {
+          try {
+            const liveRes = await ipcRenderer.invoke('youtube:search', q);
+            if (Array.isArray(liveRes) && qaYtSearchInput.value.trim() === q) {
+              liveSearchResults = liveRes;
+              lastLiveQuery = q;
+              renderYouTubeBoard(true);
+            }
+          } catch(err) {
+            console.error('YouTube live search error:', err);
+          }
+        }, 250);
+      }
+    });
+
+    qaYtSearchInput.addEventListener('focus', () => {
+      if (qaYtSearchInput.value.trim()) {
+        renderYouTubeBoard(true);
+      }
+    });
+  }
+
+  // Close suggestions on click outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.qa-yt-search-wrapper')) {
+      if (qaYtSuggestionsList) {
+        qaYtSuggestionsList.classList.add('hidden');
+      }
+    }
+  });
+
+  // Clear search button
+  if (btnQaClearYtSearch) {
+    btnQaClearYtSearch.addEventListener('click', () => {
+      if (qaYtSearchInput) qaYtSearchInput.value = '';
+      btnQaClearYtSearch.classList.add('hidden');
+      renderYouTubeBoard(false);
+      if (qaYtSearchInput) qaYtSearchInput.focus();
+    });
+  }
+
+  // Open custom video modal
+  if (btnQaAddCustomVideo && qaCustomYtModal) {
+    btnQaAddCustomVideo.addEventListener('click', () => {
+      qaCustomYtModal.classList.remove('hidden');
+      if (inputCustomYtUrl) inputCustomYtUrl.value = '';
+      if (inputCustomYtTitle) inputCustomYtTitle.value = '';
+      if (inputCustomYtCategory) inputCustomYtCategory.value = '';
+      if (inputCustomYtUrl) inputCustomYtUrl.focus();
+    });
+  }
+
+  if (btnCloseQaYtModal && qaCustomYtModal) {
+    btnCloseQaYtModal.addEventListener('click', () => {
+      qaCustomYtModal.classList.add('hidden');
+    });
+  }
+
+  if (btnCancelCustomYt && qaCustomYtModal) {
+    btnCancelCustomYt.addEventListener('click', () => {
+      qaCustomYtModal.classList.add('hidden');
+    });
+  }
+
+  // Save custom video
+  if (btnSaveCustomYt) {
+    btnSaveCustomYt.addEventListener('click', () => {
+      const url = inputCustomYtUrl ? inputCustomYtUrl.value.trim() : '';
+      const title = inputCustomYtTitle ? inputCustomYtTitle.value.trim() : '';
+      const category = inputCustomYtCategory ? inputCustomYtCategory.value.trim() : 'Video';
+
+      if (!url || !title) {
+        showToast('Bitte gib mindestens einen YouTube-Link und Titel ein.', 'error');
+        return;
+      }
+
+      const videoId = extractYouTubeVideoId(url);
+      const newVideo = {
+        id: 'yt-' + Date.now(),
+        title: title,
+        url: url,
+        videoId: videoId || 'custom',
+        category: category || 'Video',
+        desc: `YouTube Video: ${title}`,
+        pinned: true,
+        isDefault: false
+      };
+
+      youtubeVideos.unshift(newVideo);
+      saveYouTubeVideos();
+      renderYouTubeBoard();
+      if (qaCustomYtModal) qaCustomYtModal.classList.add('hidden');
+      showToast(`Video "${title}" erfolgreich hinzugefügt!`, 'success');
     });
   }
 }
@@ -3170,6 +3861,8 @@ async function sendModChatMessage() {
     showToast('Fehler beim Senden der Nachricht: ' + e.message, 'error');
   }
 }
+
+
 
 // Chatters List
 async function loadChatters() {
@@ -3683,10 +4376,25 @@ function renderParticipantsPool() {
   giveawayParticipantsGrid.innerHTML = validParticipants.map(p => `
     <span class="participant-pill ${p.isMod ? 'is-mod' : ''} ${p.isSub ? 'is-sub' : ''}">
       <span style="color: ${escapeHtml(p.color || '#00f0ff')}">●</span>
-      ${escapeHtml(p.displayName || p.login)}
+      <span>${escapeHtml(p.displayName || p.login)}</span>
       ${p.isSub ? '⭐' : ''}
+      <button class="btn-remove-participant" data-login="${escapeHtml(p.login)}" title="${escapeHtml(p.displayName || p.login)} aus dem Pool entfernen">✕</button>
     </span>
   `).join('');
+
+  // Attach remove button listeners
+  giveawayParticipantsGrid.querySelectorAll('.btn-remove-participant').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const login = btn.getAttribute('data-login');
+      if (login && giveawayState.participants.has(login.toLowerCase())) {
+        const removed = giveawayState.participants.get(login.toLowerCase());
+        giveawayState.participants.delete(login.toLowerCase());
+        renderParticipantsPool();
+        showToast(`👤 ${removed ? removed.displayName : login} aus dem Pool entfernt`, 'info');
+      }
+    });
+  });
 }
 
 function updateGiveawayStatus(status) {
@@ -4326,3 +5034,1065 @@ function setupGiveawaysListeners() {
     renderParticipantsPool();
   });
 }
+
+// =============================================================================
+// MODULE 5: Q&A & UMFRAGEN LOGIC & CONTROLLER
+// =============================================================================
+
+let qnaSyncInterval = null;
+let pollLiveCheckInterval = null;
+let unreadQnACount = 0;
+
+let qnaState = {
+  questions: [],
+  activeQuestion: null,
+  currentFilter: 'pending',
+  searchQuery: '',
+  isListenerActive: true,
+  settings: {
+    cmdFrage: true,
+    cmdQ: true,
+    cmdQuestion: true,
+    cooldown: 60,
+    minLength: 5,
+    autoDupe: true,
+    soundAlert: true
+  }
+};
+
+let pollsState = {
+  activePoll: null,
+  templates: []
+};
+
+// Play subtle synthesized notification chime for incoming questions
+function playQnANotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+}
+
+function setupQnAListeners() {
+  // Navigation & Action Buttons
+  const btnToggleListener = document.getElementById('btn-toggle-qna-listener');
+  const btnCopyObs = document.getElementById('btn-copy-qna-obs');
+  const btnCopyPrompter = document.getElementById('btn-copy-qna-prompter');
+  const btnOpenManual = document.getElementById('btn-open-manual-qna-modal');
+  const btnOpenSettings = document.getElementById('btn-open-qna-settings-modal');
+  const btnRefresh = document.getElementById('btn-refresh-qna');
+  const btnClearAnswered = document.getElementById('btn-clear-answered-qna');
+
+  // Search & Filter Tabs
+  const inputSearch = document.getElementById('input-qna-search');
+  const btnClearSearch = document.getElementById('btn-clear-qna-search');
+  const tabBtns = document.querySelectorAll('.qna-tab-btn');
+
+  // Manual Question Modal Elements
+  const manualModal = document.getElementById('manual-qna-modal');
+  const btnCloseManual = document.getElementById('btn-close-manual-qna-modal');
+  const btnCancelManual = document.getElementById('btn-cancel-manual-qna');
+  const btnSaveManual = document.getElementById('btn-save-manual-qna');
+  const inputManualUser = document.getElementById('input-manual-qna-user');
+  const inputManualText = document.getElementById('input-manual-qna-text');
+  const selectManualStatus = document.getElementById('select-manual-qna-status');
+
+  // Settings Modal Elements
+  const settingsModal = document.getElementById('qna-settings-modal');
+  const btnCloseSettings = document.getElementById('btn-close-qna-settings-modal');
+  const btnCancelSettings = document.getElementById('btn-cancel-qna-settings');
+  const btnSaveSettings = document.getElementById('btn-save-qna-settings');
+  const chkCmdFrage = document.getElementById('chk-qna-cmd-frage');
+  const chkCmdQ = document.getElementById('chk-qna-cmd-q');
+  const chkCmdQuestion = document.getElementById('chk-qna-cmd-question');
+  const inputCooldown = document.getElementById('input-qna-cooldown');
+  const inputMinLength = document.getElementById('input-qna-min-length');
+  const chkAutoDupe = document.getElementById('chk-qna-auto-dupe');
+  const chkSoundAlert = document.getElementById('chk-qna-sound-alert');
+
+  // Poll Creator Elements
+  const inputPollTitle = document.getElementById('input-poll-title');
+  const lblPollTitleCount = document.getElementById('lbl-poll-title-count');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+  const btnAddChoice = document.getElementById('btn-add-poll-choice');
+  const selectPollDuration = document.getElementById('select-poll-duration');
+  const selectPollChannelPoints = document.getElementById('select-poll-channel-points');
+  const btnStartPoll = document.getElementById('btn-start-twitch-poll');
+  const btnSaveTemplate = document.getElementById('btn-save-custom-poll-template');
+
+  // Auto-start Q&A listener on app launch
+  const targetChan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  ipcRenderer.invoke('qna:start-listener', targetChan).catch(() => {});
+
+  // Toggle Chat Listener Button
+  if (btnToggleListener) {
+    btnToggleListener.addEventListener('click', async () => {
+      qnaState.isListenerActive = !qnaState.isListenerActive;
+      if (qnaState.isListenerActive) {
+        const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        await ipcRenderer.invoke('qna:start-listener', chan);
+        btnToggleListener.className = 'btn btn-sm btn-primary';
+        btnToggleListener.innerHTML = '<span class="status-dot green"></span> <span>Listener: Aktiv</span>';
+        showToast('Twitch Chat-Listener für !frage gestartet!', 'success');
+      } else {
+        await ipcRenderer.invoke('qna:stop-listener');
+        btnToggleListener.className = 'btn btn-sm btn-secondary';
+        btnToggleListener.innerHTML = '<span class="status-dot grey"></span> <span>Listener: Pausiert</span>';
+        showToast('Twitch Chat-Listener pausiert.', 'info');
+      }
+    });
+  }
+
+  // Copy OBS Overlay Link
+  if (btnCopyObs) {
+    btnCopyObs.addEventListener('click', () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const obsUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?channel=${encodeURIComponent(chan)}&mode=overlay`;
+      navigator.clipboard.writeText(obsUrl);
+      showToast('OBS-Overlay Link in die Zwischenablage kopiert! 📺', 'success');
+    });
+  }
+
+  // Copy Prompter Link (Marvin Screen)
+  if (btnCopyPrompter) {
+    btnCopyPrompter.addEventListener('click', () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const prompterUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?channel=${encodeURIComponent(chan)}&mode=screen`;
+      navigator.clipboard.writeText(prompterUrl);
+      showToast('Prompter-Link für Marvins Monitor kopiert! 🖥️', 'success');
+    });
+  }
+
+  // Refresh Sync Button
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', async () => {
+      showToast('Synchronisiere Q&A & Umfragen...', 'info');
+      await loadQnAState();
+      showToast('Q&A & Umfragen erfolgreich synchronisiert! 🔄', 'success');
+    });
+  }
+
+  // Clear Answered Questions
+  if (btnClearAnswered) {
+    btnClearAnswered.addEventListener('click', async () => {
+      const answeredCount = qnaState.questions.filter(q => q.status === 'answered').length;
+      if (answeredCount === 0) {
+        showToast('Keine beantworteten Fragen zum Löschen vorhanden.', 'info');
+        return;
+      }
+      qnaState.questions = qnaState.questions.filter(q => q.status !== 'answered');
+      await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+      renderQnAQuestionsList();
+      showToast(`${answeredCount} beantwortete Frage(n) gelöscht.`, 'success');
+    });
+  }
+
+  // Search Input
+  if (inputSearch) {
+    inputSearch.addEventListener('input', (e) => {
+      qnaState.searchQuery = (e.target.value || '').trim().toLowerCase();
+      if (btnClearSearch) {
+        if (qnaState.searchQuery) {
+          btnClearSearch.classList.remove('hidden');
+        } else {
+          btnClearSearch.classList.add('hidden');
+        }
+      }
+      renderQnAQuestionsList();
+    });
+  }
+
+  if (btnClearSearch && inputSearch) {
+    btnClearSearch.addEventListener('click', () => {
+      inputSearch.value = '';
+      qnaState.searchQuery = '';
+      btnClearSearch.classList.add('hidden');
+      renderQnAQuestionsList();
+    });
+  }
+
+  // Filter Tabs
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      qnaState.currentFilter = btn.getAttribute('data-filter') || 'pending';
+      renderQnAQuestionsList();
+    });
+  });
+
+  // Manual Question Modal Open / Close / Save
+  if (btnOpenManual && manualModal) {
+    btnOpenManual.addEventListener('click', () => {
+      if (inputManualUser) inputManualUser.value = '';
+      if (inputManualText) inputManualText.value = '';
+      if (selectManualStatus) selectManualStatus.value = 'approved';
+      manualModal.classList.remove('hidden');
+      if (inputManualUser) inputManualUser.focus();
+    });
+  }
+
+  if (btnCloseManual && manualModal) {
+    btnCloseManual.addEventListener('click', () => manualModal.classList.add('hidden'));
+  }
+  if (btnCancelManual && manualModal) {
+    btnCancelManual.addEventListener('click', () => manualModal.classList.add('hidden'));
+  }
+
+  if (btnSaveManual && manualModal) {
+    btnSaveManual.addEventListener('click', async () => {
+      const uName = (inputManualUser ? inputManualUser.value.trim() : '') || 'Zuschauer';
+      const qText = inputManualText ? inputManualText.value.trim() : '';
+      const status = selectManualStatus ? selectManualStatus.value : 'approved';
+
+      if (!qText || qText.length < 3) {
+        showToast('Bitte gib einen Fragetext ein (mind. 3 Zeichen).', 'error');
+        return;
+      }
+
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const newQ = {
+        id: 'q_manual_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        login: uName.toLowerCase().replace('@', ''),
+        displayName: uName,
+        userColor: '#00f0ff',
+        userId: '',
+        isMod: false,
+        isSub: false,
+        badges: '',
+        question: qText,
+        timestamp: Date.now(),
+        status: status === 'on_air' ? 'on_air' : status,
+        channel: chan,
+        isManual: true
+      };
+
+      if (status === 'on_air') {
+        qnaState.activeQuestion = newQ;
+        await ipcRenderer.invoke('qna:set-active', newQ);
+      }
+
+      qnaState.questions.unshift(newQ);
+      await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+      manualModal.classList.add('hidden');
+      renderQnASpotlight();
+      renderQnAQuestionsList();
+      showToast('Frage erfolgreich erfasst! ➕', 'success');
+    });
+  }
+
+  // Settings Modal Open / Close / Save
+  if (btnOpenSettings && settingsModal) {
+    btnOpenSettings.addEventListener('click', () => {
+      if (chkCmdFrage) chkCmdFrage.checked = qnaState.settings.cmdFrage;
+      if (chkCmdQ) chkCmdQ.checked = qnaState.settings.cmdQ;
+      if (chkCmdQuestion) chkCmdQuestion.checked = qnaState.settings.cmdQuestion;
+      if (inputCooldown) inputCooldown.value = qnaState.settings.cooldown;
+      if (inputMinLength) inputMinLength.value = qnaState.settings.minLength;
+      if (chkAutoDupe) chkAutoDupe.checked = qnaState.settings.autoDupe;
+      if (chkSoundAlert) chkSoundAlert.checked = qnaState.settings.soundAlert;
+      settingsModal.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseSettings && settingsModal) {
+    btnCloseSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  }
+  if (btnCancelSettings && settingsModal) {
+    btnCancelSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  }
+
+  if (btnSaveSettings && settingsModal) {
+    btnSaveSettings.addEventListener('click', () => {
+      qnaState.settings = {
+        cmdFrage: chkCmdFrage ? chkCmdFrage.checked : true,
+        cmdQ: chkCmdQ ? chkCmdQ.checked : true,
+        cmdQuestion: chkCmdQuestion ? chkCmdQuestion.checked : true,
+        cooldown: inputCooldown ? (parseInt(inputCooldown.value, 10) || 60) : 60,
+        minLength: inputMinLength ? (parseInt(inputMinLength.value, 10) || 5) : 5,
+        autoDupe: chkAutoDupe ? chkAutoDupe.checked : true,
+        soundAlert: chkSoundAlert ? chkSoundAlert.checked : true
+      };
+      settingsModal.classList.add('hidden');
+      showToast('Q&A Filter-Einstellungen gespeichert! 💾', 'success');
+    });
+  }
+
+  // Poll Title Character Counter
+  if (inputPollTitle && lblPollTitleCount) {
+    inputPollTitle.addEventListener('input', () => {
+      const len = (inputPollTitle.value || '').length;
+      lblPollTitleCount.textContent = `${len}/60`;
+    });
+  }
+
+  // Add Choice Button in Poll Creator
+  if (btnAddChoice && pollChoicesContainer) {
+    btnAddChoice.addEventListener('click', () => {
+      const currentChoices = pollChoicesContainer.querySelectorAll('.poll-choice-row');
+      if (currentChoices.length >= 5) {
+        showToast('Maximal 5 Antwortmöglichkeiten erlaubt.', 'info');
+        return;
+      }
+      const nextNum = currentChoices.length + 1;
+      const row = document.createElement('div');
+      row.className = 'poll-choice-row';
+      row.innerHTML = `
+        <span class="choice-num">${nextNum}</span>
+        <input type="text" class="input-poll-choice" placeholder="Option ${nextNum} (max. 25 Z.)" maxlength="25">
+        <button class="btn-remove-choice" title="Option entfernen">✕</button>
+      `;
+      row.querySelector('.btn-remove-choice').addEventListener('click', () => {
+        row.remove();
+        updatePollChoiceNumbers();
+      });
+      pollChoicesContainer.appendChild(row);
+      const input = row.querySelector('.input-poll-choice');
+      if (input) input.focus();
+    });
+  }
+
+  // Preset Buttons Click
+  const presetBtns = document.querySelectorAll('.poll-preset-btn');
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pKey = btn.getAttribute('data-preset');
+      applyPollPreset(pKey);
+    });
+  });
+
+  // Start Twitch Poll Button
+  if (btnStartPoll) {
+    btnStartPoll.addEventListener('click', async () => {
+      await startTwitchPollFromForm();
+    });
+  }
+
+  // Save Custom Poll Template Button
+  if (btnSaveTemplate) {
+    btnSaveTemplate.addEventListener('click', async () => {
+      await saveCustomPollTemplateFromForm();
+    });
+  }
+
+  // Incoming Q&A Question from Twitch IRC Listener
+  ipcRenderer.on('qna:new-question', (event, questionObj) => {
+    handleNewQnAQuestion(questionObj);
+  });
+}
+
+function updatePollChoiceNumbers() {
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+  if (!pollChoicesContainer) return;
+  const rows = pollChoicesContainer.querySelectorAll('.poll-choice-row');
+  rows.forEach((r, idx) => {
+    const numSpan = r.querySelector('.choice-num');
+    if (numSpan) numSpan.textContent = String(idx + 1);
+  });
+}
+
+function applyPollPreset(presetKey) {
+  const inputPollTitle = document.getElementById('input-poll-title');
+  const lblPollTitleCount = document.getElementById('lbl-poll-title-count');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+  const selectPollDuration = document.getElementById('select-poll-duration');
+
+  if (!inputPollTitle || !pollChoicesContainer) return;
+
+  let title = '';
+  let choices = [];
+
+  if (presetKey === 'preset_setup_rating') {
+    title = 'Wie bewertet ihr das aktuelle Setup?';
+    choices = ['10/10 Perfekt 🔥', '8/10 Sehr gut 👍', '5/10 Geht so 🤔', '0/10 Ausleeren 💀'];
+  } else if (presetKey === 'preset_next_bowl') {
+    title = 'Welcher Kopf soll als nächstes geraucht werden?';
+    choices = ['Oblako Phunnel', 'Hookain LiT LiP', 'Vandenberg V1', 'Kaloud Samsaris'];
+  } else if (presetKey === 'preset_tobacco_direction') {
+    title = 'Welche Geschmacksrichtung soll in den Kopf?';
+    choices = ['Fruchtig / Süß 🍇', 'Cremig / Teigig 🍦', 'Frisch / Ice ❄️', 'Doppelapfel / Anis 🍏'];
+  } else if (presetKey === 'preset_coal_check') {
+    title = 'Kohle nachlegen oder neuer Kopf?';
+    choices = ['Neue Kohlen drauf! 🪵', 'Neuer Kopf muss her! 💨', 'Passt noch so 👍'];
+  }
+
+  inputPollTitle.value = title;
+  if (lblPollTitleCount) lblPollTitleCount.textContent = `${title.length}/60`;
+  if (selectPollDuration) selectPollDuration.value = '60';
+
+  pollChoicesContainer.innerHTML = '';
+  choices.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'poll-choice-row';
+    const canRemove = idx >= 2;
+    row.innerHTML = `
+      <span class="choice-num">${idx + 1}</span>
+      <input type="text" class="input-poll-choice" placeholder="Option ${idx + 1} (max. 25 Z.)" maxlength="25" value="${c}">
+      ${canRemove ? '<button class="btn-remove-choice" title="Option entfernen">✕</button>' : ''}
+    `;
+    if (canRemove) {
+      row.querySelector('.btn-remove-choice').addEventListener('click', () => {
+        row.remove();
+        updatePollChoiceNumbers();
+      });
+    }
+    pollChoicesContainer.appendChild(row);
+  });
+
+  showToast(`Vorlage „${title}“ geladen!`, 'info');
+}
+
+async function loadQnAState() {
+  try {
+    const qRes = await ipcRenderer.invoke('qna:get-questions');
+    if (qRes && qRes.success && Array.isArray(qRes.questions)) {
+      qnaState.questions = qRes.questions;
+    }
+
+    const activeRes = await ipcRenderer.invoke('qna:get-active');
+    if (activeRes && activeRes.success) {
+      if (activeRes.active) {
+        const match = qnaState.questions.find(x => x.id === activeRes.active.id);
+        if (match && match.status !== 'on_air') {
+          qnaState.activeQuestion = null;
+        } else {
+          qnaState.activeQuestion = activeRes.active;
+        }
+      } else {
+        qnaState.activeQuestion = null;
+      }
+    }
+
+    const tmplRes = await ipcRenderer.invoke('polls:get-templates');
+    if (tmplRes && tmplRes.success && Array.isArray(tmplRes.templates)) {
+      pollsState.templates = tmplRes.templates;
+    }
+
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const pollRes = await ipcRenderer.invoke('polls:get-active', chan);
+    if (pollRes && pollRes.success) {
+      pollsState.activePoll = pollRes.poll;
+    }
+
+    renderQnASpotlight();
+    renderQnAQuestionsList();
+    renderPollActiveSection(pollsState.activePoll);
+    renderSavedPollTemplates();
+  } catch(e) {
+    console.error('Error loading Q&A state:', e);
+  }
+}
+
+function handleNewQnAQuestion(q) {
+  if (!q || !q.question) return;
+
+  // Validate minimum length
+  if (q.question.length < qnaState.settings.minLength) return;
+
+  // Auto Duplicate Detection via Fuzzy Matching
+  let isDuplicate = false;
+  if (qnaState.settings.autoDupe && qnaState.questions.length > 0) {
+    for (const existing of qnaState.questions) {
+      if (existing.status === 'rejected' || existing.status === 'answered') continue;
+      const sim = similarityScore(q.question, existing.question);
+      if (sim >= 0.75) {
+        isDuplicate = true;
+        existing.duplicateCount = (existing.duplicateCount || 1) + 1;
+        existing.updatedAt = Date.now();
+        if (!existing.duplicateUsers) existing.duplicateUsers = [existing.displayName || existing.login];
+        if (!existing.duplicateUsers.includes(q.displayName || q.login)) {
+          existing.duplicateUsers.push(q.displayName || q.login);
+        }
+        break;
+      }
+    }
+  }
+
+  if (!isDuplicate) {
+    q.updatedAt = Date.now();
+    qnaState.questions.unshift(q);
+  }
+
+  // Play sound if enabled
+  if (qnaState.settings.soundAlert) {
+    playQnANotificationSound();
+  }
+
+  // Hub badge counter
+  if (currentActiveView !== 'view-qna') {
+    unreadQnACount++;
+    const badge = document.getElementById('hub-qna-unread');
+    if (badge) {
+      badge.classList.remove('hidden');
+      badge.textContent = String(unreadQnACount);
+    }
+  }
+
+  showToast(`🙋 Neue Frage von @${q.displayName || q.login}!`, 'info');
+
+  // Persist to local & Gist
+  ipcRenderer.invoke('qna:save-questions', qnaState.questions).catch(() => {});
+
+  renderQnAQuestionsList();
+}
+
+async function setQuestionStatus(questionId, newStatus) {
+  const q = qnaState.questions.find(item => item.id === questionId);
+  if (!q) return;
+
+  const oldStatus = q.status;
+  q.status = newStatus;
+  q.updatedAt = Date.now();
+
+  if (newStatus === 'on_air') {
+    qnaState.activeQuestion = q;
+    await ipcRenderer.invoke('qna:set-active', q);
+    showToast(`Frage von @${q.displayName || q.login} ist jetzt LIVE ON-AIR! 📺`, 'success');
+  } else if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
+    qnaState.activeQuestion = null;
+    await ipcRenderer.invoke('qna:set-active', null);
+  }
+
+  await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+  renderQnASpotlight();
+  renderQnAQuestionsList();
+}
+
+async function deleteQuestion(questionId) {
+  if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
+    qnaState.activeQuestion = null;
+    await ipcRenderer.invoke('qna:set-active', null);
+  }
+  qnaState.questions = qnaState.questions.filter(q => q.id !== questionId);
+  await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+  renderQnASpotlight();
+  renderQnAQuestionsList();
+  showToast('Frage gelöscht.', 'info');
+}
+
+function renderQnASpotlight() {
+  const container = document.getElementById('qna-spotlight-content');
+  const badge = document.getElementById('qna-on-air-badge');
+  if (!container) return;
+
+  const active = qnaState.activeQuestion;
+  if (!active || active.status !== 'on_air') {
+    if (badge) {
+      badge.className = 'qna-status-badge offline';
+      badge.innerHTML = '<span class="status-dot"></span> <span class="status-text">Keine aktiv</span>';
+    }
+    container.innerHTML = `
+      <div class="qna-spotlight-empty">
+        <span class="empty-icon">📭</span>
+        <p>Aktuell wird <strong>keine Frage</strong> im Stream eingeblendet.</p>
+        <span class="empty-hint">Wähle unten eine Frage aus und klicke auf <strong>„📺 Live schalten“</strong>, um sie auf Marvins Monitor und in OBS anzuzeigen.</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (badge) {
+    badge.className = 'qna-status-badge on-air';
+    badge.innerHTML = '<span class="status-dot green pulse"></span> <span class="status-text">LIVE AUF SCREEN</span>';
+  }
+
+  const userColor = active.userColor || '#00f0ff';
+  const timeStr = active.timestamp ? new Date(active.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  container.innerHTML = `
+    <div class="qna-spotlight-active">
+      <div class="qna-spotlight-user-row">
+        <div class="qna-user-pill">
+          <span class="qna-user-dot" style="background:${userColor}; box-shadow: 0 0 8px ${userColor};"></span>
+          <span style="color:${userColor};">@${active.displayName || active.login}</span>
+          ${active.isSub ? '<span class="badge-sub" title="Subscriber" style="background:#a855f7; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">SUB</span>' : ''}
+          ${active.isMod ? '<span class="badge-mod" title="Moderator" style="background:#10b981; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">MOD</span>' : ''}
+        </div>
+        <span class="qna-spotlight-time">Gestellt um ${timeStr} Uhr</span>
+      </div>
+
+      <div class="qna-spotlight-question">
+        „${escapeHtml(active.question)}“
+      </div>
+
+      <div class="qna-spotlight-actions">
+        <button id="btn-qna-off-air" class="btn btn-secondary btn-sm" title="Frage vom Bildschirm nehmen">
+          ⏹️ Vom Stream nehmen
+        </button>
+        <button id="btn-qna-mark-answered" class="btn btn-primary btn-sm" title="Frage als beantwortet abhaken">
+          ✔️ Als beantwortet abhaken
+        </button>
+        <button id="btn-qna-chat-ping" class="btn btn-secondary btn-sm" title="Dem Fragesteller im Twitch-Chat antworten">
+          💬 Im Twitch-Chat bestätigen
+        </button>
+      </div>
+    </div>
+  `;
+
+  const btnOffAir = document.getElementById('btn-qna-off-air');
+  const btnMarkAnswered = document.getElementById('btn-qna-mark-answered');
+  const btnChatPing = document.getElementById('btn-qna-chat-ping');
+
+  if (btnOffAir) {
+    btnOffAir.addEventListener('click', async () => {
+      await setQuestionStatus(active.id, 'approved');
+      showToast('Frage vom Stream genommen.', 'info');
+    });
+  }
+
+  if (btnMarkAnswered) {
+    btnMarkAnswered.addEventListener('click', async () => {
+      await setQuestionStatus(active.id, 'answered');
+      showToast('Frage als beantwortet abgehakt! ✔️', 'success');
+    });
+  }
+
+  if (btnChatPing) {
+    btnChatPing.addEventListener('click', async () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const pingMsg = `@${active.displayName || active.login} Deine Frage („${active.question}“) wurde live im Stream beantwortet! 💨`;
+      try {
+        await ipcRenderer.invoke('twitch:send-chat-message', { message: pingMsg, channel: chan });
+        showToast(`Antwort-Bestätigung an @${active.displayName || active.login} gesendet! 💬`, 'success');
+      } catch(e) {
+        showToast(`Chat-Ping Fehler: ${e.message}`, 'error');
+      }
+    });
+  }
+}
+
+function renderQnAQuestionsList() {
+  const container = document.getElementById('qna-questions-list');
+  if (!container) return;
+
+  // Update tab badge counters
+  const cPending = qnaState.questions.filter(q => q.status === 'pending').length;
+  const cApproved = qnaState.questions.filter(q => q.status === 'approved').length;
+  const cAnswered = qnaState.questions.filter(q => q.status === 'answered').length;
+  const cRejected = qnaState.questions.filter(q => q.status === 'rejected').length;
+  const cAll = qnaState.questions.length;
+
+  const elPending = document.getElementById('count-qna-pending');
+  const elApproved = document.getElementById('count-qna-approved');
+  const elAnswered = document.getElementById('count-qna-answered');
+  const elRejected = document.getElementById('count-qna-rejected');
+  const elAll = document.getElementById('count-qna-all');
+
+  if (elPending) elPending.textContent = String(cPending);
+  if (elApproved) elApproved.textContent = String(cApproved);
+  if (elAnswered) elAnswered.textContent = String(cAnswered);
+  if (elRejected) elRejected.textContent = String(cRejected);
+  if (elAll) elAll.textContent = String(cAll);
+
+  // Filter list
+  let filtered = qnaState.questions;
+  if (qnaState.currentFilter !== 'all') {
+    if (qnaState.currentFilter === 'approved') {
+      filtered = filtered.filter(q => q.status === 'approved' || q.status === 'on_air');
+    } else {
+      filtered = filtered.filter(q => q.status === qnaState.currentFilter);
+    }
+  }
+
+  // Search filter
+  if (qnaState.searchQuery) {
+    filtered = filtered.filter(q => {
+      const qText = (q.question || '').toLowerCase();
+      const uName = (q.displayName || q.login || '').toLowerCase();
+      return qText.includes(qnaState.searchQuery) || uName.includes(qnaState.searchQuery);
+    });
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="qna-list-empty">
+        <span class="empty-icon">💬</span>
+        <p>Keine Fragen in dieser Ansicht vorhanden.</p>
+        <span class="empty-hint">Zuschauer können im Chat <code>!frage Deine Frage hier</code> schreiben!</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  filtered.forEach(q => {
+    const card = document.createElement('div');
+    card.className = `qna-question-card status-${q.status}`;
+
+    const userColor = q.userColor || '#00f0ff';
+    const timeStr = q.timestamp ? formatTimeAgo(q.timestamp) : '';
+    const isDupe = (q.duplicateCount && q.duplicateCount > 1);
+    const dupeUsersStr = q.duplicateUsers ? q.duplicateUsers.join(', ') : '';
+
+    // Card top row
+    let topHtml = `
+      <div class="qna-card-top">
+        <div class="qna-user-pill">
+          <span class="qna-user-dot" style="background:${userColor};"></span>
+          <strong style="color:${userColor};">@${escapeHtml(q.displayName || q.login)}</strong>
+          ${q.isSub ? '<span style="background:#a855f7; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">SUB</span>' : ''}
+          ${q.isMod ? '<span style="background:#10b981; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">MOD</span>' : ''}
+          ${q.isManual ? '<span style="background:rgba(255,255,255,0.1); color:var(--text-secondary); font-size:0.65rem; padding:1px 5px; border-radius:4px;">MANUELL</span>' : ''}
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>` : ''}
+          <span class="qna-spotlight-time">${timeStr}</span>
+        </div>
+      </div>
+    `;
+
+    // Question body
+    let bodyHtml = `<div class="qna-card-text">„${escapeHtml(q.question)}“</div>`;
+
+    // Action buttons based on status
+    let actionsHtml = `<div class="qna-card-bottom"><div class="qna-card-actions">`;
+    if (q.status === 'pending') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-primary btn-act-approve" data-id="${q.id}">✅ Freigeben</button>
+        <button class="btn btn-xs btn-secondary btn-act-onair" data-id="${q.id}">📺 Live schalten</button>
+        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
+      `;
+    } else if (q.status === 'approved') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-primary btn-act-onair" data-id="${q.id}">📺 Live schalten</button>
+        <button class="btn btn-xs btn-secondary btn-act-answered" data-id="${q.id}">✔️ Beantwortet</button>
+        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
+      `;
+    } else if (q.status === 'on_air') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-primary btn-act-answered" data-id="${q.id}">✔️ Als beantwortet abhaken</button>
+        <button class="btn btn-xs btn-secondary btn-act-offair" data-id="${q.id}">⏹️ Vom Stream nehmen</button>
+      `;
+    } else if (q.status === 'answered') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Reaktivieren</button>
+      `;
+    } else if (q.status === 'rejected') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Wiederherstellen</button>
+      `;
+    }
+    actionsHtml += `
+      </div>
+      <button class="btn btn-xs btn-secondary btn-act-delete" data-id="${q.id}" title="Frage endgültig löschen">🗑️</button>
+    </div>`;
+
+    card.innerHTML = topHtml + bodyHtml + actionsHtml;
+
+    // Attach event listeners to card buttons
+    const btnApprove = card.querySelector('.btn-act-approve');
+    const btnOnAir = card.querySelector('.btn-act-onair');
+    const btnOffAir = card.querySelector('.btn-act-offair');
+    const btnAnswered = card.querySelector('.btn-act-answered');
+    const btnReject = card.querySelector('.btn-act-reject');
+    const btnDel = card.querySelector('.btn-act-delete');
+
+    if (btnApprove) btnApprove.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
+    if (btnOnAir) btnOnAir.addEventListener('click', () => setQuestionStatus(q.id, 'on_air'));
+    if (btnOffAir) btnOffAir.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
+    if (btnAnswered) btnAnswered.addEventListener('click', () => setQuestionStatus(q.id, 'answered'));
+    if (btnReject) btnReject.addEventListener('click', () => setQuestionStatus(q.id, 'rejected'));
+    if (btnDel) btnDel.addEventListener('click', () => deleteQuestion(q.id));
+
+    container.appendChild(card);
+  });
+}
+
+function formatTimeAgo(timestamp) {
+  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+  if (diffSec < 60) return 'gerade eben';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `vor ${diffMin} Min.`;
+  const diffHrs = Math.floor(diffMin / 60);
+  return `vor ${diffHrs} Std.`;
+}
+
+// Render Active Twitch Poll Monitor
+function renderPollActiveSection(poll) {
+  const container = document.getElementById('poll-live-content');
+  const indicator = document.getElementById('poll-live-indicator');
+  if (!container) return;
+
+  if (!poll || (poll.status !== 'ACTIVE' && poll.status !== 'active')) {
+    if (indicator) {
+      indicator.className = 'qna-status-badge offline';
+      indicator.innerHTML = '<span class="status-dot"></span> <span class="status-text">Keine aktiv</span>';
+    }
+    container.innerHTML = `
+      <div class="poll-empty-state">
+        <span class="empty-icon">🗳️</span>
+        <p>Aktuell läuft keine Umfrage im Twitch-Kanal.</p>
+        <span class="empty-hint">Wähle eine Schnell-Vorlage unten oder erstelle eine neue Abstimmung.</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (indicator) {
+    indicator.className = 'qna-status-badge live';
+    indicator.innerHTML = '<span class="status-dot red pulse"></span> <span class="status-text">LIVE AUF TWITCH</span>';
+  }
+
+  const choices = poll.choices || [];
+  let totalVotes = poll.total_votes || 0;
+  if (!totalVotes) {
+    totalVotes = choices.reduce((acc, c) => acc + (c.votes || 0), 0);
+  }
+
+  let choicesHtml = '<div class="poll-choice-bars">';
+  choices.forEach(c => {
+    const votes = c.votes || 0;
+    const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+    choicesHtml += `
+      <div class="poll-choice-bar-item">
+        <div class="poll-choice-bar-label">
+          <strong>${escapeHtml(c.title)}</strong>
+          <span>${votes} Stimmen (${pct}%)</span>
+        </div>
+        <div class="poll-choice-bar-track">
+          <div class="poll-choice-bar-fill" style="width:${pct}%;"></div>
+        </div>
+      </div>
+    `;
+  });
+  choicesHtml += '</div>';
+
+  container.innerHTML = `
+    <div class="poll-active-box">
+      <div class="poll-active-header">
+        <div class="poll-active-title">„${escapeHtml(poll.title)}“</div>
+      </div>
+
+      ${choicesHtml}
+
+      <div class="poll-active-footer">
+        <span class="poll-total-votes">Gesamt: ${totalVotes} Stimmen</span>
+        <div style="display:flex; gap:6px;">
+          <button id="btn-end-active-poll" class="btn btn-xs btn-secondary" title="Poll vorzeitig beenden">
+            ⏹️ Beenden
+          </button>
+          <button id="btn-share-poll-result" class="btn btn-xs btn-primary" title="Ergebnis im Twitch-Chat teilen">
+            📢 Im Chat teilen
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const btnEndPoll = document.getElementById('btn-end-active-poll');
+  const btnShareResult = document.getElementById('btn-share-poll-result');
+
+  if (btnEndPoll) {
+    btnEndPoll.addEventListener('click', async () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      try {
+        await ipcRenderer.invoke('polls:end', { pollId: poll.id, status: 'TERMINATED', channel: chan });
+        showToast('Twitch Poll wurde vorzeitig beendet.', 'success');
+        pollsState.activePoll = null;
+        renderPollActiveSection(null);
+      } catch(e) {
+        showToast(`Fehler beim Beenden: ${e.message}`, 'error');
+      }
+    });
+  }
+
+  if (btnShareResult) {
+    btnShareResult.addEventListener('click', async () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      let resultText = `📊 Umfrage-Ergebnis: „${poll.title}“ » `;
+      const parts = choices.map(c => {
+        const pct = totalVotes > 0 ? Math.round(((c.votes || 0) / totalVotes) * 100) : 0;
+        return `${c.title}: ${pct}% (${c.votes || 0})`;
+      });
+      resultText += parts.join(' | ');
+
+      try {
+        await ipcRenderer.invoke('twitch:send-chat-message', { message: resultText, channel: chan });
+        showToast('Umfrage-Ergebnis in den Chat gepostet! 📢', 'success');
+      } catch(e) {
+        showToast(`Fehler beim Senden: ${e.message}`, 'error');
+      }
+    });
+  }
+}
+
+async function startTwitchPollFromForm() {
+  const inputTitle = document.getElementById('input-poll-title');
+  const selectDuration = document.getElementById('select-poll-duration');
+  const selectPoints = document.getElementById('select-poll-channel-points');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+
+  if (!inputTitle || !pollChoicesContainer) return;
+
+  const title = (inputTitle.value || '').trim();
+  if (!title) {
+    showToast('Bitte gib einen Umfrage-Titel ein.', 'error');
+    return;
+  }
+
+  const choiceInputs = pollChoicesContainer.querySelectorAll('.input-poll-choice');
+  const choices = [];
+  choiceInputs.forEach(inp => {
+    const val = (inp.value || '').trim();
+    if (val) choices.push(val);
+  });
+
+  if (choices.length < 2) {
+    showToast('Eine Umfrage benötigt mindestens 2 Optionen.', 'error');
+    return;
+  }
+
+  const duration = selectDuration ? (parseInt(selectDuration.value, 10) || 60) : 60;
+  const channelPointsCost = selectPoints ? (parseInt(selectPoints.value, 10) || 0) : 0;
+  const channelPointsVoting = channelPointsCost > 0;
+
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+
+  showToast('Starte Twitch-Poll...', 'info');
+
+  try {
+    const res = await ipcRenderer.invoke('polls:create', {
+      title,
+      choices,
+      duration,
+      channelPointsVoting,
+      channelPointsPerVote: channelPointsCost,
+      channel: chan
+    });
+
+    if (res && res.success) {
+      pollsState.activePoll = res.poll;
+      renderPollActiveSection(res.poll);
+      showToast('🚀 Twitch-Umfrage erfolgreich gestartet!', 'success');
+    } else {
+      showToast(`Fehler: ${res && res.error ? res.error : 'Poll konnte nicht gestartet werden'}`, 'error');
+    }
+  } catch(e) {
+    showToast(`Fehler beim Starten: ${e.message}`, 'error');
+  }
+}
+
+async function saveCustomPollTemplateFromForm() {
+  const inputTitle = document.getElementById('input-poll-title');
+  const selectDuration = document.getElementById('select-poll-duration');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+
+  if (!inputTitle || !pollChoicesContainer) return;
+
+  const title = (inputTitle.value || '').trim();
+  if (!title) {
+    showToast('Bitte erst einen Titel eingeben.', 'error');
+    return;
+  }
+
+  const choiceInputs = pollChoicesContainer.querySelectorAll('.input-poll-choice');
+  const choices = [];
+  choiceInputs.forEach(inp => {
+    const val = (inp.value || '').trim();
+    if (val) choices.push(val);
+  });
+
+  if (choices.length < 2) {
+    showToast('Mindestens 2 Optionen für Vorlage erforderlich.', 'error');
+    return;
+  }
+
+  const duration = selectDuration ? (parseInt(selectDuration.value, 10) || 60) : 60;
+
+  const newTmpl = {
+    id: 'tmpl_' + Date.now(),
+    title,
+    choices,
+    duration,
+    isPreset: false
+  };
+
+  pollsState.templates.push(newTmpl);
+  await ipcRenderer.invoke('polls:save-templates', pollsState.templates);
+  renderSavedPollTemplates();
+  showToast(`Vorlage „${title}“ gespeichert! 💾`, 'success');
+}
+
+function renderSavedPollTemplates() {
+  const container = document.getElementById('poll-saved-templates-list');
+  if (!container) return;
+
+  const customTemplates = pollsState.templates.filter(t => !t.isPreset);
+  if (customTemplates.length === 0) {
+    container.innerHTML = `
+      <div style="color:var(--text-muted); font-size:0.8rem; text-align:center; padding:10px;">
+        Noch keine eigenen Vorlagen gespeichert.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  customTemplates.forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'poll-saved-item';
+    item.innerHTML = `
+      <div style="flex:1; min-width:0; padding-right:8px;">
+        <strong style="display:block; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(t.title)}</strong>
+        <span style="color:var(--text-muted); font-size:0.72rem;">${t.choices.length} Optionen • ${t.duration}s</span>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-xs btn-primary btn-load-tmpl" title="Vorlage in Ersteller laden">Laden ➔</button>
+        <button class="btn btn-xs btn-secondary btn-del-tmpl" title="Vorlage löschen">🗑️</button>
+      </div>
+    `;
+
+    item.querySelector('.btn-load-tmpl').addEventListener('click', () => {
+      const inputTitle = document.getElementById('input-poll-title');
+      const lblPollTitleCount = document.getElementById('lbl-poll-title-count');
+      const selectDuration = document.getElementById('select-poll-duration');
+      const pollChoicesContainer = document.getElementById('poll-choices-container');
+
+      if (inputTitle) inputTitle.value = t.title;
+      if (lblPollTitleCount) lblPollTitleCount.textContent = `${t.title.length}/60`;
+      if (selectDuration) selectDuration.value = String(t.duration || 60);
+
+      if (pollChoicesContainer) {
+        pollChoicesContainer.innerHTML = '';
+        t.choices.forEach((c, idx) => {
+          const row = document.createElement('div');
+          row.className = 'poll-choice-row';
+          const canRemove = idx >= 2;
+          row.innerHTML = `
+            <span class="choice-num">${idx + 1}</span>
+            <input type="text" class="input-poll-choice" placeholder="Option ${idx + 1}" maxlength="25" value="${escapeHtml(c)}">
+            ${canRemove ? '<button class="btn-remove-choice" title="Option entfernen">✕</button>' : ''}
+          `;
+          if (canRemove) {
+            row.querySelector('.btn-remove-choice').addEventListener('click', () => {
+              row.remove();
+              updatePollChoiceNumbers();
+            });
+          }
+          pollChoicesContainer.appendChild(row);
+        });
+      }
+      showToast(`Vorlage „${t.title}“ geladen!`, 'info');
+    });
+
+    item.querySelector('.btn-del-tmpl').addEventListener('click', async () => {
+      pollsState.templates = pollsState.templates.filter(x => x.id !== t.id);
+      await ipcRenderer.invoke('polls:save-templates', pollsState.templates);
+      renderSavedPollTemplates();
+      showToast('Vorlage gelöscht.', 'info');
+    });
+
+    container.appendChild(item);
+  });
+}
+

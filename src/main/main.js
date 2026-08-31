@@ -566,7 +566,7 @@ ipcMain.handle('qna:get-questions', async (event, channel) => {
 
 ipcMain.handle('qna:save-questions', async (event, questions) => {
   try {
-    supabaseService.saveAllQnAQuestions(questions).catch(() => {});
+    await supabaseService.saveAllQnAQuestions(questions);
     const saved = await dbService.saveQnAQuestions(questions);
     return { success: true, questions: saved };
   } catch(e) {

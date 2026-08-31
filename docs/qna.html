@@ -666,23 +666,19 @@
     </div>
   </div>
 
-  <!-- Supabase JS Client for Realtime -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
   <script>
-    const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
+    const SUPABASE_REST = 'https://gdaprclycouoxtffcuxb.supabase.co/rest/v1';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
 
-    let supabase = null;
-    try {
-      if (window.supabase) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      }
-    } catch(e) {}
+    const reqHeaders = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    };
 
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
-    // Default is 'screen' (Prompter), only 'overlay' switches to transparent HUD
     const isOverlay = (modeParam === 'overlay');
     const targetChannel = (urlParams.get('channel') || 'marved').toLowerCase().replace('#', '').trim();
     const isPersistent = urlParams.get('persistent') === '1';
@@ -714,57 +710,67 @@
       document.getElementById('view-screen-container').style.display = 'flex';
     }
 
+    // Direct REST API Sync (100% reliable, zero ad-blocker conflicts)
     async function syncAllData() {
-      if (!supabase) return;
+      try {
+        // 1. Fetch Questions
+        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&channel=eq.${encodeURIComponent(targetChannel)}&order=created_at.desc&t=${Date.now()}`, {
+          headers: reqHeaders
+        });
+        if (qRes.ok) {
+          const qData = await qRes.json();
+          if (Array.isArray(qData)) {
+            currentQuestions = qData.map(r => ({
+              id: r.id,
+              channel: r.channel,
+              login: r.login,
+              displayName: r.display_name,
+              userColor: r.user_color,
+              question: r.question,
+              status: r.status,
+              person: r.person || '',
+              timestamp: new Date(r.created_at).getTime()
+            }));
+            activeQuestion = currentQuestions.find(q => q.status === 'on_air') || null;
+          }
+        }
+      } catch(e) {
+        console.warn('Questions fetch error:', e);
+      }
 
       try {
-        const { data: qData } = await supabase
-          .from('qna_questions')
-          .select('*')
-          .eq('channel', targetChannel)
-          .order('created_at', { ascending: false });
-
-        if (qData) {
-          currentQuestions = qData.map(r => ({
-            id: r.id,
-            channel: r.channel,
-            login: r.login,
-            displayName: r.display_name,
-            userColor: r.user_color,
-            question: r.question,
-            status: r.status,
-            person: r.person || '',
-            timestamp: new Date(r.created_at).getTime()
-          }));
-          activeQuestion = currentQuestions.find(q => q.status === 'on_air') || null;
+        // 2. Fetch Settings
+        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?select=*&channel=eq.${encodeURIComponent(targetChannel)}&t=${Date.now()}`, {
+          headers: reqHeaders
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (Array.isArray(sData) && sData.length > 0) {
+            const s = sData[0];
+            qnaSettings.persons = (Array.isArray(s.persons) && s.persons.length > 0) ? s.persons : ['Marved', 'Hasty', 'Kai'];
+            qnaSettings.activePerson = s.active_person || qnaSettings.persons[0] || 'Marved';
+            qnaSettings.wheelEnabled = s.wheel_enabled !== false;
+            qnaSettings.displayDuration = s.display_duration || 10;
+          }
         }
-      } catch(e) {}
+      } catch(e) {
+        console.warn('Settings fetch error:', e);
+      }
 
       try {
-        const { data: sData } = await supabase
-          .from('qna_settings')
-          .select('*')
-          .eq('channel', targetChannel)
-          .maybeSingle();
-
-        if (sData) {
-          qnaSettings.persons = Array.isArray(sData.persons) ? sData.persons : ['Marved', 'Hasty', 'Kai'];
-          qnaSettings.activePerson = sData.active_person || qnaSettings.persons[0] || 'Marved';
-          qnaSettings.wheelEnabled = sData.wheel_enabled !== false;
-          qnaSettings.displayDuration = sData.display_duration || 10;
+        // 3. Fetch Bestrafungen
+        const bRes = await fetch(`${SUPABASE_REST}/bestrafungen?select=*&order=created_at.desc&t=${Date.now()}`, {
+          headers: reqHeaders
+        });
+        if (bRes.ok) {
+          const bData = await bRes.json();
+          if (Array.isArray(bData)) {
+            bestrafungen = bData;
+          }
         }
-      } catch(e) {}
-
-      try {
-        const { data: bData } = await supabase
-          .from('bestrafungen')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (bData) {
-          bestrafungen = bData;
-        }
-      } catch(e) {}
+      } catch(e) {
+        console.warn('Bestrafungen fetch error:', e);
+      }
 
       renderCurrentView();
     }
@@ -781,7 +787,7 @@
       const personsBar = document.getElementById('prompter-persons-bar');
       if (personsBar) {
         personsBar.innerHTML = qnaSettings.persons.map(p => {
-          const isActive = p === qnaSettings.activePerson;
+          const isActive = (p === qnaSettings.activePerson);
           const pLower = p.toLowerCase();
           const cls = (pLower === 'marved' || pLower === 'hasty' || pLower === 'kai') ? pLower : '';
           return `
@@ -795,13 +801,7 @@
           btn.addEventListener('click', async (e) => {
             const p = e.currentTarget.getAttribute('data-person');
             qnaSettings.activePerson = p;
-            await supabase.from('qna_settings').upsert({
-              channel: targetChannel,
-              persons: qnaSettings.persons,
-              active_person: p,
-              wheel_enabled: qnaSettings.wheelEnabled,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'channel' });
+            await saveSettingsRemote();
             renderScreenPrompter();
           });
         });
@@ -850,6 +850,23 @@
       }
     }
 
+    async function saveSettingsRemote() {
+      try {
+        await fetch(`${SUPABASE_REST}/qna_settings?on_conflict=channel`, {
+          method: 'POST',
+          headers: Object.assign({}, reqHeaders, { 'Prefer': 'resolution=merge-duplicates' }),
+          body: JSON.stringify({
+            channel: targetChannel,
+            persons: qnaSettings.persons,
+            active_person: qnaSettings.activePerson,
+            wheel_enabled: qnaSettings.wheelEnabled,
+            display_duration: qnaSettings.displayDuration,
+            updated_at: new Date().toISOString()
+          })
+        });
+      } catch(e) {}
+    }
+
     const btnDraw = document.getElementById('btn-prompter-draw');
     if (btnDraw) {
       btnDraw.addEventListener('click', async () => {
@@ -857,15 +874,25 @@
         if (pool.length === 0) return;
         const randomQ = pool[Math.floor(Math.random() * pool.length)];
 
-        await supabase.from('qna_questions').update({ status: 'approved' }).eq('channel', targetChannel).eq('status', 'on_air');
+        // Reset previous on_air
+        await fetch(`${SUPABASE_REST}/qna_questions?channel=eq.${encodeURIComponent(targetChannel)}&status=eq.on_air`, {
+          method: 'PATCH',
+          headers: reqHeaders,
+          body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
+        });
 
-        await supabase.from('qna_questions').update({
-          status: 'on_air',
-          person: qnaSettings.activePerson,
-          updated_at: new Date().toISOString()
-        }).eq('id', randomQ.id);
+        // Set chosen to on_air
+        await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(randomQ.id)}`, {
+          method: 'PATCH',
+          headers: reqHeaders,
+          body: JSON.stringify({
+            status: 'on_air',
+            person: qnaSettings.activePerson,
+            updated_at: new Date().toISOString()
+          })
+        });
 
-        syncAllData();
+        await syncAllData();
       });
     }
 
@@ -875,16 +902,16 @@
         const idx = qnaSettings.persons.indexOf(qnaSettings.activePerson);
         const next = qnaSettings.persons[(idx + 1) % qnaSettings.persons.length];
         qnaSettings.activePerson = next;
+
         if (activeQuestion) {
-          await supabase.from('qna_questions').update({ person: next }).eq('id', activeQuestion.id);
+          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ person: next, updated_at: new Date().toISOString() })
+          });
         }
-        await supabase.from('qna_settings').upsert({
-          channel: targetChannel,
-          persons: qnaSettings.persons,
-          active_person: next,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'channel' });
-        syncAllData();
+        await saveSettingsRemote();
+        await syncAllData();
       });
     }
 
@@ -892,8 +919,12 @@
     if (btnAnswered) {
       btnAnswered.addEventListener('click', async () => {
         if (!activeQuestion) return;
-        await supabase.from('qna_questions').update({ status: 'answered', updated_at: new Date().toISOString() }).eq('id', activeQuestion.id);
-        cycleToNextPerson();
+        await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
+          method: 'PATCH',
+          headers: reqHeaders,
+          body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
+        });
+        await cycleToNextPerson();
       });
     }
 
@@ -904,8 +935,12 @@
         if (qnaSettings.wheelEnabled) {
           openSpinningWheel();
         } else {
-          await supabase.from('qna_questions').update({ status: 'answered', updated_at: new Date().toISOString() }).eq('id', activeQuestion.id);
-          cycleToNextPerson();
+          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
+          });
+          await cycleToNextPerson();
         }
       });
     }
@@ -914,13 +949,7 @@
     if (prompterWheelToggle) {
       prompterWheelToggle.addEventListener('change', async (e) => {
         qnaSettings.wheelEnabled = !!e.target.checked;
-        await supabase.from('qna_settings').upsert({
-          channel: targetChannel,
-          persons: qnaSettings.persons,
-          active_person: qnaSettings.activePerson,
-          wheel_enabled: qnaSettings.wheelEnabled,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'channel' });
+        await saveSettingsRemote();
         renderScreenPrompter();
       });
     }
@@ -929,13 +958,8 @@
       const idx = qnaSettings.persons.indexOf(qnaSettings.activePerson);
       const next = qnaSettings.persons[(idx + 1) % qnaSettings.persons.length];
       qnaSettings.activePerson = next;
-      await supabase.from('qna_settings').upsert({
-        channel: targetChannel,
-        persons: qnaSettings.persons,
-        active_person: next,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'channel' });
-      syncAllData();
+      await saveSettingsRemote();
+      await syncAllData();
     }
 
     function renderOBSOverlay() {
@@ -1101,13 +1125,21 @@
     if (btnWheelDone) {
       btnWheelDone.addEventListener('click', async () => {
         if (selectedBestrafung) {
-          await supabase.from('bestrafungen').update({ status: 'erledigt' }).eq('id', selectedBestrafung.id);
+          await fetch(`${SUPABASE_REST}/bestrafungen?id=eq.${encodeURIComponent(selectedBestrafung.id)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ status: 'erledigt' })
+          });
         }
         if (activeQuestion) {
-          await supabase.from('qna_questions').update({ status: 'answered' }).eq('id', activeQuestion.id);
+          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
+          });
         }
         document.getElementById('wheel-modal').classList.remove('active');
-        cycleToNextPerson();
+        await cycleToNextPerson();
       });
     }
 
@@ -1115,7 +1147,11 @@
     if (btnWheelSpinAgain) {
       btnWheelSpinAgain.addEventListener('click', async () => {
         if (selectedBestrafung) {
-          await supabase.from('bestrafungen').update({ status: 'erledigt' }).eq('id', selectedBestrafung.id);
+          await fetch(`${SUPABASE_REST}/bestrafungen?id=eq.${encodeURIComponent(selectedBestrafung.id)}`, {
+            method: 'PATCH',
+            headers: reqHeaders,
+            body: JSON.stringify({ status: 'erledigt' })
+          });
         }
         document.getElementById('wheel-winner-card').classList.remove('show');
         await syncAllData();
@@ -1133,17 +1169,8 @@
         .replace(/'/g, '&#039;');
     }
 
-    if (supabase) {
-      supabase
-        .channel('public:all-qna')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_questions' }, () => syncAllData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_settings' }, () => syncAllData())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bestrafungen' }, () => syncAllData())
-        .subscribe();
-    }
-
     syncAllData();
-    setInterval(syncAllData, 3000);
+    setInterval(syncAllData, 2000);
   </script>
 </body>
 </html>

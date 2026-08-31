@@ -2,48 +2,54 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>ShishaWG Live Q&A Stream Overlay & Prompter</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>ShishaWG Fragenrunde & Streamer Prompter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
     body {
-      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       margin: 0;
       color: #ffffff;
       user-select: none;
+      background: #090a0f;
     }
 
-    /* MODE 1: OBS OVERLAY */
+    /* =========================================================
+       MODE 1: OBS OVERLAY
+       ========================================================= */
     body.mode-overlay {
-      background: transparent;
+      background: transparent !important;
       overflow: hidden;
       width: 100vw;
       height: 100vh;
       display: flex;
       align-items: flex-end;
       justify-content: center;
-      padding-bottom: 32px;
+      padding-bottom: 36px;
     }
 
     .obs-hud-card {
       width: 100%;
-      max-width: 860px;
+      max-width: 820px;
       margin: 0 24px;
-      border-radius: 24px;
-      border: 1px solid rgba(168, 85, 247, 0.4);
-      background: linear-gradient(135deg, rgba(35, 12, 77, 0.96) 0%, rgba(15, 20, 70, 0.96) 50%, rgba(10, 15, 45, 0.96) 100%);
+      border-radius: 20px;
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      background: linear-gradient(135deg, rgba(23, 15, 45, 0.96) 0%, rgba(13, 17, 38, 0.96) 100%);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      padding: 24px 32px 20px 32px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(168, 85, 247, 0.25);
+      padding: 22px 30px 18px 30px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(139, 92, 246, 0.2);
       position: relative;
       overflow: hidden;
       opacity: 0;
-      transform: translateY(40px);
-      transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      transform: translateY(35px);
+      transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
       pointer-events: none;
     }
 
@@ -56,42 +62,40 @@
     .obs-person-badge-wrapper {
       display: flex;
       justify-content: center;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .obs-person-badge {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 16px;
+      padding: 4px 14px;
       border-radius: 20px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.5px;
       text-transform: uppercase;
-      background: rgba(168, 85, 247, 0.2);
-      border: 1px solid rgba(168, 85, 247, 0.5);
-      color: #d8b4fe;
-      box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+      background: rgba(139, 92, 246, 0.2);
+      border: 1px solid rgba(139, 92, 246, 0.5);
+      color: #c4b5fd;
     }
 
     .obs-person-badge .pulse-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #c084fc;
-      box-shadow: 0 0 8px #c084fc;
+      background: #a78bfa;
+      box-shadow: 0 0 8px #a78bfa;
       animation: pulse 1.5s infinite;
     }
 
     .obs-question-text {
-      font-size: 26px;
-      font-weight: 800;
+      font-size: 24px;
+      font-weight: 700;
       line-height: 1.35;
       text-align: center;
       color: #ffffff;
-      margin-bottom: 10px;
-      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      margin-bottom: 8px;
       word-break: break-word;
     }
 
@@ -99,333 +103,330 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 8px;
-      font-size: 14px;
-      color: rgba(255, 255, 255, 0.7);
-      margin-bottom: 16px;
+      gap: 6px;
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 14px;
     }
 
     .obs-author-name {
-      color: #00f0ff;
+      color: #38bdf8;
       font-weight: 700;
     }
 
     .obs-timer-track {
       width: 100%;
-      height: 5px;
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 3px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 2px;
       overflow: hidden;
     }
 
     .obs-timer-fill {
       height: 100%;
-      background: linear-gradient(90deg, #00f0ff, #a855f7);
-      border-radius: 3px;
+      background: linear-gradient(90deg, #38bdf8, #8b5cf6);
+      border-radius: 2px;
       width: 100%;
       transition: width 1s linear;
     }
 
-    /* MODE 2: STREAMER PROMPTER */
+    /* =========================================================
+       MODE 2: STREAMER FRONTEND / PROMPTER (Base44 1:1 Design)
+       ========================================================= */
     body.mode-screen {
-      background: #080c16;
+      background: #090a0f;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
-      padding: 24px 32px;
       overflow-y: auto;
     }
 
-    .screen-header {
+    /* Top Navbar */
+    .streamer-navbar {
+      height: 60px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      background: #0d0f17;
       display: flex;
+      align-items: center;
       justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      padding-bottom: 16px;
-      margin-bottom: 24px;
+      padding: 0 28px;
     }
 
-    .screen-title-group {
+    .streamer-brand {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      font-size: 17px;
+      font-weight: 800;
+      color: #ffffff;
     }
 
-    .screen-logo-badge {
-      width: 38px;
-      height: 38px;
-      border-radius: 10px;
-      background: rgba(0, 240, 255, 0.15);
-      border: 1px solid rgba(0, 240, 255, 0.3);
+    .streamer-brand-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: #7c3aed;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
+      font-size: 16px;
+      box-shadow: 0 0 12px rgba(124, 58, 237, 0.5);
     }
 
-    .screen-title {
-      font-size: 24px;
-      font-weight: 800;
-      color: #ffffff;
-      letter-spacing: -0.5px;
-    }
-
-    .screen-header-controls {
+    .streamer-nav-controls {
       display: flex;
       align-items: center;
       gap: 16px;
     }
 
-    .wheel-switch-label {
+    .wheel-toggle-btn {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 700;
       background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       padding: 6px 14px;
       border-radius: 20px;
-    }
-
-    .persons-selector-bar {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 28px;
-      flex-wrap: wrap;
-    }
-
-    .person-btn {
-      padding: 10px 22px;
-      border-radius: 30px;
-      font-size: 15px;
-      font-weight: 800;
-      border: 2px solid transparent;
-      background: rgba(255, 255, 255, 0.05);
-      color: rgba(255, 255, 255, 0.6);
+      font-size: 12px;
+      font-weight: 700;
+      color: #e2e8f0;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .person-btn:hover {
-      color: #ffffff;
-      background: rgba(255, 255, 255, 0.1);
-      transform: translateY(-2px);
+    .wheel-toggle-btn input {
+      cursor: pointer;
+      accent-color: #8b5cf6;
     }
 
-    .person-btn.active {
-      transform: scale(1.08);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    }
-
-    .person-btn.marved.active {
-      border-color: #3b82f6;
-      background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.2));
-      color: #93c5fd;
-      box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
-    }
-
-    .person-btn.hasty.active {
-      border-color: #22c55e;
-      background: linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.2));
-      color: #86efac;
-      box-shadow: 0 0 20px rgba(34, 197, 94, 0.35);
-    }
-
-    .person-btn.kai.active {
-      border-color: #f97316;
-      background: linear-gradient(135deg, rgba(249, 115, 22, 0.3), rgba(234, 88, 12, 0.2));
-      color: #fdba74;
-      box-shadow: 0 0 20px rgba(249, 115, 22, 0.35);
-    }
-
-    .person-btn.custom.active {
-      border-color: #a855f7;
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.2));
-      color: #d8b4fe;
-      box-shadow: 0 0 20px rgba(168, 85, 247, 0.35);
-    }
-
-    .draw-action-container {
+    /* Centered Stage Layout */
+    .streamer-stage-container {
+      flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-bottom: 28px;
+      justify-content: center;
+      max-width: 800px;
+      width: 100%;
+      margin: 40px auto;
+      padding: 0 24px;
+      text-align: center;
     }
 
-    .btn-draw-random {
-      height: 64px;
-      padding: 0 42px;
-      border-radius: 20px;
-      font-size: 19px;
-      font-weight: 900;
-      color: #ffffff;
-      background: linear-gradient(135deg, #00f0ff 0%, #0070f3 50%, #7928ca 100%);
-      border: none;
-      cursor: pointer;
-      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.3);
+    /* Oval Streamer Selector */
+    .streamer-pills-box {
+      background: #121520;
+      border: 1px solid #1e2433;
+      padding: 4px;
+      border-radius: 999px;
       display: inline-flex;
       align-items: center;
-      gap: 12px;
+      gap: 4px;
+      margin-bottom: 28px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .streamer-pill {
+      padding: 6px 20px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      background: transparent;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .streamer-pill:hover {
+      color: #cbd5e1;
+    }
+
+    .streamer-pill.active {
+      background: #1e3a8a;
+      color: #93c5fd;
+      box-shadow: 0 0 14px rgba(30, 58, 138, 0.5);
+    }
+
+    .streamer-pill.hasty.active {
+      background: #14532d;
+      color: #86efac;
+      box-shadow: 0 0 14px rgba(20, 83, 45, 0.5);
+    }
+
+    .streamer-pill.kai.active {
+      background: #7c2d12;
+      color: #fdba74;
+      box-shadow: 0 0 14px rgba(124, 45, 18, 0.5);
+    }
+
+    /* Big Purple Draw Button */
+    .btn-big-draw {
+      background: #7c3aed;
+      color: #ffffff;
+      font-size: 18px;
+      font-weight: 800;
+      padding: 16px 38px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 6px 25px rgba(124, 58, 237, 0.45);
       transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .btn-draw-random:hover:not(:disabled) {
-      transform: scale(1.05);
-      box-shadow: 0 14px 40px rgba(0, 240, 255, 0.45);
+    .btn-big-draw:hover:not(:disabled) {
+      background: #6d28d9;
+      transform: scale(1.04);
+      box-shadow: 0 8px 30px rgba(124, 58, 237, 0.6);
     }
 
-    .btn-draw-random:disabled {
-      opacity: 0.4;
+    .btn-big-draw:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .btn-big-draw:disabled {
+      opacity: 0.35;
       cursor: not-allowed;
       box-shadow: none;
     }
 
-    .open-questions-counter {
+    .questions-count-label {
       font-size: 14px;
-      color: #94a3b8;
-      margin-top: 10px;
+      color: #64748b;
+      margin-top: 14px;
       font-weight: 600;
     }
 
-    .drawn-question-card {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
-      border: 2px solid rgba(0, 240, 255, 0.4);
-      border-radius: 24px;
-      padding: 36px 40px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 240, 255, 0.15);
-      margin-bottom: 36px;
+    /* Empty State */
+    .prompter-empty-card {
+      margin-top: 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .prompter-empty-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .prompter-empty-subtitle {
+      font-size: 14px;
+      color: #64748b;
+    }
+
+    /* Drawn Question Card */
+    .prompter-drawn-card {
+      background: #0f121d;
+      border: 2px solid #7c3aed;
+      border-radius: 20px;
+      padding: 32px 36px;
+      width: 100%;
+      margin-top: 28px;
+      box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6), 0 0 30px rgba(124, 58, 237, 0.25);
       position: relative;
     }
 
-    .drawn-person-badge-btn {
-      background: rgba(0, 240, 255, 0.15);
-      border: 1px solid rgba(0, 240, 255, 0.4);
-      color: #00f0ff;
-      padding: 6px 18px;
+    .prompter-drawn-badge-btn {
+      background: rgba(124, 58, 237, 0.15);
+      border: 1px solid rgba(124, 58, 237, 0.4);
+      color: #c4b5fd;
+      padding: 5px 16px;
       border-radius: 20px;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       transition: all 0.15s;
     }
 
-    .drawn-question-body {
-      text-align: center;
-      margin: 20px 0;
+    .prompter-drawn-badge-btn:hover {
+      background: rgba(124, 58, 237, 0.25);
+      transform: scale(1.05);
     }
 
-    .drawn-question-text {
-      font-size: 32px;
+    .prompter-drawn-text {
+      font-size: 28px;
       font-weight: 800;
       line-height: 1.4;
       color: #ffffff;
+      margin: 18px 0 10px 0;
       word-break: break-word;
     }
 
-    .drawn-question-author {
-      font-size: 16px;
-      color: #94a3b8;
-      margin-top: 12px;
+    .prompter-drawn-author {
+      font-size: 15px;
+      color: #64748b;
       font-weight: 600;
+      margin-bottom: 24px;
     }
 
-    .question-decision-buttons {
+    .prompter-drawn-author span {
+      color: #38bdf8;
+    }
+
+    .prompter-action-row {
       display: flex;
       justify-content: center;
-      gap: 16px;
-      margin-top: 24px;
+      gap: 14px;
     }
 
-    .btn-decision {
-      padding: 12px 28px;
-      border-radius: 14px;
-      font-size: 16px;
+    .btn-action-done {
+      background: #10b981;
+      color: #ffffff;
+      font-size: 15px;
       font-weight: 800;
+      padding: 12px 26px;
+      border-radius: 12px;
+      border: none;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      border: 1px solid transparent;
       transition: all 0.15s;
     }
 
-    .btn-decision.answered {
-      background: rgba(34, 197, 94, 0.2);
-      border-color: rgba(34, 197, 94, 0.5);
-      color: #4ade80;
-    }
-
-    .btn-decision.answered:hover {
-      background: rgba(34, 197, 94, 0.35);
+    .btn-action-done:hover {
+      background: #059669;
       transform: scale(1.04);
     }
 
-    .btn-decision.unanswered {
-      background: rgba(239, 68, 68, 0.2);
-      border-color: rgba(239, 68, 68, 0.5);
-      color: #f87171;
-    }
-
-    .btn-decision.unanswered:hover {
-      background: rgba(239, 68, 68, 0.35);
-      transform: scale(1.04);
-    }
-
-    .prompter-queue-section {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 20px 24px;
-    }
-
-    .prompter-queue-title {
-      font-size: 14px;
-      font-weight: 800;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      margin-bottom: 14px;
-    }
-
-    .prompter-queue-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .prompter-queue-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 10px 14px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
+    .btn-action-skip {
+      background: #ef4444;
+      color: #ffffff;
       font-size: 15px;
+      font-weight: 800;
+      padding: 12px 26px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s;
     }
 
-    .prompter-queue-item .author {
-      color: #00f0ff;
-      font-weight: 700;
-      margin-right: 12px;
-      white-space: nowrap;
+    .btn-action-skip:hover {
+      background: #dc2626;
+      transform: scale(1.04);
     }
 
-    /* SPINNING WHEEL MODAL */
+    /* =========================================================
+       SPINNING WHEEL MODAL (GLÜCKSRAD)
+       ========================================================= */
     .wheel-modal-backdrop {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      background: rgba(8, 12, 22, 0.94);
+      background: rgba(6, 8, 14, 0.95);
       backdrop-filter: blur(14px);
       -webkit-backdrop-filter: blur(14px);
       display: flex;
@@ -454,7 +455,7 @@
       width: 100%;
       height: 100%;
       border-radius: 50%;
-      box-shadow: 0 0 50px rgba(168, 85, 247, 0.4), 0 0 100px rgba(0, 240, 255, 0.2);
+      box-shadow: 0 0 50px rgba(124, 58, 237, 0.4), 0 0 100px rgba(56, 189, 248, 0.2);
     }
 
     .wheel-pointer {
@@ -480,8 +481,8 @@
       height: 70px;
       border-radius: 50%;
       background: #0f172a;
-      border: 4px solid #00f0ff;
-      box-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+      border: 4px solid #38bdf8;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -491,12 +492,12 @@
     }
 
     .wheel-winner-card {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
-      border: 2px solid #a855f7;
+      background: #0f121d;
+      border: 2px solid #7c3aed;
       border-radius: 20px;
       padding: 24px 36px;
       text-align: center;
-      box-shadow: 0 20px 50px rgba(168, 85, 247, 0.4);
+      box-shadow: 0 20px 50px rgba(124, 58, 237, 0.4);
       max-width: 500px;
       width: 90%;
       margin-top: 16px;
@@ -512,7 +513,7 @@
       font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: #c084fc;
+      color: #c4b5fd;
       font-weight: 800;
       margin-bottom: 6px;
     }
@@ -543,7 +544,7 @@
 </head>
 <body class="mode-overlay">
 
-  <!-- VIEW: OBS STREAM OVERLAY -->
+  <!-- OBS OVERLAY -->
   <div id="view-overlay-container" style="display:none; width:100%; height:100%; display:flex; align-items:flex-end; justify-content:center;">
     <div class="obs-hud-card" id="obs-hud-card">
       <div class="obs-person-badge-wrapper" id="obs-badge-wrapper">
@@ -568,76 +569,73 @@
     </div>
   </div>
 
-  <!-- VIEW: STREAMER PROMPTER -->
+  <!-- STREAMER FRONTEND / PROMPTER (Base44 Exact) -->
   <div id="view-screen-container" style="display:none;">
-    <div class="screen-header">
-      <div class="screen-title-group">
-        <div class="screen-logo-badge">💨</div>
-        <h1 class="screen-title">ShishaWG Fragenrunde</h1>
+    <!-- Navbar -->
+    <header class="streamer-navbar">
+      <div class="streamer-brand">
+        <div class="streamer-brand-icon">✨</div>
+        <span>Fragenrunde</span>
       </div>
 
-      <div class="screen-header-controls">
-        <label class="wheel-switch-label" title="Bestrafungsrad aktivieren/deaktivieren">
+      <div class="streamer-nav-controls">
+        <label class="wheel-toggle-btn" title="Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
           <input type="checkbox" id="prompter-wheel-toggle" checked>
           <span>🎡 Bestrafungsrad</span>
         </label>
-        <span id="prompter-live-indicator" style="font-size:12px; color:#4ade80; font-weight:700;">🟢 Live-Sync</span>
       </div>
-    </div>
+    </header>
 
-    <!-- Persons Selector Bar -->
-    <div class="persons-selector-bar" id="prompter-persons-bar"></div>
+    <!-- Main Center Stage -->
+    <main class="streamer-stage-container">
+      <!-- Person Switcher Pills -->
+      <div class="streamer-pills-box" id="prompter-persons-bar">
+        <!-- Dynamic: [Marved] [Hasty] [Kai] -->
+      </div>
 
-    <!-- Draw Action -->
-    <div class="draw-action-container">
-      <button id="btn-prompter-draw" class="btn-draw-random">
-        <span>🔀</span> Random Frage ziehen
-      </button>
-      <span class="open-questions-counter" id="prompter-open-counter">0 offene Fragen</span>
-    </div>
+      <!-- Big Purple Draw Button -->
+      <div>
+        <button id="btn-prompter-draw" class="btn-big-draw">
+          <span>🔀</span> Random Frage ziehen
+        </button>
+      </div>
 
-    <!-- Active Drawn Question Box -->
-    <div id="prompter-spotlight-box" class="drawn-question-card" style="display:none;">
-      <div style="display:flex; justify-content:center;">
-        <button id="btn-prompter-cycle-person" class="drawn-person-badge-btn" title="Klicken zum Wechseln der Person">
+      <div class="questions-count-label" id="prompter-open-counter">
+        0 offene Fragen übrig
+      </div>
+
+      <!-- Empty State Card -->
+      <div id="prompter-no-active-box" class="prompter-empty-card">
+        <div class="prompter-empty-title">Keine offenen Fragen mehr vorhanden.</div>
+        <div class="prompter-empty-subtitle" id="prompter-total-count-sub">Alle Fragen wurden beantwortet!</div>
+      </div>
+
+      <!-- Active Drawn Question Card -->
+      <div id="prompter-spotlight-box" class="prompter-drawn-card" style="display:none;">
+        <button id="btn-prompter-cycle-person" class="prompter-drawn-badge-btn" title="Person wechseln">
           <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
           <span id="prompter-active-person-label">Marved ist dran</span>
           <span style="opacity:0.6; font-size:11px;">↻</span>
         </button>
-      </div>
 
-      <div class="drawn-question-body">
-        <div class="drawn-question-text" id="prompter-active-question-text">
+        <div class="prompter-drawn-text" id="prompter-active-question-text">
           „Fragetext...“
         </div>
-        <div class="drawn-question-author" id="prompter-active-author">
-          von @Viewer
+
+        <div class="prompter-drawn-author" id="prompter-active-author">
+          von <span id="prompter-author-val">@Viewer</span>
+        </div>
+
+        <div class="prompter-action-row">
+          <button id="btn-prompter-answered" class="btn-action-done">
+            <span>✅</span> Beantwortet
+          </button>
+          <button id="btn-prompter-unanswered" class="btn-action-skip">
+            <span id="unanswered-btn-icon">❌</span> <span id="unanswered-btn-label">Nicht beantwortet</span>
+          </button>
         </div>
       </div>
-
-      <div class="question-decision-buttons">
-        <button id="btn-prompter-answered" class="btn-decision answered">
-          <span>✅</span> Beantwortet
-        </button>
-        <button id="btn-prompter-unanswered" class="btn-decision unanswered">
-          <span id="unanswered-btn-icon">❌</span> <span id="unanswered-btn-label">Nicht beantwortet</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Empty State -->
-    <div id="prompter-no-active-box" style="text-align:center; padding:40px; color:#64748b;">
-      <p style="font-size:18px; font-weight:700;">Keine Frage aktiv.</p>
-      <p style="font-size:14px; margin-top:6px;">Klicke oben auf <strong>„Random Frage ziehen 🔀“</strong> oder schalte Fragen im Mod-Tool frei.</p>
-    </div>
-
-    <!-- Upcoming Queue -->
-    <div class="prompter-queue-section">
-      <div class="prompter-queue-title">📋 Nächste Fragen in der Warteschlange:</div>
-      <div class="prompter-queue-list" id="prompter-queue-list">
-        <div style="color:#64748b; font-size:13px; text-align:center; padding:10px;">Keine weiteren Fragen vorhanden.</div>
-      </div>
-    </div>
+    </main>
   </div>
 
   <!-- SPINNING WHEEL MODAL -->
@@ -650,7 +648,7 @@
       </div>
     </div>
 
-    <button id="btn-spin-wheel" class="btn-draw-random" style="height:54px; font-size:17px;">
+    <button id="btn-spin-wheel" class="btn-big-draw" style="font-size:16px; padding:12px 30px;">
       🎲 JETZT DREHEN!
     </button>
 
@@ -658,10 +656,10 @@
       <div class="wheel-winner-title">🔥 Bestrafung gezogen:</div>
       <div class="wheel-winner-text" id="wheel-winner-text">10 Liegestütze</div>
       <div class="wheel-winner-actions">
-        <button id="btn-wheel-done" class="btn-decision answered" style="font-size:14px; padding:10px 20px;">
+        <button id="btn-wheel-done" class="btn-action-done" style="font-size:14px; padding:10px 20px;">
           ✅ Erledigt &amp; Weiter
         </button>
-        <button id="btn-wheel-spin-again" class="btn-decision unanswered" style="font-size:14px; padding:10px 20px;">
+        <button id="btn-wheel-spin-again" class="btn-action-skip" style="font-size:14px; padding:10px 20px;">
           🔄 Nochmal drehen
         </button>
       </div>
@@ -704,7 +702,6 @@
     let wheelAngle = 0;
     let selectedBestrafung = null;
 
-    // Set initial view mode
     if (mode === 'screen') {
       document.body.className = 'mode-screen';
       document.getElementById('view-overlay-container').style.display = 'none';
@@ -715,11 +712,9 @@
       document.getElementById('view-screen-container').style.display = 'none';
     }
 
-    // --- DATA SYNC ---
     async function syncAllData() {
       if (!supabase) return;
 
-      // 1. Fetch Questions
       try {
         const { data: qData } = await supabase
           .from('qna_questions')
@@ -743,7 +738,6 @@
         }
       } catch(e) {}
 
-      // 2. Fetch Settings
       try {
         const { data: sData } = await supabase
           .from('qna_settings')
@@ -759,7 +753,6 @@
         }
       } catch(e) {}
 
-      // 3. Fetch Bestrafungen
       try {
         const { data: bData } = await supabase
           .from('bestrafungen')
@@ -782,23 +775,21 @@
       }
     }
 
-    // --- SCREEN PROMPTER RENDERING ---
     function renderScreenPrompter() {
-      // 1. Persons Bar
       const personsBar = document.getElementById('prompter-persons-bar');
       if (personsBar) {
         personsBar.innerHTML = qnaSettings.persons.map(p => {
           const isActive = p === qnaSettings.activePerson;
           const pLower = p.toLowerCase();
-          const cls = (pLower === 'marved' || pLower === 'hasty' || pLower === 'kai') ? pLower : 'custom';
+          const cls = (pLower === 'marved' || pLower === 'hasty' || pLower === 'kai') ? pLower : '';
           return `
-            <button class="person-btn ${cls} ${isActive ? 'active' : ''}" data-person="${escapeHtml(p)}">
+            <button class="streamer-pill ${cls} ${isActive ? 'active' : ''}" data-person="${escapeHtml(p)}">
               ${escapeHtml(p)}
             </button>
           `;
         }).join('');
 
-        personsBar.querySelectorAll('.person-btn').forEach(btn => {
+        personsBar.querySelectorAll('.streamer-pill').forEach(btn => {
           btn.addEventListener('click', async (e) => {
             const p = e.currentTarget.getAttribute('data-person');
             qnaSettings.activePerson = p;
@@ -814,7 +805,6 @@
         });
       }
 
-      // 2. Wheel Toggle in Header
       const wheelToggle = document.getElementById('prompter-wheel-toggle');
       if (wheelToggle) {
         wheelToggle.checked = qnaSettings.wheelEnabled;
@@ -826,15 +816,17 @@
         unBtnLabel.textContent = qnaSettings.wheelEnabled ? 'Nicht beantwortet (Rad)' : 'Überspringen';
       }
 
-      // 3. Open Questions Counter
       const openCount = currentQuestions.filter(q => q.status === 'approved' || q.status === 'pending').length;
       const counterEl = document.getElementById('prompter-open-counter');
-      if (counterEl) counterEl.textContent = `${openCount} offene Frage(n)`;
+      if (counterEl) counterEl.textContent = `${openCount} offene Fragen übrig`;
 
       const btnDraw = document.getElementById('btn-prompter-draw');
       if (btnDraw) btnDraw.disabled = (openCount === 0);
 
-      // 4. Spotlight Card
+      const totalCount = currentQuestions.length;
+      const subCounter = document.getElementById('prompter-total-count-sub');
+      if (subCounter) subCounter.textContent = `Alle ${totalCount} Fragen wurden beantwortet!`;
+
       const spotBox = document.getElementById('prompter-spotlight-box');
       const noActiveBox = document.getElementById('prompter-no-active-box');
 
@@ -848,31 +840,14 @@
         const qText = document.getElementById('prompter-active-question-text');
         if (qText) qText.textContent = `„${activeQuestion.question}“`;
 
-        const qAuthor = document.getElementById('prompter-active-author');
-        if (qAuthor) qAuthor.textContent = `von @${activeQuestion.displayName || activeQuestion.login}`;
+        const authorVal = document.getElementById('prompter-author-val');
+        if (authorVal) authorVal.textContent = `@${activeQuestion.displayName || activeQuestion.login}`;
       } else {
         if (spotBox) spotBox.style.display = 'none';
-        if (noActiveBox) noActiveBox.style.display = 'block';
-      }
-
-      // 5. Upcoming Queue
-      const queueList = document.getElementById('prompter-queue-list');
-      if (queueList) {
-        const upcoming = currentQuestions.filter(q => (q.status === 'approved' || q.status === 'pending') && (!activeQuestion || q.id !== activeQuestion.id));
-        if (upcoming.length === 0) {
-          queueList.innerHTML = '<div style="color:#64748b; font-size:13px; text-align:center; padding:10px;">Keine weiteren Fragen in der Warteschlange.</div>';
-        } else {
-          queueList.innerHTML = upcoming.slice(0, 5).map(q => `
-            <div class="prompter-queue-item">
-              <span class="author">@${escapeHtml(q.displayName || q.login)}:</span>
-              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(q.question)}</span>
-            </div>
-          `).join('');
-        }
+        if (noActiveBox) noActiveBox.style.display = 'flex';
       }
     }
 
-    // --- PROMPTER USER ACTIONS ---
     const btnDraw = document.getElementById('btn-prompter-draw');
     if (btnDraw) {
       btnDraw.addEventListener('click', async () => {
@@ -880,10 +855,8 @@
         if (pool.length === 0) return;
         const randomQ = pool[Math.floor(Math.random() * pool.length)];
 
-        // Reset all on_air to approved
         await supabase.from('qna_questions').update({ status: 'approved' }).eq('channel', targetChannel).eq('status', 'on_air');
 
-        // Set selected to on_air with assigned person
         await supabase.from('qna_questions').update({
           status: 'on_air',
           person: qnaSettings.activePerson,
@@ -894,7 +867,6 @@
       });
     }
 
-    // Cycle Person on badge click
     const btnCycle = document.getElementById('btn-prompter-cycle-person');
     if (btnCycle) {
       btnCycle.addEventListener('click', async () => {
@@ -914,7 +886,6 @@
       });
     }
 
-    // Answered Action
     const btnAnswered = document.getElementById('btn-prompter-answered');
     if (btnAnswered) {
       btnAnswered.addEventListener('click', async () => {
@@ -924,7 +895,6 @@
       });
     }
 
-    // Unanswered / Skip Action
     const btnUnanswered = document.getElementById('btn-prompter-unanswered');
     if (btnUnanswered) {
       btnUnanswered.addEventListener('click', async () => {
@@ -938,7 +908,6 @@
       });
     }
 
-    // Wheel Toggle Switch Event
     const prompterWheelToggle = document.getElementById('prompter-wheel-toggle');
     if (prompterWheelToggle) {
       prompterWheelToggle.addEventListener('change', async (e) => {
@@ -967,7 +936,6 @@
       syncAllData();
     }
 
-    // --- OBS OVERLAY RENDERING ---
     function renderOBSOverlay() {
       const card = document.getElementById('obs-hud-card');
       if (!card) return;
@@ -994,7 +962,6 @@
 
         card.classList.add('visible');
 
-        // Start Countdown Timer Bar
         const fillEl = document.getElementById('obs-timer-fill');
         if (fillEl) fillEl.style.width = '100%';
 
@@ -1018,7 +985,6 @@
       }
     }
 
-    // --- GLÜCKSRAD (SPINNING WHEEL) ENGINE ---
     const wheelColors = ['#f43f5e', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16'];
 
     function openSpinningWheel() {
@@ -1058,13 +1024,12 @@
         ctx.fill();
         ctx.stroke();
 
-        // Draw text
         ctx.save();
         ctx.translate(centerX, centerY);
         ctx.rotate(angle + arcSize / 2);
         ctx.textAlign = 'right';
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 16px Outfit, sans-serif';
+        ctx.font = 'bold 16px Inter, sans-serif';
         ctx.shadowColor = 'rgba(0,0,0,0.8)';
         ctx.shadowBlur = 6;
         
@@ -1087,11 +1052,9 @@
       const numSegments = openBestrafungen.length;
       const arcSize = (2 * Math.PI) / numSegments;
 
-      // Random winning index
       const winningIndex = Math.floor(Math.random() * numSegments);
       selectedBestrafung = openBestrafungen[winningIndex];
 
-      // Target angle calculations (stopping top at 3 * PI / 2)
       const targetSegmentAngle = winningIndex * arcSize + arcSize / 2;
       const totalSpins = 5 + Math.random() * 3;
       const totalRotation = totalSpins * 2 * Math.PI + (1.5 * Math.PI - targetSegmentAngle);
@@ -1103,7 +1066,6 @@
       function animateSpin(currentTime) {
         const elapsed = currentTime - startTime;
         const progress = Math.min(elapsed / duration, 1);
-        // Ease-out cubic deceleration
         const easeOut = 1 - Math.pow(1 - progress, 3);
 
         wheelAngle = startAngle + totalRotation * easeOut;
@@ -1128,7 +1090,6 @@
       if (winnerCard) winnerCard.classList.add('show');
     }
 
-    // Wheel Modal Action Buttons
     const btnSpin = document.getElementById('btn-spin-wheel');
     const hubSpin = document.getElementById('wheel-center-hub');
     if (btnSpin) btnSpin.addEventListener('click', spinWheel);
@@ -1170,7 +1131,6 @@
         .replace(/'/g, '&#039;');
     }
 
-    // --- REALTIME SUBSCRIPTIONS ---
     if (supabase) {
       supabase
         .channel('public:all-qna')
@@ -1181,7 +1141,7 @@
     }
 
     syncAllData();
-    setInterval(syncAllData, 4000);
+    setInterval(syncAllData, 3000);
   </script>
 </body>
 </html>

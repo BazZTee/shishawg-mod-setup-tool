@@ -574,6 +574,15 @@ ipcMain.handle('qna:save-questions', async (event, questions) => {
   }
 });
 
+ipcMain.handle('qna:upsert-question', async (event, question) => {
+  try {
+    await supabaseService.upsertQnAQuestion(question);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('qna:get-active', async (event, channel) => {
   try {
     const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');

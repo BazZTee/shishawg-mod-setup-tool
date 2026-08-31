@@ -100,6 +100,7 @@ class SupabaseService {
         isMod: r.is_mod,
         question: r.question,
         status: r.status,
+        answeredBy: r.answered_by || null,
         duplicateCount: r.duplicate_count || 1,
         duplicateUsers: r.duplicate_users || [],
         timestamp: new Date(r.created_at).getTime(),
@@ -124,6 +125,7 @@ class SupabaseService {
         is_mod: !!q.isMod,
         question: q.question || '',
         status: q.status || 'pending',
+        answered_by: q.answeredBy || null,
         duplicate_count: q.duplicateCount || 1,
         duplicate_users: q.duplicateUsers || [],
         updated_at: new Date(q.updatedAt || Date.now()).toISOString()
@@ -159,6 +161,7 @@ class SupabaseService {
         is_mod: !!q.isMod,
         question: q.question || '',
         status: q.status || 'pending',
+        answered_by: q.answeredBy || null,
         duplicate_count: q.duplicateCount || 1,
         duplicate_users: q.duplicateUsers || [],
         created_at: new Date(q.timestamp || Date.now()).toISOString(),
@@ -535,6 +538,7 @@ class SupabaseService {
         id: r.id,
         name: r.name,
         status: r.status,
+        executedBy: r.executed_by || null,
         timestamp: new Date(r.created_at).getTime()
       }));
     } catch(err) {
@@ -551,6 +555,7 @@ class SupabaseService {
           id: b.id || ('pen_' + Date.now()),
           name: b.name || '',
           status: b.status || 'offen',
+          executed_by: b.executedBy || null,
           created_at: new Date(b.timestamp || Date.now()).toISOString()
         }, { onConflict: 'id' })
         .select();
@@ -562,11 +567,14 @@ class SupabaseService {
     }
   }
 
-  async updateBestrafungStatus(id, status) {
+  async updateBestrafungStatus(id, status, executedBy = null) {
     try {
+      const payload = { status };
+      if (executedBy) payload.executed_by = executedBy;
+
       const { data, error } = await this.client
         .from('bestrafungen')
-        .update({ status })
+        .update(payload)
         .eq('id', id)
         .select();
       if (error) throw error;

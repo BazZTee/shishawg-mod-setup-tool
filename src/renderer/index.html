@@ -716,7 +716,6 @@
             <button id="btn-open-manual-reward-modal" class="btn btn-primary btn-sm font-bold" title="Gesicherten Adresslink für Kohle-Stücke oder Spezial-Gewinne erstellen">
               ➕ Belohnung / Adresslink erstellen
             </button>
-            <button id="btn-open-telegram-config" class="btn btn-secondary btn-sm" title="Telegram-Bot Einstellungen anpassen">⚙️ Telegram-Bot</button>
             <button id="btn-reset-giveaway" class="btn btn-secondary btn-sm" title="Aktuelles Giveaway zurücksetzen">🔄 Zurücksetzen</button>
           </div>
         </div>
@@ -1858,41 +1857,6 @@
           <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
             <button id="btn-cancel-mod-profile" class="btn btn-secondary">Abbrechen</button>
             <button id="btn-save-mod-profile" class="btn btn-primary">💾 Speichern</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Telegram Bot Config Modal -->
-    <div id="telegram-config-modal" class="modal-overlay hidden">
-      <div class="modal-card" style="max-width: 480px;">
-        <div class="modal-header">
-          <h3>⚙️ Telegram-Bot Einstellungen</h3>
-          <button id="btn-close-telegram-config-modal" class="btn-icon">✕</button>
-        </div>
-        <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
-          <p style="font-size:0.85rem; color:var(--text-secondary); line-height:1.45;">
-            Hinterlege hier die Telegram-Bot Zugangsdaten, um Gewinner-Adressen nach eurer Mod-Prüfung mit 1-Klick direkt an Marvin zu übermitteln:
-          </p>
-          <div class="form-group">
-            <label style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Telegram Bot Token:</label>
-            <input type="password" id="input-telegram-bot-token" placeholder="z. B. 123456789:ABCdefGhIJKlmNoPQRstuVWXyz" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px;">
-          </div>
-          <div class="form-group">
-            <label style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Ziel Chat-ID (Marvin oder Gruppe):</label>
-            <input type="text" id="input-telegram-chat-id" placeholder="z. B. 12345678 oder -100123456789" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px;">
-          </div>
-          <div class="form-group">
-            <label style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Gewinner-Adressformular Basis-URL:</label>
-            <input type="text" id="input-giveaway-claim-url" placeholder="https://bazztee.github.io/shishawg-mod-setup-tool/claim.html" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px;">
-            <small style="color:var(--text-muted); font-size:0.75rem; margin-top:3px; display:block;">Standard: GitHub Pages Claim-Portal (oder eigener Link / Telegram-Bot Link).</small>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-            <button id="btn-test-telegram-bot" class="btn btn-secondary btn-sm">🔔 Test senden</button>
-            <div style="display:flex; gap:8px;">
-              <button id="btn-cancel-telegram-config" class="btn btn-secondary">Abbrechen</button>
-              <button id="btn-save-telegram-config" class="btn btn-primary">💾 Speichern</button>
-            </div>
           </div>
         </div>
       </div>

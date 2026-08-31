@@ -4780,17 +4780,6 @@ const btnFinishGiveaway = document.getElementById('btn-finish-giveaway');
 const winnersHistoryTbody = document.getElementById('winners-history-tbody');
 const btnRefreshWinnersHistory = document.getElementById('btn-refresh-winners-history');
 
-// Telegram Config Modal Elements
-const btnOpenTelegramConfig = document.getElementById('btn-open-telegram-config');
-const telegramConfigModal = document.getElementById('telegram-config-modal');
-const btnCloseTelegramConfigModal = document.getElementById('btn-close-telegram-config-modal');
-const btnCancelTelegramConfig = document.getElementById('btn-cancel-telegram-config');
-const btnSaveTelegramConfig = document.getElementById('btn-save-telegram-config');
-const btnTestTelegramBot = document.getElementById('btn-test-telegram-bot');
-const inputTelegramBotToken = document.getElementById('input-telegram-bot-token');
-const inputTelegramChatId = document.getElementById('input-telegram-chat-id');
-const inputGiveawayClaimUrl = document.getElementById('input-giveaway-claim-url');
-
 const KNOWN_BOTS = ['nightbot', 'streamelements', 'moobot', 'wizebot', 'fossabot', 'marvedbot', 'bot', 'soundbot', 'chatterino', 'streamlabs'];
 
 function isParticipantExcluded(participant) {
@@ -5495,7 +5484,6 @@ function setupGiveawaysListeners() {
           showToast('🚀 Gewinner & Adresse erfolgreich an Marvin (Telegram) übermittelt!', 'success');
         } else {
           showToast(`Telegram-Fehler: ${res && res.error ? res.error : 'Übertragung fehlgeschlagen'}`, 'error');
-          if (telegramConfigModal) telegramConfigModal.classList.remove('hidden');
         }
       } catch(e) {
         showToast('Telegram-Fehler: ' + e.message, 'error');
@@ -5554,56 +5542,6 @@ function setupGiveawaysListeners() {
       updateGiveawayStatus('offline');
       await loadGiveawayWinnersHistory();
       showToast('✨ Giveaway erfolgreich archiviert! Bereit für die nächste Runde.', 'success');
-    });
-  }
-
-  // Telegram Config Modal
-  if (btnOpenTelegramConfig && telegramConfigModal) {
-    btnOpenTelegramConfig.addEventListener('click', async () => {
-      const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
-      if (cfg) {
-        if (inputTelegramBotToken) inputTelegramBotToken.value = cfg.botToken || '';
-        if (inputTelegramChatId) inputTelegramChatId.value = cfg.chatId || '';
-        if (inputGiveawayClaimUrl) inputGiveawayClaimUrl.value = cfg.claimUrl || '';
-      }
-      telegramConfigModal.classList.remove('hidden');
-    });
-  }
-
-  if (btnCloseTelegramConfigModal && telegramConfigModal) {
-    btnCloseTelegramConfigModal.addEventListener('click', () => telegramConfigModal.classList.add('hidden'));
-  }
-  if (btnCancelTelegramConfig && telegramConfigModal) {
-    btnCancelTelegramConfig.addEventListener('click', () => telegramConfigModal.classList.add('hidden'));
-  }
-
-  if (btnSaveTelegramConfig && telegramConfigModal) {
-    btnSaveTelegramConfig.addEventListener('click', async () => {
-      const botToken = inputTelegramBotToken ? inputTelegramBotToken.value.trim() : '';
-      const chatId = inputTelegramChatId ? inputTelegramChatId.value.trim() : '';
-      const claimUrl = inputGiveawayClaimUrl ? inputGiveawayClaimUrl.value.trim() : '';
-      await ipcRenderer.invoke('giveaway:save-telegram-config', { botToken, chatId, claimUrl });
-      telegramConfigModal.classList.add('hidden');
-      showToast('Einstellungen gespeichert & synchronisiert!', 'success');
-    });
-  }
-
-  if (btnTestTelegramBot) {
-    btnTestTelegramBot.addEventListener('click', async () => {
-      const botToken = inputTelegramBotToken ? inputTelegramBotToken.value.trim() : '';
-      const chatId = inputTelegramChatId ? inputTelegramChatId.value.trim() : '';
-      if (!botToken || !chatId) {
-        showToast('Bitte erst Token und Chat-ID eingeben', 'error');
-        return;
-      }
-      showToast('Sende Test-Nachricht an Telegram...', 'info');
-      const testText = `🔔 <b>ShishaWG Mod Tool - Test-Nachricht</b>\nTelegram-Bot erfolgreich verbunden! 🚀`;
-      const res = await ipcRenderer.invoke('giveaway:send-telegram', { text: testText, botToken, chatId });
-      if (res && res.success) {
-        showToast('✅ Test-Nachricht erfolgreich an Telegram gesendet!', 'success');
-      } else {
-        showToast(`❌ Fehler: ${res && res.error ? res.error : 'Ungültiger Token oder Chat-ID'}`, 'error');
-      }
     });
   }
 

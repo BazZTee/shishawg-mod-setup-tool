@@ -718,11 +718,25 @@ ipcMain.handle('giveaway:delete-winner', async (event, id) => {
 
 ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId }) => {
   try {
-    const cfg = await dbService.getTelegramConfig();
-    const token = botToken || cfg.botToken || store.get('telegram_bot_token', '');
-    const chat = chatId || cfg.chatId || store.get('telegram_chat_id', '');
+    const activeProfileId = store.get('active_profile_id', 'prof_shishawg');
+    const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+    const activeProf = profiles.find(p => p.id === activeProfileId) || profiles[0];
+    const chan = activeProf?.targetChannel || (twitchService ? twitchService.targetChannel : 'marved');
+
+    let remoteCfg = null;
+    if (supabaseService) {
+      try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
+    }
+    if (!remoteCfg && dbService) {
+      try { remoteCfg = await dbService.getTelegramConfig(); } catch(e) {}
+    }
+
+    const profTg = activeProf?.telegram || {};
+    const token = botToken || profTg.botToken || remoteCfg?.botToken || store.get('telegram_bot_token', '');
+    const chat = chatId || profTg.chatId || remoteCfg?.chatId || store.get('telegram_chat_id', '');
+
     if (!token || !chat) {
-      return { success: false, error: 'Telegram Bot Token oder Chat-ID nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
+      return { success: false, error: 'Telegram Bot Token oder Chat-ID fehlt. Bitte im Streamer-Profil hinterlegen.' };
     }
     return await dbService.sendTelegramMessage(text, token, chat);
   } catch(e) {
@@ -730,22 +744,25 @@ ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId 
   }
 });
 
-ipcMain.handle('giveaway:save-telegram-config', async (event, { botToken, chatId, claimUrl }) => {
-  const cleanToken = (botToken || '').trim();
-  const cleanChat = (chatId || '').trim();
-  const cleanClaimUrl = (claimUrl || '').trim();
-  store.set('telegram_bot_token', cleanToken);
-  store.set('telegram_chat_id', cleanChat);
-  store.set('giveaway_claim_url', cleanClaimUrl);
-  await dbService.saveTelegramConfig({ botToken: cleanToken, chatId: cleanChat, claimUrl: cleanClaimUrl });
-  return { success: true };
-});
-
 ipcMain.handle('giveaway:get-telegram-config', async () => {
-  const cfg = await dbService.getTelegramConfig();
-  const botToken = cfg.botToken || store.get('telegram_bot_token', '');
-  const chatId = cfg.chatId || store.get('telegram_chat_id', '');
-  const claimUrl = cfg.claimUrl || store.get('giveaway_claim_url', '');
+  const activeProfileId = store.get('active_profile_id', 'prof_shishawg');
+  const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+  const activeProf = profiles.find(p => p.id === activeProfileId) || profiles[0];
+  const chan = activeProf?.targetChannel || (twitchService ? twitchService.targetChannel : 'marved');
+
+  let remoteCfg = null;
+  if (supabaseService) {
+    try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
+  }
+  if (!remoteCfg && dbService) {
+    try { remoteCfg = await dbService.getTelegramConfig(); } catch(e) {}
+  }
+
+  const profTg = activeProf?.telegram || {};
+  const botToken = profTg.botToken || remoteCfg?.botToken || store.get('telegram_bot_token', '');
+  const chatId = profTg.chatId || remoteCfg?.chatId || store.get('telegram_chat_id', '');
+  const claimUrl = profTg.claimUrl || remoteCfg?.claimUrl || store.get('giveaway_claim_url', 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html');
+
   return { botToken, chatId, claimUrl };
 });
 

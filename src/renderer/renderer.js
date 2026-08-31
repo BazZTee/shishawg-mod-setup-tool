@@ -322,6 +322,8 @@ function setupHubNavigation() {
 }
 
 // Check Live Stream Status
+let wasStreamLiveBefore = false;
+
 async function checkLiveStreamStatus() {
   if (!streamStatusText || !streamStatusDot) return;
   const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
@@ -329,6 +331,7 @@ async function checkLiveStreamStatus() {
   try {
     const res = await ipcRenderer.invoke('twitch:check-stream-status', channel);
     if (res && res.live) {
+      wasStreamLiveBefore = true;
       streamStatusDot.className = 'status-indicator-dot red pulse';
       const viewers = res.viewer_count !== undefined ? ` (${res.viewer_count.toLocaleString('de-DE')} 👁️)` : '';
       const game = res.game_name ? ` • ${res.game_name}` : '';
@@ -337,6 +340,16 @@ async function checkLiveStreamStatus() {
         streamStatusPill.title = `Live: ${res.title || 'Stream'}\nSpiel: ${res.game_name || '-'}\nZuschauer: ${res.viewer_count || 0}`;
       }
     } else {
+      if (wasStreamLiveBefore) {
+        // Stream just went offline! Auto-archive any active smoking head session
+        wasStreamLiveBefore = false;
+        if (typeof statsState !== 'undefined' && statsState.isRunning && statsState.sessionElapsedSeconds >= 120 && statsState.activeSetup && statsState.activeSetup.tobacco) {
+          autoArchiveFinishedSession(statsState.activeSetup, statsState.sessionElapsedSeconds, statsState.coalRotations, statsState.sessionStartTime);
+          resetActiveTimer();
+          showToast('Stream ist offline gegangen: Aktiver Kopf wurde automatisch archiviert! 🏁', 'info');
+        }
+      }
+
       streamStatusDot.className = 'status-indicator-dot grey';
       streamStatusText.textContent = `#${channel}: Offline`;
       if (streamStatusPill) {
@@ -7250,27 +7263,20 @@ function updateStatsTimerTick() {
   const coalSecs = statsState.coalElapsedSeconds;
   const progressBar = document.getElementById('bar-coal-progress');
   const lblPhaseText = document.getElementById('lbl-timer-phase-text');
-  const lblPhaseCountdown = document.getElementById('lbl-timer-phase-countdown');
 
   let pct = 0;
   if (coalSecs < 420) {
     // 0 - 7 Min: Anrauchen
     pct = (coalSecs / 1800) * 100;
     if (lblPhaseText) lblPhaseText.textContent = 'Phase 1: Anrauchen 🔥';
-    const remain = Math.max(0, 1800 - coalSecs);
-    if (lblPhaseCountdown) lblPhaseCountdown.textContent = `${formatCoalClock(remain)} bis Kohle drehen`;
   } else if (coalSecs < 1800) {
     // 7 - 30 Min: Kohle brennt gut
     pct = (coalSecs / 1800) * 100;
     if (lblPhaseText) lblPhaseText.textContent = 'Phase 2: Kohle brennt optimal 💨';
-    const remain = Math.max(0, 1800 - coalSecs);
-    if (lblPhaseCountdown) lblPhaseCountdown.textContent = `${formatCoalClock(remain)} bis Kohle drehen`;
   } else if (coalSecs < 3600) {
     // 30 - 60 Min: Kohle 2. Hälfte / Neue Kohlen
     pct = 50 + ((coalSecs - 1800) / 1800) * 50;
-    if (lblPhaseText) lblPhaseText.textContent = 'Phase 3: 2. Hälfte • Zeit zum Wenden / Neue Kohlen 🪵';
-    const remain = Math.max(0, 3600 - coalSecs);
-    if (lblPhaseCountdown) lblPhaseCountdown.textContent = `${formatCoalClock(remain)} bis neue Kohlen`;
+    if (lblPhaseText) lblPhaseText.textContent = 'Phase 3: Zeit zum Wenden / Neue Kohlen 🪵';
     if (coalSecs === 1800 && statsState.lastAlertPhase !== 'rotate') {
       statsState.lastAlertPhase = 'rotate';
       playCoalAlertSound();
@@ -7279,8 +7285,7 @@ function updateStatsTimerTick() {
   } else {
     // > 60 Min: Ende / Neuer Kopf
     pct = 100;
-    if (lblPhaseText) lblPhaseText.textContent = 'Phase 4: Kopf ausrauchen oder neuen Kopf bauen 🏁';
-    if (lblPhaseCountdown) lblPhaseCountdown.textContent = 'Rauchzeit > 60 Min';
+    if (lblPhaseText) lblPhaseText.textContent = 'Phase 4: Kopf ausrauchen oder neu bauen 🏁';
     if (coalSecs === 3600 && statsState.lastAlertPhase !== 'finish') {
       statsState.lastAlertPhase = 'finish';
       playCoalAlertSound();
@@ -7332,17 +7337,22 @@ function checkAndAutoStartHeadSession(force = false) {
   lastKnownSetupSignature = sig;
   statsState.activeSetup = currentSetup;
 
-  // Auto-populate UI inputs if open
-  const inpTob = document.getElementById('input-session-tobacco');
-  const inpBowl = document.getElementById('input-session-bowl');
-  const inpHmd = document.getElementById('input-session-hmd');
-  const inpPipe = document.getElementById('input-session-pipe');
-  const inpPerson = document.getElementById('input-session-person');
-  if (inpTob) inpTob.value = currentSetup.tobacco;
-  if (inpBowl) inpBowl.value = currentSetup.bowl;
-  if (inpHmd) inpHmd.value = currentSetup.hmd;
-  if (inpPipe) inpPipe.value = currentSetup.pipe;
-  if (inpPerson) inpPerson.value = currentSetup.person;
+  // Calculate today's finished heads
+  const todayStr = new Date().toISOString().split('T')[0];
+  const finishedToday = (statsState.sessions || []).filter(s => {
+    const d = s.ended_at ? s.ended_at.split('T')[0] : (s.endedAt ? s.endedAt.split('T')[0] : '');
+    return d === todayStr;
+  }).length;
+  statsState.headCountToday = finishedToday + 1;
+
+  // Update Compact Bottom Bar Head Info
+  const lblTitle = document.getElementById('lbl-active-session-title');
+  const lblSub = document.getElementById('lbl-active-session-sub');
+  if (lblTitle) lblTitle.textContent = `🥣 Kopf #${statsState.headCountToday}: ${currentSetup.tobacco}`;
+  if (lblSub) {
+    const hardware = [currentSetup.bowl, currentSetup.hmd, currentSetup.pipe].filter(Boolean).join(' • ');
+    lblSub.textContent = hardware || 'Aktiv im Stream';
+  }
 
   // Automatically start timer for this new head!
   const now = Date.now();
@@ -7358,20 +7368,12 @@ function checkAndAutoStartHeadSession(force = false) {
     statsState.intervalId = setInterval(updateStatsTimerTick, 1000);
   }
 
-  updateHeadCounterUI();
   updateStatsTimerTick();
 
   const badge = document.getElementById('timer-live-badge');
   const lblStatus = document.getElementById('lbl-timer-status');
-  const iconPlay = document.getElementById('icon-timer-play');
-  const lblBtnPlay = document.getElementById('lbl-btn-timer-play');
-  const btnTogglePlay = document.getElementById('btn-timer-toggle-play');
-
   if (badge) badge.className = 'qna-status-badge live';
   if (lblStatus) lblStatus.textContent = 'Raucht live';
-  if (iconPlay) iconPlay.textContent = '⏸️';
-  if (lblBtnPlay) lblBtnPlay.textContent = 'Session pausieren';
-  if (btnTogglePlay) btnTogglePlay.className = 'btn btn-secondary btn-lg';
 
   saveActiveTimerStateToBackend();
 }
@@ -7392,28 +7394,13 @@ async function autoArchiveFinishedSession(setup, durationSecs, coalRotations, st
       durationMinutes: durMins,
       coalRotations: coalRotations || 0,
       rating: 0,
-      notes: 'Automatisch archiviert beim Setup-Wechsel',
+      notes: 'Automatisch archiviert',
       startedAt: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
       endedAt: new Date().toISOString()
     };
     await ipcRenderer.invoke('stats:save-session', sessionObj);
     await loadStatsState();
   } catch(e) {}
-}
-
-function updateHeadCounterUI() {
-  const todayStr = new Date().toISOString().split('T')[0];
-  const finishedToday = (statsState.sessions || []).filter(s => {
-    const d = s.ended_at ? s.ended_at.split('T')[0] : (s.endedAt ? s.endedAt.split('T')[0] : '');
-    return d === todayStr;
-  }).length;
-
-  statsState.headCountToday = finishedToday + 1;
-
-  const lblToday = document.getElementById('lbl-today-head-count');
-  const lblBig = document.getElementById('lbl-head-counter-big');
-  if (lblToday) lblToday.textContent = String(statsState.headCountToday);
-  if (lblBig) lblBig.textContent = String(statsState.headCountToday);
 }
 
 function resetActiveTimer() {
@@ -7433,25 +7420,19 @@ function resetActiveTimer() {
   const lblCoal = document.getElementById('lbl-coal-time');
   const progressBar = document.getElementById('bar-coal-progress');
   const lblPhaseText = document.getElementById('lbl-timer-phase-text');
-  const lblPhaseCountdown = document.getElementById('lbl-timer-phase-countdown');
-  const lblRot = document.getElementById('lbl-coal-rotation-count');
   const badge = document.getElementById('timer-live-badge');
   const lblStatus = document.getElementById('lbl-timer-status');
-  const iconPlay = document.getElementById('icon-timer-play');
-  const lblBtnPlay = document.getElementById('lbl-btn-timer-play');
-  const btnTogglePlay = document.getElementById('btn-timer-toggle-play');
+  const lblTitle = document.getElementById('lbl-active-session-title');
+  const lblSub = document.getElementById('lbl-active-session-sub');
 
   if (lblSession) lblSession.textContent = '00:00:00';
   if (lblCoal) lblCoal.textContent = '00:00';
   if (progressBar) progressBar.style.width = '0%';
   if (lblPhaseText) lblPhaseText.textContent = 'Phase: Bereit zum Anrauchen 🔥';
-  if (lblPhaseCountdown) lblPhaseCountdown.textContent = '00:00 bis Kohle drehen';
-  if (lblRot) lblRot.textContent = '0';
   if (badge) badge.className = 'qna-status-badge offline';
   if (lblStatus) lblStatus.textContent = 'Gestoppt';
-  if (iconPlay) iconPlay.textContent = '▶️';
-  if (lblBtnPlay) lblBtnPlay.textContent = 'Kopf gestartet (Timer Start)';
-  if (btnTogglePlay) btnTogglePlay.className = 'btn btn-primary btn-lg';
+  if (lblTitle) lblTitle.textContent = 'Kein aktiver Kopf';
+  if (lblSub) lblSub.textContent = 'Warte auf Setup im Generator...';
 
   saveActiveTimerStateToBackend();
 }
@@ -7827,18 +7808,7 @@ async function loadStatsState() {
 }
 
 function setupStatsListeners() {
-  const btnTogglePlay = document.getElementById('btn-timer-toggle-play');
-  const btnRotateCoal = document.getElementById('btn-timer-rotate-coal');
-  const btnNewCoal = document.getElementById('btn-timer-new-coal');
   const btnFinishHead = document.getElementById('btn-timer-finish-head');
-  const btnResetTimer = document.getElementById('btn-reset-current-timer');
-  const chkSound = document.getElementById('chk-timer-sound');
-
-  const btnHeadInc = document.getElementById('btn-head-count-inc');
-  const btnHeadDec = document.getElementById('btn-head-count-dec');
-  const btnHeadReset = document.getElementById('btn-head-count-reset');
-  const btnImportGen = document.getElementById('btn-import-from-generator');
-
   const btnCopyObs = document.getElementById('btn-copy-timer-obs-link');
   const btnRefreshStats = document.getElementById('btn-refresh-stats');
   const btnCopySummary = document.getElementById('btn-copy-stream-summary');
@@ -7853,128 +7823,6 @@ function setupStatsListeners() {
   const btnCloseFinishModal = document.getElementById('btn-close-finish-modal');
   const btnCancelFinishModal = document.getElementById('btn-cancel-finish-modal');
   const btnConfirmFinish = document.getElementById('btn-confirm-finish-session');
-
-  // Play / Pause Toggle
-  if (btnTogglePlay) {
-    btnTogglePlay.addEventListener('click', () => {
-      statsState.isRunning = !statsState.isRunning;
-      const now = Date.now();
-      const badge = document.getElementById('timer-live-badge');
-      const lblStatus = document.getElementById('lbl-timer-status');
-      const iconPlay = document.getElementById('icon-timer-play');
-      const lblBtnPlay = document.getElementById('lbl-btn-timer-play');
-
-      if (statsState.isRunning) {
-        statsState.sessionStartTime = now - (statsState.sessionElapsedSeconds * 1000);
-        statsState.coalStartTime = now - (statsState.coalElapsedSeconds * 1000);
-
-        if (!statsState.intervalId) {
-          statsState.intervalId = setInterval(updateStatsTimerTick, 1000);
-        }
-
-        if (badge) badge.className = 'qna-status-badge live';
-        if (lblStatus) lblStatus.textContent = 'Raucht live';
-        if (iconPlay) iconPlay.textContent = '⏸️';
-        if (lblBtnPlay) lblBtnPlay.textContent = 'Session pausieren';
-        btnTogglePlay.className = 'btn btn-secondary btn-lg';
-
-        showToast('⏱️ Kohle- & Session-Timer gestartet!', 'success');
-      } else {
-        if (statsState.intervalId) {
-          clearInterval(statsState.intervalId);
-          statsState.intervalId = null;
-        }
-
-        if (badge) badge.className = 'qna-status-badge closed';
-        if (lblStatus) lblStatus.textContent = 'Pausiert';
-        if (iconPlay) iconPlay.textContent = '▶️';
-        if (lblBtnPlay) lblBtnPlay.textContent = 'Session fortsetzen';
-        btnTogglePlay.className = 'btn btn-primary btn-lg';
-
-        showToast('⏸️ Session-Timer pausiert.', 'info');
-      }
-      saveActiveTimerStateToBackend();
-    });
-  }
-
-  // Kohle gewendet
-  if (btnRotateCoal) {
-    btnRotateCoal.addEventListener('click', () => {
-      statsState.coalRotations++;
-      statsState.coalStartTime = Date.now();
-      statsState.coalElapsedSeconds = 0;
-      statsState.lastAlertPhase = null;
-
-      const lblRot = document.getElementById('lbl-coal-rotation-count');
-      if (lblRot) lblRot.textContent = String(statsState.coalRotations);
-
-      updateStatsTimerTick();
-      saveActiveTimerStateToBackend();
-      showToast(`🪵 Kohle zum ${statsState.coalRotations}. Mal gewendet! Kohle-Timer zurückgesetzt.`, 'success');
-    });
-  }
-
-  // Neue Kohlen
-  if (btnNewCoal) {
-    btnNewCoal.addEventListener('click', () => {
-      statsState.coalStartTime = Date.now();
-      statsState.coalElapsedSeconds = 0;
-      statsState.lastAlertPhase = null;
-
-      updateStatsTimerTick();
-      saveActiveTimerStateToBackend();
-      showToast('🔥 Neue Kohlen aufgelegt! Kohle-Timer neu gestartet.', 'success');
-    });
-  }
-
-  // Reset Timer
-  if (btnResetTimer) {
-    btnResetTimer.addEventListener('click', () => {
-      if (confirm('Möchtest du den aktuellen Timer wirklich auf 00:00:00 zurücksetzen?')) {
-        resetActiveTimer();
-        showToast('Timer auf 0 zurückgesetzt.', 'info');
-      }
-    });
-  }
-
-  // Sound Toggle
-  if (chkSound) {
-    chkSound.addEventListener('change', () => {
-      statsState.soundEnabled = chkSound.checked;
-    });
-  }
-
-  // Counter Inc / Dec / Reset
-  if (btnHeadInc) {
-    btnHeadInc.addEventListener('click', () => {
-      statsState.headCountToday++;
-      updateHeadCounterUI();
-      saveActiveTimerStateToBackend();
-    });
-  }
-  if (btnHeadDec) {
-    btnHeadDec.addEventListener('click', () => {
-      if (statsState.headCountToday > 1) {
-        statsState.headCountToday--;
-        updateHeadCounterUI();
-        saveActiveTimerStateToBackend();
-      }
-    });
-  }
-  if (btnHeadReset) {
-    btnHeadReset.addEventListener('click', () => {
-      statsState.headCountToday = 1;
-      updateHeadCounterUI();
-      saveActiveTimerStateToBackend();
-    });
-  }
-
-  // Import from Generator
-  if (btnImportGen) {
-    btnImportGen.addEventListener('click', () => {
-      importCurrentGeneratorSetup();
-    });
-  }
 
   // OBS Link copy
   if (btnCopyObs) {
@@ -8025,17 +7873,20 @@ function setupStatsListeners() {
   // Finish Head Modal
   if (btnFinishHead && modalFinish) {
     btnFinishHead.addEventListener('click', () => {
-      const inputTob = document.getElementById('input-session-tobacco');
+      if (!statsState.isRunning || !statsState.activeSetup || !statsState.activeSetup.tobacco) {
+        showToast('Aktuell läuft kein aktiver Kopf.', 'info');
+        return;
+      }
       const lblTob = document.getElementById('lbl-modal-finish-tobacco');
       const lblDur = document.getElementById('lbl-modal-finish-duration');
       const lblCoals = document.getElementById('lbl-modal-finish-coals');
 
-      const tobName = (inputTob ? inputTob.value.trim() : '') || 'Aktueller Kopf';
+      const tobName = statsState.activeSetup.tobacco || 'Aktueller Kopf';
       const durMins = Math.max(1, Math.round(statsState.sessionElapsedSeconds / 60));
 
       if (lblTob) lblTob.textContent = tobName;
       if (lblDur) lblDur.textContent = `${durMins} Minuten`;
-      if (lblCoals) lblCoals.textContent = `${statsState.coalRotations}x`;
+      if (lblCoals) lblCoals.textContent = `${statsState.coalRotations || 0}x`;
 
       modalFinish.classList.remove('hidden');
     });

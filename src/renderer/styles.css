@@ -4408,153 +4408,133 @@ input#qa-yt-search-input:focus {
    STATS & KOHLE-TIMER STYLES (VIEW 6)
    ========================================================= */
 
-.stats-top-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+/* =========================================================
+   COMPACT LIVE SESSION & SMOKE DURATION BAR
+   ========================================================= */
+
+.live-session-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 20px;
-  margin-top: 14px;
-  align-items: start;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(24, 18, 48, 0.95) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  border-radius: 14px;
+  padding: 14px 22px;
+  margin-top: 22px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4), 0 0 20px rgba(124, 58, 237, 0.15);
 }
 
-@media (max-width: 1100px) {
-  .stats-top-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 900px) {
+  .live-session-bottom-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
   }
 }
 
-.stats-bottom-container {
-  margin-top: 24px;
-}
-
-/* Digital Clock Container */
-.timer-display-container {
+.ls-left {
   display: flex;
   align-items: center;
-  justify-content: space-around;
-  background: radial-gradient(circle at center, rgba(124, 58, 237, 0.12) 0%, rgba(15, 23, 42, 0.8) 100%);
-  border: 1px solid rgba(124, 58, 237, 0.3);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.4);
+  gap: 14px;
+  min-width: 0;
+  flex: 1.2;
 }
 
-.timer-time-block {
+.ls-head-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ls-head-info strong {
+  font-size: 0.94rem;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ls-head-info span {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ls-center {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  flex: 1.4;
 }
 
-.timer-label {
+.ls-clocks {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ls-clock-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.ls-clock-lbl {
   font-size: 0.72rem;
-  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--text-muted);
+  font-weight: 700;
 }
 
-.digital-clock {
+.ls-digital-clock {
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 2.5rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: #00f0ff;
-  text-shadow: 0 0 16px rgba(0, 240, 255, 0.45);
-  letter-spacing: 2px;
-  line-height: 1;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
 }
 
-.digital-clock.small {
-  font-size: 1.8rem;
+.ls-digital-clock-coal {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 1.2rem;
+  font-weight: 800;
   color: #a78bfa;
-  text-shadow: 0 0 12px rgba(167, 139, 250, 0.45);
+  text-shadow: 0 0 8px rgba(167, 139, 250, 0.4);
 }
 
-.timer-divider {
-  width: 1px;
-  height: 48px;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-/* Phase Progress Bar */
-.timer-phase-container {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 16px;
-}
-
-.phase-info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.85rem;
-}
-
-.phase-title {
-  font-weight: 700;
-  color: #fff;
-}
-
-.phase-countdown {
-  font-size: 0.78rem;
-  color: var(--accent-cyan);
-  font-weight: 600;
-}
-
-.phase-progress-track {
+.ls-phase-wrap {
   width: 100%;
-  height: 8px;
+  max-width: 280px;
+  height: 6px;
   background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   overflow: hidden;
-  position: relative;
+  margin-top: 2px;
 }
 
-.phase-progress-fill {
+.ls-phase-bar {
   height: 100%;
   background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
   border-radius: 4px;
   transition: width 0.5s ease;
 }
 
-.phase-markers {
+.ls-phase-text {
+  font-size: 0.74rem;
+  color: #c4b5fd;
+  font-weight: 600;
+}
+
+.ls-right {
   display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  font-size: 0.68rem;
-  color: var(--text-muted);
-}
-
-/* Timer Actions Grid */
-.timer-actions-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.btn-finish-head {
-  background: rgba(239, 68, 68, 0.12) !important;
-  border-color: rgba(239, 68, 68, 0.4) !important;
-  color: #fca5a5 !important;
-}
-
-.btn-finish-head:hover {
-  background: rgba(239, 68, 68, 0.25) !important;
-  border-color: #ef4444 !important;
-  color: #fff !important;
-}
-
-.timer-footer-settings {
-  display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-color);
-  font-size: 0.78rem;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Head Counter Controller */

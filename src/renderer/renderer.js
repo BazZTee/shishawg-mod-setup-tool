@@ -6050,7 +6050,7 @@ function renderQnAQuestionsList() {
           ${q.answeredBy ? `<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-size:0.65rem; padding:1px 6px; border-radius:4px; font-weight:700;">👤 ${escapeHtml(q.answeredBy)}</span>` : ''}
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>' : ''}
+          ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>` : ''}
           <span class="qna-spotlight-time">${timeStr}</span>
         </div>
       </div>

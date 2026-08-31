@@ -659,9 +659,81 @@
       font-size: 12px;
       color: #64748b;
     }
+
+    /* OBS Timer Mode Styles */
+    .obs-timer-hud-card {
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 22px;
+      border-radius: 16px;
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(23, 15, 45, 0.94) 100%);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 25px rgba(0, 240, 255, 0.25);
+      position: fixed;
+      top: 24px;
+      left: 24px;
+    }
+
+    .obs-timer-badge {
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      color: #00f0ff;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .obs-timer-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .obs-timer-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #ffffff;
+      max-width: 280px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .obs-timer-clocks {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #94a3b8;
+      font-weight: 600;
+      font-family: 'Consolas', 'Monaco', monospace;
+    }
+
+    .obs-timer-clocks strong {
+      color: #00f0ff;
+      font-size: 15px;
+    }
   </style>
 </head>
 <body class="mode-screen">
+
+  <!-- OBS TIMER OVERLAY (Visible only when ?mode=timer) -->
+  <div id="view-timer-overlay-container" style="display:none; width:100%; height:100%;">
+    <div class="obs-timer-hud-card">
+      <div class="obs-timer-badge" id="obs-timer-head-num">🥣 Kopf #1</div>
+      <div class="obs-timer-info">
+        <div class="obs-timer-title" id="obs-timer-tobacco">Nameless - Black Nana</div>
+        <div class="obs-timer-clocks">
+          <span>⏱️ <strong id="obs-timer-session">00:00:00</strong></span>
+          <span>🪵 <strong id="obs-timer-coal" style="color:#a78bfa;">00:00</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- OBS OVERLAY (Visible only when ?mode=overlay) -->
   <div id="view-overlay-container" style="display:none; width:100%; height:100%; align-items:flex-end; justify-content:center;">
@@ -1392,8 +1464,70 @@
     // PROMPTER AUTHENTICATION & LOGIN GATE
     // =========================================================
     let isPrompterAuthenticated = false;
+    const isTimerOverlay = (modeParam === 'timer');
+
+    async function syncTimerData() {
+      try {
+        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?channel=eq.${targetChannel}&select=timer_state`, {
+          headers: reqHeaders,
+          cache: 'no-store'
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (Array.isArray(sData) && sData[0] && sData[0].timer_state) {
+            const ts = sData[0].timer_state;
+            const now = Date.now();
+            let sessionSecs = ts.sessionElapsedSeconds || 0;
+            let coalSecs = ts.coalElapsedSeconds || 0;
+            if (ts.isRunning && ts.sessionStartTime) {
+              sessionSecs = Math.floor((now - ts.sessionStartTime) / 1000);
+            }
+            if (ts.isRunning && ts.coalStartTime) {
+              coalSecs = Math.floor((now - ts.coalStartTime) / 1000);
+            }
+
+            const headNum = ts.headCountToday || 1;
+            const tob = (ts.activeSetup && ts.activeSetup.tobacco) ? ts.activeSetup.tobacco : 'Aktueller Kopf';
+
+            const elHead = document.getElementById('obs-timer-head-num');
+            const elTob = document.getElementById('obs-timer-tobacco');
+            const elSession = document.getElementById('obs-timer-session');
+            const elCoal = document.getElementById('obs-timer-coal');
+
+            if (elHead) elHead.textContent = `🥣 Kopf #${headNum}`;
+            if (elTob) elTob.textContent = tob;
+
+            const formatHms = (s) => {
+              const h = Math.floor(s / 3600);
+              const m = Math.floor((s % 3600) / 60);
+              const sec = Math.floor(s % 60);
+              return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+            };
+            const formatMs = (s) => {
+              const m = Math.floor(s / 60);
+              const sec = Math.floor(s % 60);
+              return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+            };
+
+            if (elSession) elSession.textContent = formatHms(sessionSecs);
+            if (elCoal) elCoal.textContent = formatMs(coalSecs);
+          }
+        }
+      } catch(e) {}
+    }
 
     async function initPrompterAuth() {
+      if (isTimerOverlay) {
+        document.body.className = 'mode-overlay mode-timer';
+        document.getElementById('view-timer-overlay-container').style.display = 'block';
+        document.getElementById('view-overlay-container').style.display = 'none';
+        document.getElementById('view-screen-container').style.display = 'none';
+        document.getElementById('view-auth-gate').style.display = 'none';
+        syncTimerData();
+        setInterval(syncTimerData, 1000);
+        return;
+      }
+
       if (isOverlay) {
         // OBS Overlay never requires login
         document.body.className = 'mode-overlay';

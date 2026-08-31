@@ -5530,6 +5530,31 @@ function setupQnAListeners() {
     });
   }
 
+  // Streamer Stats & Auswertung Modal
+  const btnOpenStatsModal = document.getElementById('btn-open-qna-stats-modal');
+  const statsModal = document.getElementById('modal-qna-stats');
+  const btnCloseStatsModal = document.getElementById('btn-close-qna-stats-modal');
+  const btnCopyStatsSummary = document.getElementById('btn-copy-stats-summary');
+
+  if (btnOpenStatsModal && statsModal) {
+    btnOpenStatsModal.addEventListener('click', () => {
+      renderQnAStatsModal();
+      statsModal.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseStatsModal && statsModal) {
+    btnCloseStatsModal.addEventListener('click', () => {
+      statsModal.classList.add('hidden');
+    });
+  }
+
+  if (btnCopyStatsSummary) {
+    btnCopyStatsSummary.addEventListener('click', () => {
+      copyStatsSummaryToClipboard();
+    });
+  }
+
   // Poll Title Character Counter
   if (inputPollTitle && lblPollTitleCount) {
     inputPollTitle.addEventListener('input', () => {
@@ -6031,6 +6056,166 @@ function formatTimeAgo(timestamp) {
   if (diffMin < 60) return `vor ${diffMin} Min.`;
   const diffHrs = Math.floor(diffMin / 60);
   return `vor ${diffHrs} Std.`;
+}
+
+function renderQnAStatsModal() {
+  const cardsGrid = document.getElementById('qna-stats-cards-grid');
+  const timelineEl = document.getElementById('qna-stats-timeline');
+  const elTotalQ = document.getElementById('stat-total-questions');
+  const elTotalAns = document.getElementById('stat-total-answered');
+  const elTotalSkip = document.getElementById('stat-total-skipped');
+  const elTotalBest = document.getElementById('stat-total-bestrafungen');
+
+  const questions = qnaState.questions || [];
+  const bestrafungen = bestrafungenList || [];
+
+  const totalQuestions = questions.length;
+  const totalAnswered = questions.filter(q => q.status === 'answered').length;
+  const totalSkipped = questions.filter(q => q.status === 'rejected').length;
+  const totalBestrafungen = bestrafungen.filter(b => b.status === 'erledigt').length;
+
+  if (elTotalQ) elTotalQ.textContent = String(totalQuestions);
+  if (elTotalAns) elTotalAns.textContent = String(totalAnswered);
+  if (elTotalSkip) elTotalSkip.textContent = String(totalSkipped);
+  if (elTotalBest) elTotalBest.textContent = String(totalBestrafungen);
+
+  // Collect all unique persons
+  const personsSet = new Set(qnaPersons);
+  questions.forEach(q => { if (q.answeredBy) personsSet.add(q.answeredBy); });
+  bestrafungen.forEach(b => { if (b.executedBy) personsSet.add(b.executedBy); });
+  const allPersons = Array.from(personsSet).filter(Boolean);
+
+  if (cardsGrid) {
+    if (allPersons.length === 0) {
+      cardsGrid.innerHTML = `<div style="grid-column:1/-1; text-align:center; color:var(--text-secondary); padding:16px;">Keine Streamer oder Personen angelegt.</div>`;
+    } else {
+      const streamerColors = {
+        'marved': { bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.35)', dot: '#38bdf8' },
+        'hasty': { bg: 'rgba(34, 197, 94, 0.12)', border: 'rgba(34, 197, 94, 0.35)', dot: '#4ade80' },
+        'kai': { bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.35)', dot: '#fb923c' }
+      };
+
+      cardsGrid.innerHTML = allPersons.map(p => {
+        const pLower = p.toLowerCase();
+        const col = streamerColors[pLower] || { bg: 'rgba(139, 92, 246, 0.12)', border: 'rgba(139, 92, 246, 0.35)', dot: '#a78bfa' };
+
+        const pAnswered = questions.filter(q => q.status === 'answered' && q.answeredBy === p).length;
+        const pSkipped = questions.filter(q => q.status === 'rejected' && q.answeredBy === p).length;
+        const pBestrafungen = bestrafungen.filter(b => b.status === 'erledigt' && b.executedBy === p).length;
+        const pTotal = pAnswered + pSkipped;
+        const quote = pTotal > 0 ? Math.round((pAnswered / pTotal) * 100) : 0;
+
+        return `
+          <div style="background:${col.bg}; border:1px solid ${col.border}; border-radius:12px; padding:14px; position:relative; overflow:hidden;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+              <span style="width:10px; height:10px; border-radius:50%; background:${col.dot}; box-shadow:0 0 8px ${col.dot};"></span>
+              <strong style="font-size:1rem; color:#fff;">${escapeHtml(p)}</strong>
+              ${pTotal > 0 ? `<span style="margin-left:auto; font-size:0.7rem; color:${col.dot}; font-weight:700;">${quote}% Quote</span>` : ''}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px; font-size:0.8rem; color:#cbd5e1;">
+              <div style="display:flex; justify-content:space-between;">
+                <span>✅ Beantwortet:</span> <strong style="color:#10b981;">${pAnswered}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span>⏭️ Übersprungen:</span> <strong style="color:#ef4444;">${pSkipped}</strong>
+              </div>
+              <div style="display:flex; justify-content:space-between;">
+                <span>🎡 Bestrafungen:</span> <strong style="color:#f59e0b;">${pBestrafungen}</strong>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  // Render Timeline / Activity Log
+  if (timelineEl) {
+    const events = [];
+
+    // Questions events
+    questions.forEach(q => {
+      if (q.status === 'answered' || q.status === 'rejected') {
+        const time = q.updatedAt || q.timestamp || Date.now();
+        const isAns = (q.status === 'answered');
+        events.push({
+          time,
+          icon: isAns ? '✅' : '⏭️',
+          person: q.answeredBy || 'Streamer',
+          title: isAns ? `hat Frage beantwortet` : `hat Frage übersprungen`,
+          detail: `„${q.question}“ (von @${q.displayName || q.login})`,
+          badgeColor: isAns ? '#10b981' : '#ef4444'
+        });
+      }
+    });
+
+    // Bestrafungen events
+    bestrafungen.forEach(b => {
+      if (b.status === 'erledigt') {
+        const time = b.timestamp || Date.now();
+        events.push({
+          time,
+          icon: '🎡',
+          person: b.executedBy || 'Streamer',
+          title: `hat Bestrafungsrad-Challenge absolviert`,
+          detail: `„${b.name}“`,
+          badgeColor: '#f59e0b'
+        });
+      }
+    });
+
+    events.sort((a, b) => b.time - a.time);
+
+    if (events.length === 0) {
+      timelineEl.innerHTML = `<div style="text-align:center; color:var(--text-secondary); padding:20px; font-size:0.85rem;">Noch keine Aktivitäten in dieser Fragerunde verzeichnet.</div>`;
+    } else {
+      timelineEl.innerHTML = events.map(ev => {
+        const timeStr = new Date(ev.time).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        return `
+          <div style="display:flex; align-items:flex-start; gap:10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px; font-size:0.82rem;">
+            <span style="font-size:1.1rem; line-height:1.2;">${ev.icon}</span>
+            <div style="flex:1;">
+              <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+                <span style="color:#38bdf8; font-weight:700;">${escapeHtml(ev.person)}</span>
+                <span style="color:var(--text-secondary);">${ev.title}</span>
+                <span style="margin-left:auto; font-size:0.75rem; color:rgba(255,255,255,0.4);">${timeStr}</span>
+              </div>
+              <div style="color:#e2e8f0; font-size:0.8rem; word-break:break-word;">${escapeHtml(ev.detail)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+}
+
+function copyStatsSummaryToClipboard() {
+  const questions = qnaState.questions || [];
+  const bestrafungen = bestrafungenList || [];
+
+  const totalQuestions = questions.length;
+  const totalAnswered = questions.filter(q => q.status === 'answered').length;
+  const totalSkipped = questions.filter(q => q.status === 'rejected').length;
+  const totalBestrafungen = bestrafungen.filter(b => b.status === 'erledigt').length;
+
+  const personsSet = new Set(qnaPersons);
+  questions.forEach(q => { if (q.answeredBy) personsSet.add(q.answeredBy); });
+  bestrafungen.forEach(b => { if (b.executedBy) personsSet.add(b.executedBy); });
+  const allPersons = Array.from(personsSet).filter(Boolean);
+
+  let text = `📊 ShishaWG Fragerunden-Statistik:\n`;
+  text += `Gesamt: ${totalQuestions} Fragen | ${totalAnswered} beantwortet | ${totalSkipped} übersprungen | ${totalBestrafungen} Bestrafungen erfüllt\n\n`;
+  text += `👑 Streamer Leaderboard:\n`;
+
+  allPersons.forEach(p => {
+    const pAnswered = questions.filter(q => q.status === 'answered' && q.answeredBy === p).length;
+    const pSkipped = questions.filter(q => q.status === 'rejected' && q.answeredBy === p).length;
+    const pBestrafungen = bestrafungen.filter(b => b.status === 'erledigt' && b.executedBy === p).length;
+    text += `• ${p}: ${pAnswered} beantwortet, ${pSkipped} übersprungen, ${pBestrafungen} Bestrafung(en)\n`;
+  });
+
+  navigator.clipboard.writeText(text);
+  showToast('Statistik-Zusammenfassung in die Zwischenablage kopiert! 📋', 'success');
 }
 
 // Render Active Twitch Poll Monitor

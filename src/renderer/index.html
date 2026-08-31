@@ -1213,23 +1213,26 @@
               <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
               🏠 Hauptmenü
             </button>
-            
-            <!-- Segmented Control Tab Switcher -->
-            <div class="polls-segmented-nav">
-              <button id="tab-nav-polls" class="poll-tab-btn active" data-tab="polls">
-                <span class="poll-tab-icon">📊</span>
-                <span class="poll-tab-label">Umfrage erstellen</span>
-              </button>
-              <button id="tab-nav-predictions" class="poll-tab-btn" data-tab="predictions">
-                <span class="poll-tab-icon">🔮</span>
-                <span class="poll-tab-label">Vorhersage erstellen</span>
-              </button>
-            </div>
+            <span class="tool-breadcrumb">Dashboard ➔ <strong>🗳️ Live Twitch-Umfragen &amp; Vorhersagen</strong></span>
           </div>
 
           <div class="sub-header-actions">
             <button id="btn-refresh-polls" class="btn btn-sm btn-secondary" title="Status manuell synchronisieren">
               🔄 Aktualisieren
+            </button>
+          </div>
+        </div>
+
+        <!-- Full-width Segmented Switcher between Header and Cards -->
+        <div class="polls-full-switcher-container">
+          <div class="polls-segmented-nav">
+            <button id="tab-nav-polls" class="poll-tab-btn active" data-tab="polls">
+              <span class="poll-tab-icon">📊</span>
+              <span class="poll-tab-label">Umfrage erstellen</span>
+            </button>
+            <button id="tab-nav-predictions" class="poll-tab-btn" data-tab="predictions">
+              <span class="poll-tab-icon">🔮</span>
+              <span class="poll-tab-label">Vorhersage erstellen</span>
             </button>
           </div>
         </div>

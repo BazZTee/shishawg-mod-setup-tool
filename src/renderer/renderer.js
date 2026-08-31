@@ -5555,6 +5555,14 @@ async function setQuestionStatus(questionId, newStatus) {
   q.updatedAt = Date.now();
 
   if (newStatus === 'on_air') {
+    // Reset any other question that was previously on_air
+    qnaState.questions.forEach(item => {
+      if (item.id !== questionId && item.status === 'on_air') {
+        item.status = 'approved';
+        item.updatedAt = Date.now();
+      }
+    });
+
     qnaState.activeQuestion = q;
     await ipcRenderer.invoke('qna:set-active', q);
     showToast(`Frage von @${q.displayName || q.login} ist jetzt LIVE ON-AIR! 📺`, 'success');

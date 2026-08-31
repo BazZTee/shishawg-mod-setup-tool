@@ -1497,30 +1497,36 @@ class DatabaseService {
     return templates;
   }
 
-  // Helper for pushing arbitrary files to Gist
+  // Queue for Gist pushes to prevent race conditions & 409 conflicts
   pushFileToGist(filename, content) {
-    return new Promise((resolve) => {
-      const payload = JSON.stringify({
-        files: {
-          [filename]: { content }
-        }
+    if (!this._gistQueue) {
+      this._gistQueue = Promise.resolve();
+    }
+    this._gistQueue = this._gistQueue.then(() => {
+      return new Promise((resolve) => {
+        const payload = JSON.stringify({
+          files: {
+            [filename]: { content }
+          }
+        });
+        const options = {
+          hostname: 'api.github.com',
+          path: `/gists/${GIST_ID}`,
+          method: 'PATCH',
+          headers: {
+            'User-Agent': 'ShishaWG-Mod-Setup-Tool',
+            'Authorization': `token ${GIST_TOKEN}`,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(payload)
+          }
+        };
+        const req = https.request(options, (res) => resolve(res.statusCode === 200));
+        req.on('error', () => resolve(false));
+        req.write(payload);
+        req.end();
       });
-      const options = {
-        hostname: 'api.github.com',
-        path: `/gists/${GIST_ID}`,
-        method: 'PATCH',
-        headers: {
-          'User-Agent': 'ShishaWG-Mod-Setup-Tool',
-          'Authorization': `token ${GIST_TOKEN}`,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(payload)
-        }
-      };
-      const req = https.request(options, (res) => resolve(res.statusCode === 200));
-      req.on('error', () => resolve(false));
-      req.write(payload);
-      req.end();
-    });
+    }).catch(() => {});
+    return this._gistQueue;
   }
 }
 

@@ -248,8 +248,8 @@ function showView(targetViewId) {
     }
   }
 
-  // If opening Q&A & Umfragen, load state & start live sync
-  if (targetViewId === 'view-qna') {
+  // If opening Q&A or Polls, load state & start live sync
+  if (targetViewId === 'view-qna' || targetViewId === 'view-polls') {
     unreadQnACount = 0;
     const badge = document.getElementById('hub-qna-unread');
     if (badge) {
@@ -5174,6 +5174,8 @@ function renderBestrafungen() {
       await loadBestrafungen();
     });
   });
+
+  renderQnAQuickLeaderboard();
 }
 
 // Play subtle synthesized notification chime for incoming questions
@@ -5241,12 +5243,33 @@ function setupQnAListeners() {
   const btnStartPoll = document.getElementById('btn-start-twitch-poll');
   const btnSaveTemplate = document.getElementById('btn-save-custom-poll-template');
 
-  // Auto-start Q&A listener on app launch
-  const targetChan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-  ipcRenderer.invoke('qna:start-listener', targetChan).catch(() => {});
+  // Q&A Options Dropdown Menu Toggle
+  const btnQnaMenu = document.getElementById('btn-qna-menu');
+  const qnaDropdownMenu = document.getElementById('qna-dropdown-menu');
+  if (btnQnaMenu && qnaDropdownMenu) {
+    btnQnaMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      qnaDropdownMenu.classList.toggle('hidden');
+    });
+  }
 
-  // Toggle Chat Listener Button
+  // Close Q&A dropdown on outside click
+  document.addEventListener('click', () => {
+    if (qnaDropdownMenu) qnaDropdownMenu.classList.add('hidden');
+  });
+
+  // Toggle Chat Listener Button (Disabled by default)
+  qnaState.isListenerActive = false;
   if (btnToggleListener) {
+    btnToggleListener.className = 'btn btn-sm btn-secondary';
+    btnToggleListener.innerHTML = '<span class="status-dot red"></span> <span>Listener: Aus</span>';
+    btnToggleListener.style.height = '32px';
+    btnToggleListener.style.minWidth = '135px';
+    btnToggleListener.style.display = 'inline-flex';
+    btnToggleListener.style.alignItems = 'center';
+    btnToggleListener.style.justifyContent = 'center';
+    btnToggleListener.style.gap = '6px';
+
     btnToggleListener.addEventListener('click', async () => {
       qnaState.isListenerActive = !qnaState.isListenerActive;
       if (qnaState.isListenerActive) {
@@ -5254,13 +5277,37 @@ function setupQnAListeners() {
         await ipcRenderer.invoke('qna:start-listener', chan);
         btnToggleListener.className = 'btn btn-sm btn-primary';
         btnToggleListener.innerHTML = '<span class="status-dot green"></span> <span>Listener: Aktiv</span>';
+        btnToggleListener.style.height = '32px';
+        btnToggleListener.style.minWidth = '135px';
         showToast('Twitch Chat-Listener für !frage gestartet!', 'success');
       } else {
         await ipcRenderer.invoke('qna:stop-listener');
         btnToggleListener.className = 'btn btn-sm btn-secondary';
-        btnToggleListener.innerHTML = '<span class="status-dot grey"></span> <span>Listener: Pausiert</span>';
-        showToast('Twitch Chat-Listener pausiert.', 'info');
+        btnToggleListener.innerHTML = '<span class="status-dot red"></span> <span>Listener: Aus</span>';
+        btnToggleListener.style.height = '32px';
+        btnToggleListener.style.minWidth = '135px';
+        showToast('Twitch Chat-Listener ausgeschaltet.', 'info');
       }
+    });
+  }
+
+  // Refresh Polls Button
+  const btnRefreshPolls = document.getElementById('btn-refresh-polls');
+  if (btnRefreshPolls) {
+    btnRefreshPolls.addEventListener('click', async () => {
+      showToast('Aktualisiere Umfragen...', 'info');
+      await loadQnAState();
+      showToast('Umfragen synchronisiert! 🔄', 'success');
+    });
+  }
+
+  // Quick Leaderboard Details Button
+  const btnOpenStatsCard = document.getElementById('btn-open-stats-from-card');
+  if (btnOpenStatsCard) {
+    btnOpenStatsCard.addEventListener('click', () => {
+      renderQnAStatsModal();
+      const statsM = document.getElementById('modal-qna-stats');
+      if (statsM) statsM.classList.remove('hidden');
     });
   }
 
@@ -5270,6 +5317,7 @@ function setupQnAListeners() {
       const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
       const obsUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?channel=${encodeURIComponent(chan)}&mode=overlay`;
       navigator.clipboard.writeText(obsUrl);
+      if (qnaDropdownMenu) qnaDropdownMenu.classList.add('hidden');
       showToast('OBS-Overlay Link in die Zwischenablage kopiert! 📺', 'success');
     });
   }
@@ -5280,16 +5328,8 @@ function setupQnAListeners() {
       const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
       const prompterUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?channel=${encodeURIComponent(chan)}&mode=screen`;
       navigator.clipboard.writeText(prompterUrl);
+      if (qnaDropdownMenu) qnaDropdownMenu.classList.add('hidden');
       showToast('Prompter-Link für Marvins Monitor kopiert! 🖥️', 'success');
-    });
-  }
-
-  // Refresh Sync Button
-  if (btnRefresh) {
-    btnRefresh.addEventListener('click', async () => {
-      showToast('Synchronisiere Q&A & Umfragen...', 'info');
-      await loadQnAState();
-      showToast('Q&A & Umfragen erfolgreich synchronisiert! 🔄', 'success');
     });
   }
 
@@ -6047,6 +6087,40 @@ function renderQnAQuestionsList() {
 
     container.appendChild(card);
   });
+
+  renderQnAQuickLeaderboard();
+}
+
+function renderQnAQuickLeaderboard() {
+  const container = document.getElementById('qna-quick-leaderboard-container');
+  if (!container) return;
+  const questions = qnaState.questions || [];
+  const bestrafungen = bestrafungenList || [];
+  const personsSet = new Set(qnaPersons);
+  questions.forEach(q => { if (q.answeredBy) personsSet.add(q.answeredBy); });
+  bestrafungen.forEach(b => { if (b.executedBy) personsSet.add(b.executedBy); });
+  const allPersons = Array.from(personsSet).filter(Boolean);
+
+  if (allPersons.length === 0) {
+    container.innerHTML = `<div style="color:var(--text-secondary); font-size:0.8rem; text-align:center; padding:8px;">Noch keine Streamer angelegt.</div>`;
+    return;
+  }
+
+  container.innerHTML = allPersons.map(p => {
+    const pAnswered = questions.filter(q => q.status === 'answered' && q.answeredBy === p).length;
+    const pSkipped = questions.filter(q => q.status === 'rejected' && q.answeredBy === p).length;
+    const pBestrafungen = bestrafungen.filter(b => b.status === 'erledigt' && b.executedBy === p).length;
+    return `
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; margin-bottom:6px; font-size:0.82rem;">
+        <strong style="color:#38bdf8;">👤 ${escapeHtml(p)}</strong>
+        <div style="display:flex; gap:10px; font-size:0.75rem;">
+          <span style="color:#10b981; font-weight:700;" title="Beantwortet">✅ ${pAnswered}</span>
+          <span style="color:#ef4444; font-weight:700;" title="Übersprungen">⏭️ ${pSkipped}</span>
+          <span style="color:#f59e0b; font-weight:700;" title="Bestrafungen">🎡 ${pBestrafungen}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function formatTimeAgo(timestamp) {

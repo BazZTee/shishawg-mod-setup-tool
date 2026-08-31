@@ -302,9 +302,23 @@
     </div>
   </div>
 
+  <!-- Supabase JS Client for Instant Realtime Push -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script>
+    const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
     const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
-    const GIST_TOKEN = String.fromCharCode(...[103,104,112,95,107,81,56,113,72,72,69,106,112,115,56,89,102,55,109,112,72,73,111,120,108,109,50,111,109,68,65,82,57,67,50,115,77,108,57,66]);
+
+    let supabaseClient = null;
+    try {
+      if (window.supabase) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch(e) {
+      console.warn('Supabase client init error:', e);
+    }
+
     let lastActiveId = null;
     let lastUpdatedAt = null;
     let hideTimer = null;
@@ -328,7 +342,43 @@
     }
 
     async function syncQnA() {
-      // 1. Try local server first (0ms latency, 100% instant sync on local machine/network)
+      // 1. Primary: Direct Supabase Query (Real-time Database)
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient
+            .from('qna_questions')
+            .select('*')
+            .eq('channel', targetChannel)
+            .order('created_at', { ascending: false });
+
+          if (!error && Array.isArray(data)) {
+            const mapped = data.map(r => ({
+              id: r.id,
+              channel: r.channel,
+              login: r.login,
+              displayName: r.display_name,
+              userColor: r.user_color,
+              userId: r.user_id,
+              isSub: r.is_sub,
+              isMod: r.is_mod,
+              question: r.question,
+              status: r.status,
+              duplicateCount: r.duplicate_count || 1,
+              duplicateUsers: r.duplicate_users || [],
+              timestamp: new Date(r.created_at).getTime(),
+              updatedAt: new Date(r.updated_at).getTime()
+            }));
+
+            const activeQ = mapped.find(q => q.status === 'on_air') || null;
+            renderQnAData(activeQ, mapped);
+            return;
+          }
+        } catch(e) {
+          console.warn('Supabase fetch error, fallback to local/gist:', e);
+        }
+      }
+
+      // 2. Fallback: Local Server (0ms latency if local)
       try {
         const localActiveRes = await fetch(`http://127.0.0.1:18942/api/qna/active?t=${Date.now()}`);
         if (localActiveRes.ok) {
@@ -345,40 +395,44 @@
           renderQnAData(localActiveData.active, allQuestions);
           return;
         }
-      } catch(localErr) {
-        // Local server unreachable, fallback to cloud Gist
-      }
+      } catch(localErr) {}
 
-      // 2. Fallback: Remote Gist sync
+      // 3. Fallback: Raw Gist
       try {
         const activeRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_active.json?t=${Date.now()}`);
         let activeQ = null;
         if (activeRes.ok) {
-          try {
-            const rawActive = await activeRes.json();
-            if (rawActive && typeof rawActive === 'object' && 'active' in rawActive) {
-              activeQ = rawActive.active;
-            } else {
-              activeQ = rawActive;
-            }
-          } catch(e) {}
+          const rawActive = await activeRes.json();
+          activeQ = (rawActive && typeof rawActive === 'object' && 'active' in rawActive) ? rawActive.active : rawActive;
         }
-
         let allQuestions = [];
         if (mode === 'screen') {
           try {
             const qRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_questions.json?t=${Date.now()}`);
-            if (qRes.ok) {
-              allQuestions = await qRes.json();
-            }
+            if (qRes.ok) allQuestions = await qRes.json();
           } catch(e) {}
         }
-
         renderQnAData(activeQ, allQuestions);
-      } catch(err) {
-        console.error('Q&A Sync Error:', err);
+      } catch(err) {}
+    }
+
+    // Initialize Realtime WebSocket Push Subscription (<30ms instant updates)
+    if (supabaseClient) {
+      try {
+        supabaseClient
+          .channel('realtime:qna_questions')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_questions' }, (payload) => {
+            console.log('⚡ Supabase Realtime Push received:', payload);
+            syncQnA();
+          })
+          .subscribe();
+      } catch(e) {
+        console.warn('Realtime subscription error:', e);
       }
     }
+
+    syncQnA();
+    setInterval(syncQnA, 5000);
 
     function renderQnAData(activeQ, allQuestions) {
       if (mode === 'screen') {

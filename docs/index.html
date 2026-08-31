@@ -102,8 +102,21 @@
     <div class="hud-time" id="hud-time">Live-Sync aktiv</div>
   </div>
 
+  <!-- Supabase JS Client for Instant Realtime Push -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script>
+    const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
     const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
+
+    let supabaseClient = null;
+    try {
+      if (window.supabase) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch(e) {}
+
     let lastContent = '';
     let hideTimer = null;
     const urlParams = new URLSearchParams(window.location.search);
@@ -129,6 +142,23 @@
     }
 
     async function syncSetup() {
+      // 1. Try Supabase
+      if (supabaseClient) {
+        try {
+          const { data, error } = await supabaseClient
+            .from('stream_setups')
+            .select('*')
+            .eq('channel', targetChannel)
+            .maybeSingle();
+
+          if (!error && data && data.setup_data) {
+            handleNewData(data.setup_data);
+            return;
+          }
+        } catch(e) {}
+      }
+
+      // 2. Fallback: Gist
       try {
         const res = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/current_setup.json?t=${Date.now()}`);
         if (!res.ok) return;
@@ -151,6 +181,17 @@
       } catch (err) {
         console.error('Cloud Sync Error:', err);
       }
+    }
+
+    if (supabaseClient) {
+      try {
+        supabaseClient
+          .channel('realtime:stream_setups')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'stream_setups' }, () => {
+            syncSetup();
+          })
+          .subscribe();
+      } catch(e) {}
     }
 
     function handleNewData(parsed) {

@@ -798,6 +798,170 @@ class TwitchService {
     return { success: true };
   }
 
+  // --- Channel Points Rewards (Kohle-Stücke) Live Monitor ---
+  startChannelPointsListener(channel = this.targetChannel, autoChat = true) {
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    if (this.channelPointsWs) {
+      try { this.channelPointsWs.close(); } catch(e) {}
+      this.channelPointsWs = null;
+    }
+
+    try {
+      this.channelPointsWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+      this.channelPointsProcessed = new Set();
+
+      this.channelPointsWs.on('open', () => {
+        this.channelPointsWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
+        const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+        this.channelPointsWs.send(`NICK ${nick}`);
+        this.channelPointsWs.send(`JOIN #${chan}`);
+      });
+
+      this.channelPointsWs.on('message', async (data) => {
+        const rawLines = data.toString().split(/\r\n|\r|\n/);
+        for (const line of rawLines) {
+          const raw = line.trim();
+          if (!raw) continue;
+
+          if (raw.startsWith('PING')) {
+            if (this.channelPointsWs && this.channelPointsWs.readyState === WebSocket.OPEN) {
+              this.channelPointsWs.send('PONG :tmi.twitch.tv');
+            }
+            continue;
+          }
+
+          // Check for IRC messages with custom-reward-id or USERNOTICE reward
+          if (raw.includes('custom-reward-id') || (raw.includes('USERNOTICE') && raw.includes('reward-gift'))) {
+            let tags = {};
+            let rest = raw;
+
+            if (rest.startsWith('@')) {
+              const spaceIdx = rest.indexOf(' ');
+              if (spaceIdx > 0) {
+                const tagStr = rest.substring(1, spaceIdx);
+                rest = rest.substring(spaceIdx + 1);
+                tagStr.split(';').forEach(kv => {
+                  const eqIdx = kv.indexOf('=');
+                  if (eqIdx > 0) {
+                    tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
+                  }
+                });
+              }
+            }
+
+            const rewardId = tags['custom-reward-id'] || tags['msg-id'] || '';
+            const msgId = tags['id'] || `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+
+            if (this.channelPointsProcessed.has(msgId)) continue;
+            this.channelPointsProcessed.add(msgId);
+            if (this.channelPointsProcessed.size > 200) {
+              const first = this.channelPointsProcessed.values().next().value;
+              this.channelPointsProcessed.delete(first);
+            }
+
+            let login = (tags['display-name'] || '').toLowerCase().trim();
+            if (!login) {
+              const privIdx = rest.indexOf(' PRIVMSG ');
+              if (privIdx > 0) {
+                let senderPart = rest.substring(0, privIdx);
+                if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
+                const exclIdx = senderPart.indexOf('!');
+                login = (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
+              }
+            }
+
+            const displayName = tags['display-name'] || login || 'Zuschauer';
+            const uniqueId = `kp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+            const prizeTitle = 'Shisha-Kohle (Kohle Stücke)';
+
+            const redemptionItem = {
+              id: uniqueId,
+              user_login: login,
+              user_name: displayName,
+              prize: prizeTitle,
+              type: 'channel_points',
+              status: 'pending',
+              created_at: new Date().toISOString(),
+              channel: chan
+            };
+
+            // Save to Supabase database
+            try {
+              await supabaseService.saveGiveawayWinner(redemptionItem, chan);
+            } catch(e) {
+              console.error('Failed to save channel points redemption to Supabase:', e);
+            }
+
+            // Post automated chat reply if configured
+            const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(login)}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
+            if (autoChat) {
+              try {
+                const chatMsg = `@${displayName} 🎉 Du hast Kohle Stücke für echte Shisha-Kohle eingelöst! Trage hier deine Lieferadresse ein 👉 ${claimUrl}`;
+                await this.sendMessage(chatMsg, chan);
+              } catch(e) {
+                console.error('Failed to send channel points chat message:', e);
+              }
+            }
+
+            // Notify Mod-Tool UI
+            this.sendToRenderer('channelpoints:new-redemption', {
+              ...redemptionItem,
+              claimUrl
+            });
+          }
+        }
+      });
+
+      this.channelPointsWs.on('error', () => {});
+      return { success: true, channel: chan };
+    } catch(e) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  stopChannelPointsListener() {
+    if (this.channelPointsWs) {
+      try { this.channelPointsWs.close(); } catch(e) {}
+      this.channelPointsWs = null;
+    }
+    return { success: true };
+  }
+
+  async createManualClaimLink(userLogin, prizeTitle = 'Shisha-Kohle (Kohle Stücke)', channel = this.targetChannel, postToChat = false) {
+    const cleanUser = (userLogin || '').replace(/^@/, '').toLowerCase().trim();
+    if (!cleanUser) throw new Error('Twitch-Username ist erforderlich.');
+
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const prize = (prizeTitle || 'Shisha-Kohle (Kohle Stücke)').trim();
+    const uniqueId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const isChannelPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('punkte');
+
+    const item = {
+      id: uniqueId,
+      user_login: cleanUser,
+      user_name: cleanUser,
+      prize,
+      type: isChannelPoints ? 'channel_points' : 'giveaway',
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      channel: chan
+    };
+
+    await supabaseService.saveGiveawayWinner(item, chan);
+    const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(cleanUser)}&prize=${encodeURIComponent(prize)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
+
+    if (postToChat) {
+      const msg = `@${cleanUser} 📦 Hier ist dein gesicherter Adresslink für "${prize}" 👉 ${claimUrl}`;
+      await this.sendMessage(msg, chan);
+    }
+
+    return {
+      success: true,
+      item,
+      claimUrl
+    };
+  }
+
   // --- Twitch Helix Polls API ---
   async createPoll(title, choices, duration = 60, channelPointsVoting = false, channelPointsPerVote = 100, channel = this.targetChannel) {
     if (!this.accessToken || !this.clientId) {

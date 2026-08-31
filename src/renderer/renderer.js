@@ -186,6 +186,11 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
     renderQnAPersonsPillList(prof.defaultPersons);
   }
 
+  // 6. Re-bind Channel Points Listener
+  try {
+    ipcRenderer.invoke('channelpoints:start-listener', { channel: prof.targetChannel }).catch(() => {});
+  } catch(e) {}
+
   if (saveToBackend) {
     await ipcRenderer.invoke('profiles:set-active', activeProfileId);
     showToast(`🎮 Aktiver Streamer: ${prof.name} (#${prof.targetChannel})`, 'success');
@@ -517,6 +522,14 @@ async function initApp() {
 
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
+
+  // Auto-start Channel Points (Kohle Stücke) listener
+  ipcRenderer.invoke('channelpoints:start-listener', { channel: state.targetChannel }).catch(() => {});
+  ipcRenderer.on('channelpoints:new-redemption', (event, item) => {
+    playNotificationSound();
+    showToast(`⬛ Kanalpunkte eingelöst: @${item.user_name || item.user_login} hat Kohle Stücke eingelöst!`, 'success');
+    if (typeof pollWinnersUpdates === 'function') pollWinnersUpdates();
+  });
 
   // Auto-focus on first name field
   const firstNameInput = document.querySelector('.input-p-name');
@@ -5116,31 +5129,65 @@ async function loadGiveawayWinnersHistory() {
   } catch(e) {}
 }
 
+let currentGiveawayTabFilter = 'all';
+
 function renderWinnersHistory(winners) {
   if (!winnersHistoryTbody) return;
-  if (!winners || winners.length === 0) {
-    winnersHistoryTbody.innerHTML = '<tr><td colspan="7" class="empty-list-placeholder">Noch keine Gewinner in der Historie.</td></tr>';
+  const list = winners || [];
+
+  // Update Counters
+  const countAll = list.length;
+  const countGw = list.filter(w => w.type !== 'channel_points' && !w.prize?.toLowerCase().includes('kohle')).length;
+  const countCp = list.filter(w => w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle')).length;
+
+  const elCountAll = document.getElementById('count-gw-all');
+  const elCountGw = document.getElementById('count-gw-giveaway');
+  const elCountCp = document.getElementById('count-gw-channelpoints');
+  if (elCountAll) elCountAll.textContent = countAll;
+  if (elCountGw) elCountGw.textContent = countGw;
+  if (elCountCp) elCountCp.textContent = countCp;
+
+  // Filter list
+  let filtered = list;
+  if (currentGiveawayTabFilter === 'giveaway') {
+    filtered = list.filter(w => w.type !== 'channel_points' && !w.prize?.toLowerCase().includes('kohle'));
+  } else if (currentGiveawayTabFilter === 'channel_points') {
+    filtered = list.filter(w => w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle'));
+  }
+
+  if (filtered.length === 0) {
+    winnersHistoryTbody.innerHTML = '<tr><td colspan="7" class="empty-list-placeholder">Keine Einträge für diesen Filter.</td></tr>';
     return;
   }
 
   let html = '';
-  winners.forEach(w => {
+  filtered.forEach(w => {
     const timeStr = w.timestamp ? new Date(w.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
     const dateStr = w.timestamp ? new Date(w.timestamp).toLocaleDateString([], { day: '2-digit', month: '2-digit' }) : '';
     const addr = w.address || {};
     const addrPreview = addr.street ? `${addr.street}, ${addr.zip} ${addr.city}` : '—';
     const recipient = addr.fullName || '—';
+    const isChannelPoints = w.type === 'channel_points' || w.prize?.toLowerCase().includes('kohle');
 
     let statusHtml = '<span class="address-status-pill waiting">Wartend</span>';
     if (w.status === 'sent_to_telegram') statusHtml = '<span class="address-status-pill sent">✅ Telegram</span>';
-    if (w.status === 'address_received') statusHtml = '<span class="address-status-pill received">📥 Prüfen</span>';
+    if (w.status === 'address_received' || w.status === 'address_submitted') statusHtml = '<span class="address-status-pill received">📥 Prüfen</span>';
     if (w.status === 'shipped') statusHtml = '<span class="address-status-pill shipped">📦 Verschickt</span>';
+
+    const typeBadge = isChannelPoints
+      ? '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(124,58,237,0.25); color:#c4b5fd; border:1px solid rgba(124,58,237,0.4); margin-right:4px;">⬛ KOHLE</span>'
+      : '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.25); color:#6ee7b7; border:1px solid rgba(16,185,129,0.4); margin-right:4px;">🎁 GIVEAWAY</span>';
 
     html += `
       <tr data-id="${w.id}">
         <td><span style="color:var(--text-secondary); font-size:0.75rem;">${dateStr} ${timeStr}</span></td>
-        <td><strong style="color:var(--accent-cyan)">@${escapeHtml(w.username)}</strong></td>
-        <td><span style="font-size:0.78rem; font-weight:600;">${escapeHtml(w.prize)}</span></td>
+        <td><strong style="color:var(--accent-cyan)">@${escapeHtml(w.username || w.user_name || w.user_login)}</strong></td>
+        <td>
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:2px;">
+            ${typeBadge}
+            <span style="font-size:0.78rem; font-weight:600;">${escapeHtml(w.prize || 'Shisha-Kohle')}</span>
+          </div>
+        </td>
         <td>${escapeHtml(recipient)}</td>
         <td><span style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(addrPreview)}</span></td>
         <td>${statusHtml}</td>
@@ -5165,7 +5212,7 @@ function renderWinnersHistory(winners) {
         giveawayState.currentWinner = found;
         renderWinnerHero(found);
         renderAddressReview(found);
-        showToast(`Gewinner @${found.username} in Adressmaske geladen.`, 'info');
+        showToast(`Eintrag @${found.username || found.user_name} in Adressmaske geladen.`, 'info');
       }
     });
   });
@@ -5173,7 +5220,6 @@ function renderWinnersHistory(winners) {
   winnersHistoryTbody.querySelectorAll('.btn-delete-winner').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const id = e.currentTarget.getAttribute('data-id');
-      // Optimistic instant UI deletion
       giveawayState.winnersHistory = giveawayState.winnersHistory.filter(w => w.id !== id);
       renderWinnersHistory(giveawayState.winnersHistory);
 
@@ -5182,7 +5228,7 @@ function renderWinnersHistory(winners) {
         giveawayState.winnersHistory = res.winners;
         renderWinnersHistory(res.winners);
       }
-      showToast('Eintrag aus Gewinner-Historie gelöscht', 'info');
+      showToast('Eintrag aus Historie gelöscht', 'info');
     });
   });
 }
@@ -5191,9 +5237,22 @@ function getFormattedTelegramMessage(winner) {
   if (!winner) return '';
   const addr = winner.address || {};
   const dateStr = new Date(winner.timestamp || Date.now()).toLocaleString('de-DE');
+  const isChannelPoints = winner.type === 'channel_points' || winner.prize?.toLowerCase().includes('kohle');
+  const activeProf = getActiveStreamerProfile();
+  const streamerName = activeProf ? activeProf.name : 'Marvin';
 
-  return `🎁 <b>NEUER GEWINNER - ShishaWG Giveaway</b>\n` +
-         `🏆 <b>Twitch-User:</b> @${winner.username}\n` +
+  if (isChannelPoints) {
+    return `⬛ <b>KANALPUNKTE-PRÄMIE (KOHLE STÜCKE)</b>\n` +
+           `👤 <b>Twitch-User:</b> @${winner.username || winner.user_name || winner.user_login}\n` +
+           `🎁 <b>Prämie:</b> ${winner.prize || 'Shisha-Kohle (Kohle Stücke)'}\n` +
+           `📦 <b>Empfänger:</b> ${addr.fullName || '—'}\n` +
+           `🏠 <b>Adresse:</b> ${addr.street || '—'}, ${addr.zip || ''} ${addr.city || ''} (${addr.country || 'Deutschland'})\n` +
+           `📅 <b>Datum:</b> ${dateStr}\n` +
+           `✅ <b>Status:</b> Lieferadresse von Mod-Team geprüft & freigegeben`;
+  }
+
+  return `🎁 <b>NEUER GEWINNER - ${escapeHtml(streamerName)} Giveaway</b>\n` +
+         `🏆 <b>Twitch-User:</b> @${winner.username || winner.user_name || winner.user_login}\n` +
          `📦 <b>Gewinn:</b> ${winner.prize || 'Shisha Paket'}\n` +
          `👤 <b>Empfänger:</b> ${addr.fullName || '—'}\n` +
          `🏠 <b>Adresse:</b> ${addr.street || '—'}, ${addr.zip || ''} ${addr.city || ''} (${addr.country || 'Deutschland'})\n` +
@@ -5202,6 +5261,86 @@ function getFormattedTelegramMessage(winner) {
 }
 
 function setupGiveawaysListeners() {
+  // Filter Pills for History
+  const btnFilterAll = document.getElementById('btn-filter-gw-all');
+  const btnFilterGw = document.getElementById('btn-filter-gw-giveaway');
+  const btnFilterCp = document.getElementById('btn-filter-gw-channelpoints');
+
+  const updateFilterPills = (tab) => {
+    currentGiveawayTabFilter = tab;
+    [btnFilterAll, btnFilterGw, btnFilterCp].forEach(btn => {
+      if (btn) btn.classList.toggle('active', btn.getAttribute('data-filter') === tab);
+    });
+    renderWinnersHistory(giveawayState.winnersHistory);
+  };
+
+  if (btnFilterAll) btnFilterAll.addEventListener('click', () => updateFilterPills('all'));
+  if (btnFilterGw) btnFilterGw.addEventListener('click', () => updateFilterPills('giveaway'));
+  if (btnFilterCp) btnFilterCp.addEventListener('click', () => updateFilterPills('channel_points'));
+
+  // Manual Reward Modal Listeners
+  const btnOpenManual = document.getElementById('btn-open-manual-reward-modal');
+  const modalManual = document.getElementById('modal-manual-reward');
+  const btnCloseManual = document.getElementById('btn-close-manual-reward-modal');
+  const btnCancelManual = document.getElementById('btn-cancel-manual-reward');
+  const btnSubmitManual = document.getElementById('btn-create-manual-reward-submit');
+
+  if (btnOpenManual && modalManual) {
+    btnOpenManual.addEventListener('click', () => {
+      modalManual.classList.remove('hidden');
+      const inputUser = document.getElementById('input-manual-reward-user');
+      if (inputUser) { inputUser.value = ''; inputUser.focus(); }
+    });
+  }
+
+  if (btnCloseManual && modalManual) {
+    btnCloseManual.addEventListener('click', () => modalManual.classList.add('hidden'));
+  }
+  if (btnCancelManual && modalManual) {
+    btnCancelManual.addEventListener('click', () => modalManual.classList.add('hidden'));
+  }
+
+  if (btnSubmitManual && modalManual) {
+    btnSubmitManual.addEventListener('click', async () => {
+      const user = document.getElementById('input-manual-reward-user')?.value.trim();
+      const prize = document.getElementById('input-manual-reward-prize')?.value.trim() || 'Shisha-Kohle (Kohle Stücke)';
+      const postChat = document.getElementById('chk-manual-reward-post-chat')?.checked;
+
+      if (!user) {
+        showToast('Bitte gib einen Twitch-Usernamen ein.', 'error');
+        return;
+      }
+
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      btnSubmitManual.disabled = true;
+      btnSubmitManual.textContent = '⏳ Erstelle...';
+
+      try {
+        const res = await ipcRenderer.invoke('channelpoints:create-manual-link', {
+          user,
+          prize,
+          channel: chan,
+          postToChat: postChat
+        });
+
+        if (res && res.success) {
+          modalManual.classList.add('hidden');
+          // Copy link to clipboard
+          navigator.clipboard.writeText(res.claimUrl);
+          showToast(`✨ Adresslink für @${user} erstellt & kopiert! ${postChat ? '(Im Chat gepostet)' : ''}`, 'success');
+          // Refresh list
+          await pollWinnersUpdates();
+        } else {
+          showToast(res?.error || 'Fehler beim Erstellen des Links', 'error');
+        }
+      } catch(err) {
+        showToast(err.message || 'Fehler', 'error');
+      } finally {
+        btnSubmitManual.disabled = false;
+        btnSubmitManual.textContent = '✨ Link generieren';
+      }
+    });
+  }
   // Mode Change
   if (selectGiveawayMode && groupGwKeyword) {
     selectGiveawayMode.addEventListener('change', () => {

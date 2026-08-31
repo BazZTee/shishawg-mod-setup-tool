@@ -713,6 +713,9 @@
           </button>
           <span class="tool-breadcrumb">Dashboard ➔ <strong>🎁 Giveaways &amp; Adressen</strong></span>
           <div style="display:flex; gap:8px; align-items:center;">
+            <button id="btn-open-manual-reward-modal" class="btn btn-primary btn-sm font-bold" title="Gesicherten Adresslink für Kohle-Stücke oder Spezial-Gewinne erstellen">
+              ➕ Belohnung / Adresslink erstellen
+            </button>
             <button id="btn-open-telegram-config" class="btn btn-secondary btn-sm" title="Telegram-Bot Einstellungen anpassen">⚙️ Telegram-Bot</button>
             <button id="btn-reset-giveaway" class="btn btn-secondary btn-sm" title="Aktuelles Giveaway zurücksetzen">🔄 Zurücksetzen</button>
           </div>
@@ -945,13 +948,18 @@
 
         <!-- SESSION WINNERS HISTORY TABLE -->
         <section class="giveaway-card" style="margin-top:16px;">
-          <div class="giveaway-card-header">
+          <div class="giveaway-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div class="qa-title-group">
               <span class="qa-header-icon">📜</span>
               <div>
-                <h3>Session Gewinner-Historie</h3>
-                <p class="qa-subtitle">Alle ausgelosten Gewinner und deren Übermittlungs-Status</p>
+                <h3>Gewinner- &amp; Prämien-Historie</h3>
+                <p class="qa-subtitle">Giveaways &amp; Kanalpunkte-Einlösungen (Kohle Stücke)</p>
               </div>
+            </div>
+            <div class="gw-history-filter-pills" style="display:flex; gap:6px; align-items:center;">
+              <button class="pill-btn active" data-filter="all" id="btn-filter-gw-all">Alle (<span id="count-gw-all">0</span>)</button>
+              <button class="pill-btn" data-filter="giveaway" id="btn-filter-gw-giveaway">🎁 Giveaways (<span id="count-gw-giveaway">0</span>)</button>
+              <button class="pill-btn" data-filter="channel_points" id="btn-filter-gw-channelpoints">⬛ Kohle-Stücke (<span id="count-gw-channelpoints">0</span>)</button>
             </div>
           </div>
           <div class="giveaway-card-body" style="padding:0;">
@@ -2406,6 +2414,57 @@
 
             </div>
           </div>
+        </div>
+      </div>
+    <!-- ============================================== -->
+    <!-- MODAL: MANUELLE BELOHNUNG / ADRESSLINK -->
+    <!-- ============================================== -->
+    <div id="modal-manual-reward" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 480px;">
+        <div class="modal-header">
+          <div class="qa-title-group">
+            <span class="qa-header-icon">📦</span>
+            <div>
+              <h3>Belohnung / Adresslink erstellen</h3>
+              <p class="qa-subtitle">Generiert einen gesicherten Link für Twitch-User</p>
+            </div>
+          </div>
+          <button id="btn-close-manual-reward-modal" class="btn-icon" title="Schließen">✕</button>
+        </div>
+        <div class="modal-body" style="padding:16px; display:flex; flex-direction:column; gap:12px;">
+          <div class="form-group">
+            <label class="form-label">Twitch-Username:</label>
+            <div class="channel-input-wrapper">
+              <span class="prefix">@</span>
+              <input type="text" id="input-manual-reward-user" placeholder="z. B. MaxMustermann" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Prämie / Grund:</label>
+            <input type="text" id="input-manual-reward-prize" list="list-reward-suggestions" value="Shisha-Kohle (Kohle Stücke)">
+            <datalist id="list-reward-suggestions">
+              <option value="Shisha-Kohle (Kohle Stücke)">
+              <option value="Giveaway Gewinn">
+              <option value="Sonder-Prämie">
+              <option value="VIP Prämie">
+            </datalist>
+          </div>
+
+          <div class="gw-chat-toggle-card" style="margin-top:4px;">
+            <div class="gw-chat-toggle-info">
+              <span class="gw-chat-toggle-title">💬 Direkt im Twitch-Chat posten</span>
+              <span class="gw-chat-toggle-desc">Bot schreibt den Link mit Erwähnung an den User</span>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="chk-manual-reward-post-chat" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:12px 16px;">
+          <button type="button" id="btn-cancel-manual-reward" class="btn btn-secondary">Abbrechen</button>
+          <button type="button" id="btn-create-manual-reward-submit" class="btn btn-primary font-bold">✨ Link generieren</button>
         </div>
       </div>
     </div>

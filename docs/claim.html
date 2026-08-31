@@ -352,8 +352,18 @@
 
     if (!winId) winId = 'gw-' + Date.now();
 
+    const isPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('punkte');
+    const prizeLabelEl = document.querySelector('.prize-label');
+    if (prizeLabelEl) {
+      prizeLabelEl.textContent = isPoints ? '⬛ Deine Kanalpunkte-Prämie:' : '🎁 Dein Gewinn:';
+    }
+
+    const winnerTargetEl = document.querySelector('.winner-target');
+    if (winnerTargetEl) {
+      winnerTargetEl.innerHTML = (isPoints ? 'Eingelöst von: ' : 'Ausgelost für: ') + `<strong id="disp-winner-name">${targetUser ? ('@' + targetUser) : '@Gewinner'}</strong>`;
+    }
+
     document.getElementById('disp-prize').textContent = prize;
-    document.getElementById('disp-winner-name').textContent = targetUser ? ('@' + targetUser) : '@Gewinner';
     document.getElementById('auth-target-name').textContent = targetUser ? ('@' + targetUser) : '@Gewinner';
 
     const authSection = document.getElementById('auth-section');

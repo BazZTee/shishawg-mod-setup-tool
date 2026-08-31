@@ -3630,6 +3630,55 @@ input[type="checkbox"]:checked ~ .toggle-slider::before {
   filter: brightness(1.08);
 }
 
+/* Giveaway History Filter Buttons */
+.gw-history-filter-pills {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.gw-history-filter-pills .pill-btn,
+.pill-btn {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.gw-history-filter-pills .pill-btn:not(.active),
+.pill-btn:not(.active) {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.gw-history-filter-pills .pill-btn:hover:not(.active),
+.pill-btn:hover:not(.active) {
+  background: rgba(124, 58, 237, 0.16);
+  border-color: rgba(124, 58, 237, 0.45);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.gw-history-filter-pills .pill-btn.active,
+.pill-btn.active {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.4), rgba(99, 102, 241, 0.3));
+  border-color: #8b5cf6;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35);
+}
+
 /* Winners History Table */
 .winners-table-wrapper {
   max-height: 220px;

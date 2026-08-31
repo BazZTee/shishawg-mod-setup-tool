@@ -936,6 +936,7 @@
       btnAnswered.addEventListener('click', async () => {
         if (!activeQuestion) return;
         const qId = activeQuestion.id;
+        const pName = qnaSettings.activePerson;
         activeQuestion = null;
         renderScreenPrompter();
 
@@ -943,7 +944,11 @@
           await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(qId)}`, {
             method: 'PATCH',
             headers: reqHeaders,
-            body: JSON.stringify({ status: 'answered', updated_at: new Date().toISOString() })
+            body: JSON.stringify({
+              status: 'answered',
+              answered_by: pName,
+              updated_at: new Date().toISOString()
+            })
           });
         } catch(e) {}
 
@@ -961,6 +966,7 @@
         } else {
           // If Wheel is off, skip and mark question as rejected
           const qId = activeQuestion.id;
+          const pName = qnaSettings.activePerson;
           activeQuestion = null;
           renderScreenPrompter();
 
@@ -968,7 +974,11 @@
             await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(qId)}`, {
               method: 'PATCH',
               headers: reqHeaders,
-              body: JSON.stringify({ status: 'rejected', updated_at: new Date().toISOString() })
+              body: JSON.stringify({
+                status: 'rejected',
+                answered_by: pName,
+                updated_at: new Date().toISOString()
+              })
             });
           } catch(e) {}
 
@@ -1156,19 +1166,27 @@
     const btnWheelDone = document.getElementById('btn-wheel-done');
     if (btnWheelDone) {
       btnWheelDone.addEventListener('click', async () => {
+        const pName = qnaSettings.activePerson;
         if (selectedBestrafung) {
           await fetch(`${SUPABASE_REST}/bestrafungen?id=eq.${encodeURIComponent(selectedBestrafung.id)}`, {
             method: 'PATCH',
             headers: reqHeaders,
-            body: JSON.stringify({ status: 'erledigt' })
+            body: JSON.stringify({
+              status: 'erledigt',
+              executed_by: pName
+            })
           });
         }
         if (activeQuestion) {
-          // Question was replaced by challenge, so mark question rejected/answered
+          // Question was replaced by challenge, so mark question rejected/answered with answered_by
           await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
             method: 'PATCH',
             headers: reqHeaders,
-            body: JSON.stringify({ status: 'rejected', updated_at: new Date().toISOString() })
+            body: JSON.stringify({
+              status: 'rejected',
+              answered_by: pName,
+              updated_at: new Date().toISOString()
+            })
           });
           activeQuestion = null;
         }
@@ -1180,11 +1198,15 @@
     const btnWheelSpinAgain = document.getElementById('btn-wheel-spin-again');
     if (btnWheelSpinAgain) {
       btnWheelSpinAgain.addEventListener('click', async () => {
+        const pName = qnaSettings.activePerson;
         if (selectedBestrafung) {
           await fetch(`${SUPABASE_REST}/bestrafungen?id=eq.${encodeURIComponent(selectedBestrafung.id)}`, {
             method: 'PATCH',
             headers: reqHeaders,
-            body: JSON.stringify({ status: 'erledigt' })
+            body: JSON.stringify({
+              status: 'erledigt',
+              executed_by: pName
+            })
           });
         }
         document.getElementById('wheel-winner-card').classList.remove('show');

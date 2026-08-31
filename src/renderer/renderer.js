@@ -5144,9 +5144,10 @@ function renderBestrafungen() {
 
   container.innerHTML = bestrafungenList.map(b => {
     const isErledigt = b.status === 'erledigt';
+    const executedLabel = (isErledigt && b.executedBy) ? `<span style="font-size:0.75rem; color:#10b981; font-weight:700; margin-left:6px;">(von ${escapeHtml(b.executedBy)})</span>` : '';
     return `
       <div class="bestrafung-item ${isErledigt ? 'erledigt' : ''}">
-        <span>${isErledigt ? '✔️ ' : '🔥 '} ${escapeHtml(b.name)}</span>
+        <span>${isErledigt ? '✔️ ' : '🔥 '} ${escapeHtml(b.name)}${executedLabel}</span>
         <div class="bestrafung-actions">
           <button class="btn-toggle-bestrafung" data-id="${b.id}" data-status="${isErledigt ? 'offen' : 'erledigt'}" title="${isErledigt ? 'Als offen markieren' : 'Als erledigt abhaken'}">
             ${isErledigt ? '↩️' : '✅'}
@@ -5957,6 +5958,7 @@ function renderQnAQuestionsList() {
           ${q.isSub ? '<span style="background:#a855f7; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">SUB</span>' : ''}
           ${q.isMod ? '<span style="background:#10b981; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">MOD</span>' : ''}
           ${q.isManual ? '<span style="background:rgba(255,255,255,0.1); color:var(--text-secondary); font-size:0.65rem; padding:1px 5px; border-radius:4px;">MANUELL</span>' : ''}
+          ${q.answeredBy ? `<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-size:0.65rem; padding:1px 6px; border-radius:4px; font-weight:700;">👤 ${escapeHtml(q.answeredBy)}</span>` : ''}
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
           ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>` : ''}

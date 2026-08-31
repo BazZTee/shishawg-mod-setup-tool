@@ -1,3 +1,7 @@
+const WebSocket = require('ws');
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = WebSocket;
+}
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
@@ -7,7 +11,10 @@ class SupabaseService {
   constructor() {
     this.client = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
       auth: { persistSession: false },
-      realtime: { params: { eventsPerSecond: 20 } }
+      realtime: {
+        websocket: WebSocket,
+        params: { eventsPerSecond: 20 }
+      }
     });
     this.mainWindow = null;
     this.channelSubscriptions = [];

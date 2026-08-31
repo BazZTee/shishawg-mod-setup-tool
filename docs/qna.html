@@ -198,6 +198,20 @@
       accent-color: #8b5cf6;
     }
 
+    .prompter-flame-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(249, 115, 22, 0.18);
+      border: 1px solid rgba(249, 115, 22, 0.45);
+      color: #fb923c;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 12px;
+      margin-left: 8px;
+    }
+
     /* Centered Stage Layout */
     .streamer-stage-container {
       flex: 1;
@@ -579,6 +593,16 @@
       </div>
 
       <div class="streamer-nav-controls">
+        <div id="prompter-twitch-auth-container" style="display:flex; align-items:center;">
+          <button id="btn-prompter-twitch-login" class="wheel-toggle-btn" style="background:#7c3aed; color:#fff; border:1px solid rgba(124,58,237,0.6); cursor:pointer; gap:6px;" title="Einmalig als Streamer mit Twitch verbinden, um Umfragen für Moderatoren freizugeben">
+            <span>🔑</span> <span>Twitch Streamer-Login</span>
+          </button>
+          <div id="prompter-twitch-connected-badge" style="display:none; align-items:center; gap:6px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); padding:5px 12px; border-radius:20px; font-size:12px; color:#10b981; font-weight:700;">
+            <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981; box-shadow:0 0 6px #10b981;"></span>
+            <span id="prompter-twitch-username">@marved</span>
+          </div>
+        </div>
+
         <label class="wheel-toggle-btn" title="Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
           <input type="checkbox" id="prompter-wheel-toggle" checked>
           <span>🎡 Bestrafungsrad</span>
@@ -733,6 +757,8 @@
               question: r.question,
               status: r.status,
               person: r.person || '',
+              duplicateCount: r.duplicate_count || 1,
+              duplicateUsers: Array.isArray(r.duplicate_users) ? r.duplicate_users : [],
               timestamp: new Date(r.created_at).getTime()
             }));
             activeQuestion = currentQuestions.find(q => q.status === 'on_air') || null;
@@ -846,7 +872,14 @@
         if (qText) qText.textContent = `„${activeQuestion.question}“`;
 
         const authorVal = document.getElementById('prompter-author-val');
-        if (authorVal) authorVal.textContent = `@${activeQuestion.displayName || activeQuestion.login}`;
+        if (authorVal) {
+          const dupeUsers = activeQuestion.duplicateUsers || [];
+          const uniqueCount = dupeUsers.length > 1 ? dupeUsers.length : 1;
+          const flameHtml = uniqueCount > 1
+            ? ` <span class="prompter-flame-tag" title="Von: ${escapeHtml(dupeUsers.join(', '))}">🔥 von ${uniqueCount} Zuschauern gefragt</span>`
+            : '';
+          authorVal.innerHTML = `@${escapeHtml(activeQuestion.displayName || activeQuestion.login)}${flameHtml}`;
+        }
       } else {
         if (spotBox) spotBox.style.display = 'none';
         if (noActiveBox) noActiveBox.style.display = 'flex';
@@ -1026,7 +1059,14 @@
         if (qTextEl) qTextEl.textContent = `„${activeQuestion.question}“`;
 
         const authorEl = document.getElementById('obs-author-name');
-        if (authorEl) authorEl.textContent = `@${activeQuestion.displayName || activeQuestion.login}`;
+        if (authorEl) {
+          const dupeUsers = activeQuestion.duplicateUsers || [];
+          const uniqueCount = dupeUsers.length > 1 ? dupeUsers.length : 1;
+          const flameHtml = uniqueCount > 1
+            ? ` <span style="background:rgba(249,115,22,0.25); color:#f97316; border:1px solid rgba(249,115,22,0.5); border-radius:12px; padding:1px 8px; font-size:11px; margin-left:6px; font-weight:800;">🔥 ${uniqueCount}x gefragt</span>`
+            : '';
+          authorEl.innerHTML = `@${escapeHtml(activeQuestion.displayName || activeQuestion.login)}${flameHtml}`;
+        }
 
         card.classList.add('visible');
 
@@ -1225,6 +1265,88 @@
         .replace(/'/g, '&#039;');
     }
 
+    // Twitch Streamer Auth handling for Prompter Screen
+    async function handleTwitchOAuthHash() {
+      const hash = window.location.hash;
+      if (!hash || !hash.includes('access_token=')) {
+        checkStoredStreamerAuth();
+        return;
+      }
+
+      const params = new URLSearchParams(hash.substring(1));
+      const token = params.get('access_token');
+      if (!token) return;
+
+      try {
+        const uRes = await fetch('https://api.twitch.tv/helix/users', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Client-Id': '440sjk1dkut7ltxkf7b3p267dekbpu'
+          }
+        });
+        if (uRes.ok) {
+          const uData = await uRes.json();
+          if (uData.data && uData.data.length > 0) {
+            const twitchUser = uData.data[0];
+            // Save broadcaster token to Supabase in qna_settings
+            await fetch(`${SUPABASE_REST}/qna_settings?on_conflict=channel`, {
+              method: 'POST',
+              headers: Object.assign({}, reqHeaders, { 'Prefer': 'resolution=merge-duplicates' }),
+              body: JSON.stringify({
+                channel: targetChannel,
+                broadcaster_token: token,
+                updated_at: new Date().toISOString()
+              })
+            });
+
+            localStorage.setItem('prompter_twitch_user', twitchUser.login);
+            showTwitchConnected(twitchUser.display_name || twitchUser.login);
+          }
+        }
+      } catch(e) {
+        console.error('Twitch OAuth error:', e);
+      } finally {
+        history.replaceState(null, null, window.location.pathname + window.location.search);
+      }
+    }
+
+    async function checkStoredStreamerAuth() {
+      try {
+        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?channel=eq.${targetChannel}&select=broadcaster_token`, {
+          headers: reqHeaders,
+          cache: 'no-store'
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          if (Array.isArray(sData) && sData.length > 0 && sData[0].broadcaster_token) {
+            const savedUser = localStorage.getItem('prompter_twitch_user') || targetChannel;
+            showTwitchConnected(savedUser);
+            return;
+          }
+        }
+      } catch(e) {}
+    }
+
+    function showTwitchConnected(userName) {
+      const btnLogin = document.getElementById('btn-prompter-twitch-login');
+      const badgeConnected = document.getElementById('prompter-twitch-connected-badge');
+      const labelUser = document.getElementById('prompter-twitch-username');
+      if (btnLogin) btnLogin.style.display = 'none';
+      if (badgeConnected) badgeConnected.style.display = 'inline-flex';
+      if (labelUser) labelUser.textContent = `@${userName}`;
+    }
+
+    const btnTwitchLogin = document.getElementById('btn-prompter-twitch-login');
+    if (btnTwitchLogin) {
+      btnTwitchLogin.addEventListener('click', () => {
+        const redirectUri = window.location.origin + window.location.pathname;
+        const scopes = encodeURIComponent('channel:manage:polls channel:read:polls chat:read');
+        const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=440sjk1dkut7ltxkf7b3p267dekbpu&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scopes}`;
+        window.location.href = authUrl;
+      });
+    }
+
+    handleTwitchOAuthHash();
     syncAllData();
     setInterval(syncAllData, 1000);
   </script>

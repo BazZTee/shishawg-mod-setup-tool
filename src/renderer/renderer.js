@@ -5781,40 +5781,53 @@ function handleNewQnAQuestion(q) {
   const uName = q.displayName || q.login || 'Viewer';
   const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
 
-  // Auto Duplicate Detection via Fuzzy Matching
-  let isDuplicate = false;
+  // Auto Duplicate Detection via Fuzzy Matching across all statuses
   let matchedExisting = null;
 
   if (qnaState.settings.autoDupe && qnaState.questions.length > 0) {
     for (const existing of qnaState.questions) {
-      if (existing.status === 'rejected' || existing.status === 'answered') continue;
-
       const normExisting = (existing.question || '').toLowerCase().replace(/[?!.,;:_~#+*^$'"„“”\s]+/g, ' ').trim();
       const isExact = (normNew === normExisting);
       const sim = isExact ? 1.0 : similarityScore(rawText, existing.question);
 
       if (isExact || sim >= 0.70) {
-        isDuplicate = true;
         matchedExisting = existing;
-        existing.duplicateCount = (existing.duplicateCount || 1) + 1;
-        existing.updatedAt = Date.now();
-        if (!existing.duplicateUsers) {
-          existing.duplicateUsers = [existing.displayName || existing.login];
-        }
-        if (!existing.duplicateUsers.includes(uName)) {
-          existing.duplicateUsers.push(uName);
-        }
         break;
       }
     }
   }
 
-  if (isDuplicate && matchedExisting) {
+  if (matchedExisting) {
+    const status = matchedExisting.status;
+    const sameUser = (matchedExisting.login && matchedExisting.login.toLowerCase() === (q.login || '').toLowerCase());
+
+    if (status === 'answered') {
+      const replyMsg = `@${uName} Diese Frage wurde heute bereits im Stream beantwortet! ✔️`;
+      ipcRenderer.invoke('twitch:send-chat', { channel: chan, message: replyMsg }).catch(() => {});
+      showToast(`@${uName} stellte eine bereits beantwortete Frage.`, 'info');
+      return;
+    }
+
+    if (status === 'rejected') {
+      const replyMsg = `@${uName} Deine Frage hat leider nicht unseren Chat-Richtlinien entsprochen und wurde abgelehnt. ❌`;
+      ipcRenderer.invoke('twitch:send-chat', { channel: chan, message: replyMsg }).catch(() => {});
+      showToast(`@${uName} stellte eine bereits abgelehnte Frage.`, 'info');
+      return;
+    }
+
+    // Status is 'pending', 'approved', or 'on_air'
+    matchedExisting.duplicateCount = (matchedExisting.duplicateCount || 1) + 1;
+    matchedExisting.updatedAt = Date.now();
+    if (!matchedExisting.duplicateUsers) {
+      matchedExisting.duplicateUsers = [matchedExisting.displayName || matchedExisting.login];
+    }
+    if (!matchedExisting.duplicateUsers.includes(uName)) {
+      matchedExisting.duplicateUsers.push(uName);
+    }
+
     // Persist updated existing question with increased duplicateCount
     ipcRenderer.invoke('qna:upsert-question', matchedExisting).catch(() => {});
 
-    // Send chat feedback so user knows question was already received
-    const sameUser = (matchedExisting.login && matchedExisting.login.toLowerCase() === (q.login || '').toLowerCase());
     const replyMsg = sameUser
       ? `@${uName} Du hast diese Frage bereits gestellt – sie ist bereits im Fragen-Pool! 💬`
       : `@${uName} Eine sehr ähnliche Frage ist bereits im Fragen-Pool! 🔥`;

@@ -134,7 +134,7 @@
        MODE 2: STREAMER FRONTEND / PROMPTER (Base44 1:1 Design)
        ========================================================= */
     body.mode-screen {
-      background: #090a0f;
+      background: #090a0f !important;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -542,10 +542,10 @@
     }
   </style>
 </head>
-<body class="mode-overlay">
+<body class="mode-screen">
 
-  <!-- OBS OVERLAY -->
-  <div id="view-overlay-container" style="display:none; width:100%; height:100%; display:flex; align-items:flex-end; justify-content:center;">
+  <!-- OBS OVERLAY (Visible only when ?mode=overlay) -->
+  <div id="view-overlay-container" style="display:none; width:100%; height:100%; align-items:flex-end; justify-content:center;">
     <div class="obs-hud-card" id="obs-hud-card">
       <div class="obs-person-badge-wrapper" id="obs-badge-wrapper">
         <span class="obs-person-badge" id="obs-person-badge">
@@ -570,7 +570,7 @@
   </div>
 
   <!-- STREAMER FRONTEND / PROMPTER (Base44 Exact) -->
-  <div id="view-screen-container" style="display:none;">
+  <div id="view-screen-container" style="display:flex;">
     <!-- Navbar -->
     <header class="streamer-navbar">
       <div class="streamer-brand">
@@ -681,7 +681,9 @@
     } catch(e) {}
 
     const urlParams = new URLSearchParams(window.location.search);
-    const mode = (urlParams.get('mode') || 'overlay').toLowerCase();
+    const modeParam = urlParams.get('mode');
+    // Default is 'screen' (Prompter), only 'overlay' switches to transparent HUD
+    const isOverlay = (modeParam === 'overlay');
     const targetChannel = (urlParams.get('channel') || 'marved').toLowerCase().replace('#', '').trim();
     const isPersistent = urlParams.get('persistent') === '1';
 
@@ -702,14 +704,14 @@
     let wheelAngle = 0;
     let selectedBestrafung = null;
 
-    if (mode === 'screen') {
-      document.body.className = 'mode-screen';
-      document.getElementById('view-overlay-container').style.display = 'none';
-      document.getElementById('view-screen-container').style.display = 'flex';
-    } else {
+    if (isOverlay) {
       document.body.className = 'mode-overlay';
       document.getElementById('view-overlay-container').style.display = 'flex';
       document.getElementById('view-screen-container').style.display = 'none';
+    } else {
+      document.body.className = 'mode-screen';
+      document.getElementById('view-overlay-container').style.display = 'none';
+      document.getElementById('view-screen-container').style.display = 'flex';
     }
 
     async function syncAllData() {
@@ -768,10 +770,10 @@
     }
 
     function renderCurrentView() {
-      if (mode === 'screen') {
-        renderScreenPrompter();
-      } else {
+      if (isOverlay) {
         renderOBSOverlay();
+      } else {
+        renderScreenPrompter();
       }
     }
 

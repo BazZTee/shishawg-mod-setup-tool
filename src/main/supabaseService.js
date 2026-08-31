@@ -404,7 +404,9 @@ class SupabaseService {
         channel: r.channel || cleanChan,
         username: r.username,
         addedBy: r.added_by,
-        reason: r.reason,
+        note: r.reason || r.note || '',
+        reason: r.reason || r.note || '',
+        completed: !!r.completed,
         timestamp: new Date(r.created_at).getTime()
       }));
     } catch(err) {
@@ -415,12 +417,11 @@ class SupabaseService {
 
   async addToWatchlist(item, channel = 'marved') {
     try {
-      const cleanChan = (channel || item.channel || 'marved').toLowerCase().replace('#', '');
       const row = {
         id: item.id || ('wl_' + Date.now()),
         username: item.username,
         added_by: item.addedBy || 'Mod',
-        reason: item.reason || '',
+        reason: item.note || item.reason || '',
         created_at: new Date(item.timestamp || Date.now()).toISOString()
       };
       await this.client
@@ -485,15 +486,16 @@ class SupabaseService {
       const { data, error } = await this.client
         .from('mod_chat')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: true })
         .limit(100);
       if (error) throw error;
-      return (data || []).reverse().map(r => ({
+      return (data || []).map(r => ({
         id: r.id,
         channel: r.channel || cleanChan,
-        sender: r.sender,
-        message: r.message,
-        color: r.color,
+        senderName: r.sender || 'Mod',
+        senderColor: r.color || '#00f0ff',
+        senderAvatar: 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png',
+        text: r.message || '',
         timestamp: new Date(r.created_at).getTime()
       }));
     } catch(err) {
@@ -506,16 +508,31 @@ class SupabaseService {
     try {
       const row = {
         id: msg.id || ('chat_' + Date.now()),
-        sender: msg.sender || 'Mod',
-        message: msg.message || '',
-        color: msg.color || '#00f0ff',
+        sender: msg.senderName || msg.sender || 'Mod',
+        message: msg.text || msg.message || '',
+        color: msg.senderColor || msg.color || '#00f0ff',
         created_at: new Date(msg.timestamp || Date.now()).toISOString()
       };
       await this.client
         .from('mod_chat')
         .upsert(row, { onConflict: 'id' });
+      return await this.getModChat(channel);
     } catch(err) {
       console.error('Supabase sendModChatMessage error:', err.message);
+      return [];
+    }
+  }
+
+  async clearModChat() {
+    try {
+      await this.client
+        .from('mod_chat')
+        .delete()
+        .neq('id', '');
+      return [];
+    } catch(err) {
+      console.error('Supabase clearModChat error:', err.message);
+      return [];
     }
   }
 

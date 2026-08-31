@@ -4155,56 +4155,58 @@ async function startGlobalModChatWatcher() {
   }
 
   if (globalModChatInterval) clearInterval(globalModChatInterval);
-  globalModChatInterval = setInterval(async () => {
-    try {
-      const res = await ipcRenderer.invoke('modchat:get-messages');
-      if (res && res.success && Array.isArray(res.messages)) {
-        const currentMod = getActiveModInfo();
-        const currentUserName = (currentMod.name || '').toLowerCase();
+  globalModChatInterval = setInterval(checkModChatUpdates, 4000);
+}
 
-        // Check for new incoming messages from other mods
-        const newIncoming = res.messages.filter(m => 
-          m.timestamp && 
-          m.timestamp > lastSeenModChatTimestamp && 
-          m.senderName && 
-          m.senderName.toLowerCase() !== currentUserName
-        );
+async function checkModChatUpdates() {
+  try {
+    const res = await ipcRenderer.invoke('modchat:get-messages');
+    if (res && res.success && Array.isArray(res.messages)) {
+      const currentMod = getActiveModInfo();
+      const currentUserName = (currentMod.name || '').toLowerCase();
 
-        if (newIncoming.length > 0) {
-          const isWindowFocused = document.hasFocus();
-          const isActivelyInChat = (currentActiveView === 'view-modchat') && isWindowFocused;
+      // Check for new incoming messages from other mods
+      const newIncoming = res.messages.filter(m => 
+        m.timestamp && 
+        m.timestamp > lastSeenModChatTimestamp && 
+        m.senderName && 
+        m.senderName.toLowerCase() !== currentUserName
+      );
 
-          // Play sound & flash taskbar when NOT actively looking at the chat
-          if (!isActivelyInChat) {
-            playNotificationSound();
-            ipcRenderer.invoke('app:notify-background').catch(() => {});
-          }
+      if (newIncoming.length > 0) {
+        const isWindowFocused = document.hasFocus();
+        const isActivelyInChat = (currentActiveView === 'view-modchat') && isWindowFocused;
 
-          if (currentActiveView === 'view-modchat') {
-            renderModChatMessages(res.messages);
-            lastSeenModChatTimestamp = Math.max(...newIncoming.map(m => m.timestamp || 0), Date.now());
-          } else {
-            newIncoming.forEach(msg => {
-              const preview = msg.text.length > 60 ? msg.text.substring(0, 60) + '...' : msg.text;
-              showToast(`💬 ${msg.senderName}: ${preview}`, 'info');
-              unreadModChatCount++;
-            });
-
-            const maxTs = Math.max(...newIncoming.map(m => m.timestamp || 0));
-            lastSeenModChatTimestamp = Math.max(maxTs, Date.now());
-
-            const badge = document.getElementById('hub-modchat-unread');
-            if (badge) {
-              badge.textContent = unreadModChatCount;
-              badge.classList.remove('hidden');
-            }
-          }
-        } else if (currentActiveView === 'view-modchat') {
-          renderModChatMessages(res.messages);
+        // Play sound & flash taskbar when NOT actively looking at the chat
+        if (!isActivelyInChat) {
+          playNotificationSound();
+          ipcRenderer.invoke('app:notify-background').catch(() => {});
         }
+
+        if (currentActiveView === 'view-modchat') {
+          renderModChatMessages(res.messages);
+          lastSeenModChatTimestamp = Math.max(...newIncoming.map(m => m.timestamp || 0), Date.now());
+        } else {
+          newIncoming.forEach(msg => {
+            const preview = msg.text.length > 60 ? msg.text.substring(0, 60) + '...' : msg.text;
+            showToast(`💬 ${msg.senderName}: ${preview}`, 'info');
+            unreadModChatCount++;
+          });
+
+          const maxTs = Math.max(...newIncoming.map(m => m.timestamp || 0));
+          lastSeenModChatTimestamp = Math.max(maxTs, Date.now());
+
+          const badge = document.getElementById('hub-modchat-unread');
+          if (badge) {
+            badge.textContent = unreadModChatCount;
+            badge.classList.remove('hidden');
+          }
+        }
+      } else if (currentActiveView === 'view-modchat') {
+        renderModChatMessages(res.messages);
       }
-    } catch(e) {}
-  }, 4000);
+    }
+  } catch(e) {}
 }
 
 function updateModHQUserInfo() {
@@ -6364,6 +6366,12 @@ async function loadQnAState() {
 }
 
 // Realtime listeners from main process
+ipcRenderer.on('supabase:chat-changed', () => {
+  if (typeof checkModChatUpdates === 'function') {
+    checkModChatUpdates();
+  }
+});
+
 ipcRenderer.on('supabase:bestrafungen-changed', () => {
   loadBestrafungen();
 });
@@ -6378,6 +6386,12 @@ ipcRenderer.on('supabase:qna-changed', () => {
 
 ipcRenderer.on('supabase:giveaway-changed', () => {
   loadGiveawayWinnersHistory();
+});
+
+ipcRenderer.on('supabase:setup-changed', () => {
+  if (typeof fetchCurrentSetupRemote === 'function') {
+    fetchCurrentSetupRemote(true);
+  }
 });
 
 function handleNewQnAQuestion(q) {

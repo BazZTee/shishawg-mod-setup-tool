@@ -564,8 +564,12 @@ ipcMain.handle('youtube:search', async (event, payload) => {
 // Mod-Chat IPC Handlers
 ipcMain.handle('modchat:get-messages', async () => {
   try {
+    if (supabaseService) {
+      const msgs = await supabaseService.getModChat();
+      return { success: true, messages: msgs || [] };
+    }
     const msgs = await dbService.getModChatMessages();
-    return { success: true, messages: msgs };
+    return { success: true, messages: msgs || [] };
   } catch(e) {
     return { success: false, messages: [], error: e.message };
   }
@@ -573,8 +577,12 @@ ipcMain.handle('modchat:get-messages', async () => {
 
 ipcMain.handle('modchat:send-message', async (event, messageObj) => {
   try {
+    if (supabaseService) {
+      const msgs = await supabaseService.sendModChatMessage(messageObj);
+      return { success: true, messages: msgs || [] };
+    }
     const msgs = await dbService.sendModChatMessage(messageObj);
-    return { success: true, messages: msgs };
+    return { success: true, messages: msgs || [] };
   } catch(e) {
     return { success: false, error: e.message };
   }
@@ -582,6 +590,9 @@ ipcMain.handle('modchat:send-message', async (event, messageObj) => {
 
 ipcMain.handle('modchat:clear-messages', async () => {
   try {
+    if (supabaseService) {
+      await supabaseService.clearModChat();
+    }
     await dbService.clearModChatMessages();
     return { success: true, messages: [] };
   } catch(e) {
@@ -599,8 +610,12 @@ ipcMain.handle('app:notify-background', async () => {
 // Watchlist IPC Handlers
 ipcMain.handle('watchlist:get', async () => {
   try {
+    if (supabaseService) {
+      const list = await supabaseService.getWatchlist();
+      return { success: true, list: list || [] };
+    }
     const list = await dbService.getWatchlist();
-    return { success: true, list };
+    return { success: true, list: list || [] };
   } catch(e) {
     return { success: false, list: [] };
   }
@@ -608,6 +623,11 @@ ipcMain.handle('watchlist:get', async () => {
 
 ipcMain.handle('watchlist:save', async (event, list) => {
   try {
+    if (supabaseService && Array.isArray(list)) {
+      for (const item of list) {
+        await supabaseService.addToWatchlist(item);
+      }
+    }
     await dbService.saveWatchlist(list);
     return { success: true };
   } catch(e) {

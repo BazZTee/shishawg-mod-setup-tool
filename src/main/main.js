@@ -598,6 +598,100 @@ ipcMain.handle('qna:set-active', async (event, activeObj, channel) => {
   }
 });
 
+// Q&A Settings (Persons list, Wheel toggle)
+ipcMain.handle('qna:get-settings', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const settings = await supabaseService.getQnASettings(chan);
+    return { success: true, settings };
+  } catch(e) {
+    return { success: false, error: e.message, settings: null };
+  }
+});
+
+ipcMain.handle('qna:save-settings', async (event, channel, settings) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const saved = await supabaseService.saveQnASettings(chan, settings);
+    return { success: true, settings: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Bestrafungen (Punishments / Challenges)
+ipcMain.handle('bestrafungen:get', async () => {
+  try {
+    const list = await supabaseService.getBestrafungen();
+    return { success: true, bestrafungen: list };
+  } catch(e) {
+    return { success: false, error: e.message, bestrafungen: [] };
+  }
+});
+
+ipcMain.handle('bestrafungen:save', async (event, bestrafung) => {
+  try {
+    const saved = await supabaseService.saveBestrafung(bestrafung);
+    return { success: true, bestrafung: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('bestrafungen:update-status', async (event, id, status) => {
+  try {
+    const updated = await supabaseService.updateBestrafungStatus(id, status);
+    return { success: true, updated };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('bestrafungen:delete', async (event, id) => {
+  try {
+    const deleted = await supabaseService.deleteBestrafung(id);
+    return { success: true, deleted };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:delete-all', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const questions = await supabaseService.getQnAQuestions(chan);
+    for (const q of questions) {
+      await supabaseService.deleteQnAQuestion(q.id);
+    }
+    await dbService.saveQnAQuestions([]);
+    await dbService.setActiveQnAQuestion(null);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:delete-duplicates', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const questions = await supabaseService.getQnAQuestions(chan);
+    const seen = new Set();
+    let deletedCount = 0;
+    for (const q of questions) {
+      const key = `${(q.login || '').toLowerCase()}:${(q.question || '').trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        await supabaseService.deleteQnAQuestion(q.id);
+        deletedCount++;
+      } else {
+        seen.add(key);
+      }
+    }
+    return { success: true, deletedCount };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
 // Twitch Polls & Vorlagen IPC Handlers
 ipcMain.handle('polls:create', async (event, { title, choices, duration, channelPointsVoting, channelPointsPerVote, channel }) => {
   try {

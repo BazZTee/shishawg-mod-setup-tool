@@ -54,7 +54,25 @@ class SupabaseService {
         })
         .subscribe();
 
-      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel);
+      const bestrafungenChannel = this.client
+        .channel('db-bestrafungen-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bestrafungen' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:bestrafungen-changed', payload);
+          }
+        })
+        .subscribe();
+
+      const settingsChannel = this.client
+        .channel('db-settings-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_settings' }, (payload) => {
+          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+            this.mainWindow.webContents.send('supabase:settings-changed', payload);
+          }
+        })
+        .subscribe();
+
+      this.channelSubscriptions.push(qnaChannel, setupChannel, chatChannel, bestrafungenChannel, settingsChannel);
       console.log('✅ Supabase Realtime WebSockets initialized in Electron.');
     } catch(e) {
       console.error('Failed to init Supabase realtime in Electron:', e);
@@ -502,6 +520,134 @@ class SupabaseService {
     } catch(err) {
       console.error('Supabase getPollTemplates error:', err.message);
       return [];
+    }
+  }
+
+  // --- Bestrafungen (Punishments / Challenges) CRUD ---
+  async getBestrafungen() {
+    try {
+      const { data, error } = await this.client
+        .from('bestrafungen')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        status: r.status,
+        timestamp: new Date(r.created_at).getTime()
+      }));
+    } catch(err) {
+      console.error('Supabase getBestrafungen error:', err.message);
+      return [];
+    }
+  }
+
+  async saveBestrafung(b) {
+    try {
+      const { data, error } = await this.client
+        .from('bestrafungen')
+        .upsert({
+          id: b.id || ('pen_' + Date.now()),
+          name: b.name || '',
+          status: b.status || 'offen',
+          created_at: new Date(b.timestamp || Date.now()).toISOString()
+        }, { onConflict: 'id' })
+        .select();
+      if (error) throw error;
+      return data;
+    } catch(err) {
+      console.error('Supabase saveBestrafung error:', err.message);
+      return null;
+    }
+  }
+
+  async updateBestrafungStatus(id, status) {
+    try {
+      const { data, error } = await this.client
+        .from('bestrafungen')
+        .update({ status })
+        .eq('id', id)
+        .select();
+      if (error) throw error;
+      return data;
+    } catch(err) {
+      console.error('Supabase updateBestrafungStatus error:', err.message);
+      return null;
+    }
+  }
+
+  async deleteBestrafung(id) {
+    try {
+      const { error } = await this.client
+        .from('bestrafungen')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch(err) {
+      console.error('Supabase deleteBestrafung error:', err.message);
+      return false;
+    }
+  }
+
+  // --- Q&A Streamer Settings (Persons & Wheel Toggle) ---
+  async getQnASettings(channel = 'marved') {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('qna_settings')
+        .select('*')
+        .eq('channel', cleanChan)
+        .maybeSingle();
+      if (error) throw error;
+      if (data) {
+        return {
+          channel: data.channel,
+          persons: Array.isArray(data.persons) ? data.persons : ['Marved', 'Hasty', 'Kai'],
+          activePerson: data.active_person || 'Marved',
+          wheelEnabled: data.wheel_enabled !== false,
+          displayDuration: data.display_duration || 10
+        };
+      }
+      return {
+        channel: cleanChan,
+        persons: ['Marved', 'Hasty', 'Kai'],
+        activePerson: 'Marved',
+        wheelEnabled: true,
+        displayDuration: 10
+      };
+    } catch(err) {
+      console.error('Supabase getQnASettings error:', err.message);
+      return {
+        channel,
+        persons: ['Marved', 'Hasty', 'Kai'],
+        activePerson: 'Marved',
+        wheelEnabled: true,
+        displayDuration: 10
+      };
+    }
+  }
+
+  async saveQnASettings(channel = 'marved', settings = {}) {
+    try {
+      const cleanChan = channel.toLowerCase().replace('#', '');
+      const { data, error } = await this.client
+        .from('qna_settings')
+        .upsert({
+          channel: cleanChan,
+          persons: settings.persons || ['Marved', 'Hasty', 'Kai'],
+          active_person: settings.activePerson || 'Marved',
+          wheel_enabled: settings.wheelEnabled !== false,
+          display_duration: settings.displayDuration || 10,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'channel' })
+        .select();
+      if (error) throw error;
+      return data;
+    } catch(err) {
+      console.error('Supabase saveQnASettings error:', err.message);
+      return settings;
     }
   }
 }

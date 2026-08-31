@@ -1005,6 +1005,33 @@
           </div>
         </div>
 
+        <!-- Streamer & Wheel Control Bar -->
+        <div class="qna-streamer-control-bar">
+          <div class="streamer-control-left">
+            <span class="control-label">👥 Personen:</span>
+            <div id="qna-persons-pill-list" class="qna-persons-pill-list">
+              <!-- Dynamically populated pills: [Marved ✕] [Hasty ✕] [Kai ✕] -->
+            </div>
+            <button id="btn-add-qna-person" class="btn btn-xs btn-secondary" title="Person / Gast zur Fragerunde hinzufügen">
+              ➕ Person
+            </button>
+          </div>
+
+          <div class="streamer-control-right">
+            <label class="qna-wheel-toggle-label" title="Bestrafungs-Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
+              <input type="checkbox" id="chk-qna-wheel-enabled" checked>
+              <span class="toggle-slider"></span>
+              <span class="toggle-text">🎡 Bestrafungsrad</span>
+            </label>
+            <button id="btn-qna-delete-duplicates" class="btn btn-xs btn-secondary" title="Doppelte Fragen aus dem Chat löschen">
+              🧹 Dopplungen bereinigen
+            </button>
+            <button id="btn-qna-delete-all" class="btn btn-xs btn-danger" title="Alle Fragen unwiderruflich löschen">
+              🗑️ Alle löschen
+            </button>
+          </div>
+        </div>
+
         <!-- Main Q&A Grid Layout -->
         <div class="qna-grid-container">
 
@@ -1097,8 +1124,35 @@
 
           </div>
 
-          <!-- RIGHT COLUMN: TWITCH POLLS & VORLAGEN -->
+          <!-- RIGHT COLUMN: TWITCH POLLS & BESTRAFUNGEN -->
           <div class="qna-sidebar-panel">
+
+            <!-- Card 0: Bestrafungen & Challenges Manager -->
+            <section class="qna-card bestrafungen-card">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">🎡</span>
+                  <div>
+                    <h3>Bestrafungen &amp; Challenges</h3>
+                    <p class="qa-subtitle">Pool für das Glücksrad bei nicht beantworteten Fragen</p>
+                  </div>
+                </div>
+                <span id="badge-bestrafungen-count" class="qna-tab-badge">0 offen</span>
+              </div>
+
+              <div class="qna-card-body">
+                <div class="input-action-row" style="margin-bottom: 10px;">
+                  <input type="text" id="input-new-bestrafung" placeholder="Neue Bestrafung (z. B. 10 Liegestütze)..." style="font-size: 0.85rem;">
+                  <button id="btn-add-bestrafung" class="btn btn-primary btn-sm" style="white-space:nowrap;">
+                    ➕ Hinzufügen
+                  </button>
+                </div>
+                <div id="bestrafungen-list-container" class="bestrafungen-list-container">
+                  <!-- Dynamically populated -->
+                  <div class="bestrafungen-empty">Keine Bestrafungen angelegt.</div>
+                </div>
+              </div>
+            </section>
 
             <!-- Card 1: Live Twitch Poll Monitor -->
             <section class="qna-card poll-active-card">

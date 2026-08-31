@@ -5043,6 +5043,10 @@ let qnaSyncInterval = null;
 let pollLiveCheckInterval = null;
 let unreadQnACount = 0;
 
+let qnaPersons = ['Marved', 'Hasty', 'Kai'];
+let qnaWheelEnabled = true;
+let bestrafungenList = [];
+
 let qnaState = {
   questions: [],
   activeQuestion: null,
@@ -5064,6 +5068,111 @@ let pollsState = {
   activePoll: null,
   templates: []
 };
+
+async function loadQnASettings() {
+  try {
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const res = await ipcRenderer.invoke('qna:get-settings', chan);
+    if (res && res.success && res.settings) {
+      qnaPersons = Array.isArray(res.settings.persons) && res.settings.persons.length > 0 ? res.settings.persons : ['Marved', 'Hasty', 'Kai'];
+      qnaWheelEnabled = res.settings.wheelEnabled !== false;
+      const chkWheel = document.getElementById('chk-qna-wheel-enabled');
+      if (chkWheel) chkWheel.checked = qnaWheelEnabled;
+      renderPersonsPills();
+    }
+  } catch(e) {}
+}
+
+function renderPersonsPills() {
+  const container = document.getElementById('qna-persons-pill-list');
+  if (!container) return;
+  container.innerHTML = qnaPersons.map((p, idx) => {
+    const pLower = p.toLowerCase();
+    const cls = (pLower === 'marved' || pLower === 'hasty' || pLower === 'kai') ? pLower : '';
+    return `
+      <span class="qna-person-pill ${cls}">
+        ${escapeHtml(p)}
+        <span class="btn-remove-pill" data-index="${idx}" title="${escapeHtml(p)} entfernen">✕</span>
+      </span>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.btn-remove-pill').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+      if (!isNaN(idx)) {
+        qnaPersons.splice(idx, 1);
+        if (qnaPersons.length === 0) qnaPersons = ['Marved'];
+        await saveQnASettings();
+        renderPersonsPills();
+      }
+    });
+  });
+}
+
+async function saveQnASettings() {
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  await ipcRenderer.invoke('qna:save-settings', chan, {
+    persons: qnaPersons,
+    wheelEnabled: qnaWheelEnabled
+  });
+}
+
+async function loadBestrafungen() {
+  try {
+    const res = await ipcRenderer.invoke('bestrafungen:get');
+    if (res && res.success && Array.isArray(res.bestrafungen)) {
+      bestrafungenList = res.bestrafungen;
+      renderBestrafungen();
+    }
+  } catch(e) {}
+}
+
+function renderBestrafungen() {
+  const container = document.getElementById('bestrafungen-list-container');
+  const countBadge = document.getElementById('badge-bestrafungen-count');
+  if (!container) return;
+
+  const openCount = bestrafungenList.filter(b => b.status === 'offen').length;
+  if (countBadge) countBadge.textContent = `${openCount} offen`;
+
+  if (bestrafungenList.length === 0) {
+    container.innerHTML = `<div class="bestrafungen-empty">Keine Bestrafungen angelegt.</div>`;
+    return;
+  }
+
+  container.innerHTML = bestrafungenList.map(b => {
+    const isErledigt = b.status === 'erledigt';
+    return `
+      <div class="bestrafung-item ${isErledigt ? 'erledigt' : ''}">
+        <span>${isErledigt ? '✔️ ' : '🔥 '} ${escapeHtml(b.name)}</span>
+        <div class="bestrafung-actions">
+          <button class="btn-toggle-bestrafung" data-id="${b.id}" data-status="${isErledigt ? 'offen' : 'erledigt'}" title="${isErledigt ? 'Als offen markieren' : 'Als erledigt abhaken'}">
+            ${isErledigt ? '↩️' : '✅'}
+          </button>
+          <button class="btn-delete-bestrafung" data-id="${b.id}" title="Löschen">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.btn-toggle-bestrafung').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      const status = e.currentTarget.getAttribute('data-status');
+      await ipcRenderer.invoke('bestrafungen:update-status', id, status);
+      await loadBestrafungen();
+    });
+  });
+
+  container.querySelectorAll('.btn-delete-bestrafung').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      await ipcRenderer.invoke('bestrafungen:delete', id);
+      await loadBestrafungen();
+    });
+  });
+}
 
 // Play subtle synthesized notification chime for incoming questions
 function playQnANotificationSound() {
@@ -5194,6 +5303,85 @@ function setupQnAListeners() {
       await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
       renderQnAQuestionsList();
       showToast(`${answeredCount} beantwortete Frage(n) gelöscht.`, 'success');
+    });
+  }
+
+  // Add Person / Guest
+  const btnAddPerson = document.getElementById('btn-add-qna-person');
+  if (btnAddPerson) {
+    btnAddPerson.addEventListener('click', async () => {
+      const name = prompt('Name der Person / des Gastes eingeben:');
+      if (name && name.trim()) {
+        const cleanName = name.trim();
+        if (!qnaPersons.includes(cleanName)) {
+          qnaPersons.push(cleanName);
+          await saveQnASettings();
+          renderPersonsPills();
+          showToast(`Person „${cleanName}“ hinzugefügt! 👥`, 'success');
+        }
+      }
+    });
+  }
+
+  // Wheel Toggle Checkbox
+  const chkWheel = document.getElementById('chk-qna-wheel-enabled');
+  if (chkWheel) {
+    chkWheel.addEventListener('change', async (e) => {
+      qnaWheelEnabled = !!e.target.checked;
+      await saveQnASettings();
+      showToast(`Bestrafungs-Glücksrad ${qnaWheelEnabled ? 'aktiviert 🎡' : 'deaktiviert ⏸️'}`, 'info');
+    });
+  }
+
+  // Delete Duplicates Button
+  const btnDeleteDuplicates = document.getElementById('btn-qna-delete-duplicates');
+  if (btnDeleteDuplicates) {
+    btnDeleteDuplicates.addEventListener('click', async () => {
+      const res = await ipcRenderer.invoke('qna:delete-duplicates');
+      if (res && res.success) {
+        await loadQnAState();
+        showToast(`${res.deletedCount || 0} doppelte Frage(n) bereinigt! 🧹`, 'success');
+      }
+    });
+  }
+
+  // Delete All Questions Button
+  const btnDeleteAll = document.getElementById('btn-qna-delete-all');
+  if (btnDeleteAll) {
+    btnDeleteAll.addEventListener('click', async () => {
+      if (confirm('Möchtest du wirklich ALLE Fragen in der Inbox unwiderruflich löschen?')) {
+        await ipcRenderer.invoke('qna:delete-all');
+        await loadQnAState();
+        showToast('Alle Fragen wurden gelöscht. 🗑️', 'info');
+      }
+    });
+  }
+
+  // Add Bestrafung Button & Enter Key
+  const inputNewBestrafung = document.getElementById('input-new-bestrafung');
+  const btnAddBestrafung = document.getElementById('btn-add-bestrafung');
+
+  async function handleAddBestrafung() {
+    if (!inputNewBestrafung) return;
+    const text = inputNewBestrafung.value.trim();
+    if (!text) return;
+    await ipcRenderer.invoke('bestrafungen:save', {
+      id: 'pen_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      name: text,
+      status: 'offen',
+      timestamp: Date.now()
+    });
+    inputNewBestrafung.value = '';
+    await loadBestrafungen();
+    showToast(`Bestrafung „${text}“ hinzugefügt! 🔥`, 'success');
+  }
+
+  if (btnAddBestrafung) {
+    btnAddBestrafung.addEventListener('click', handleAddBestrafung);
+  }
+  if (inputNewBestrafung) {
+    inputNewBestrafung.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleAddBestrafung();
     });
   }
 
@@ -5484,6 +5672,9 @@ async function loadQnAState() {
       pollsState.activePoll = pollRes.poll;
     }
 
+    await loadQnASettings();
+    await loadBestrafungen();
+
     renderQnASpotlight();
     renderQnAQuestionsList();
     renderPollActiveSection(pollsState.activePoll);
@@ -5492,6 +5683,19 @@ async function loadQnAState() {
     console.error('Error loading Q&A state:', e);
   }
 }
+
+// Realtime listeners from main process
+ipcRenderer.on('supabase:bestrafungen-changed', () => {
+  loadBestrafungen();
+});
+
+ipcRenderer.on('supabase:settings-changed', () => {
+  loadQnASettings();
+});
+
+ipcRenderer.on('supabase:qna-changed', () => {
+  loadQnAState();
+});
 
 function handleNewQnAQuestion(q) {
   if (!q || !q.question) return;

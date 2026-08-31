@@ -98,32 +98,251 @@ const updaterPercent = document.getElementById('updater-percent');
 const updaterProgressBar = document.getElementById('updater-progress-bar');
 let updateState = 'available';
 
+// Live Stream Status & Hub Nav Elements
+const streamStatusPill = document.getElementById('stream-status-pill');
+const streamStatusDot = document.getElementById('stream-status-dot');
+const streamStatusText = document.getElementById('stream-status-text');
+
 // Initialize App
-document.addEventListener('DOMContentLoaded', async () => {
-  await loadCatalog();
-  await checkTwitchAuth();
-  initDefaultPersons();
-  renderPersonsGrid();
-  setupEventListeners();
-  setupUpdaterEvents();
-  generateCommandString();
+async function initApp() {
+  setupHubNavigation();
+
+  try {
+    await loadCatalog();
+  } catch (e) {
+    console.error('Error loading catalog:', e);
+  }
+  try {
+    await checkTwitchAuth();
+  } catch (e) {
+    console.error('Error checking Twitch auth:', e);
+  }
+  try {
+    initDefaultPersons();
+    renderPersonsGrid();
+  } catch (e) {
+    console.error('Error rendering grid:', e);
+  }
+  try {
+    setupEventListeners();
+  } catch (e) {
+    console.error('Error setting up listeners:', e);
+  }
+  try {
+    setupQuickActionsListeners();
+  } catch (e) {
+    console.error('Error setting up quick actions:', e);
+  }
+  try {
+    setupModHQListeners();
+  } catch (e) {
+    console.error('Error setting up Mod-HQ:', e);
+  }
+  try {
+    setupGiveawaysListeners();
+  } catch (e) {
+    console.error('Error setting up Giveaways:', e);
+  }
+  try {
+    setupQnAListeners();
+  } catch (e) {
+    console.error('Error setting up Q&A & Umfragen:', e);
+  }
+  try {
+    setupUpdaterEvents();
+  } catch (e) {
+    console.error('Error setting up updater:', e);
+  }
+  try {
+    generateCommandString();
+  } catch (e) {
+    console.error('Error generating command:', e);
+  }
+
+  // Check live stream status immediately & every 60 seconds
+  checkLiveStreamStatus();
+  setInterval(checkLiveStreamStatus, 60000);
+
+  // Start global background watcher for Mod-HQ Team-Chat notifications
+  startGlobalModChatWatcher();
 
   // Auto-focus on first name field
   const firstNameInput = document.querySelector('.input-p-name');
   if (firstNameInput) firstNameInput.focus();
 
-  // Auto-sync community catalog from GitHub on startup
+  // Auto-sync community catalog from GitHub & HookahTools on startup
   setTimeout(async () => {
     try {
       const res = await ipcRenderer.invoke('db:sync-github');
-      if (res && res.addedCount > 0) {
+      if (res && res.success) {
         state.catalog = res.catalog;
         updateDatalists();
-        showToast(`${res.addedCount} neue Katalog-Einträge von GitHub geladen!`, 'success');
+        const tobaccoMsg = res.tobaccoCount ? `${res.tobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
+        showToast(`Katalog synchronisiert (${tobaccoMsg} & Hardware)!`, 'success');
       }
     } catch(e) {}
   }, 2000);
-});
+}
+
+let currentActiveView = 'view-landing';
+let unreadModChatCount = 0;
+let lastSeenModChatTimestamp = 0;
+let globalModChatInterval = null;
+
+// Hub Navigation & View Switcher
+function showView(targetViewId) {
+  currentActiveView = targetViewId;
+  const viewPanes = document.querySelectorAll('.hub-view-pane');
+  viewPanes.forEach(pane => pane.classList.add('hidden'));
+
+  const targetPane = document.getElementById(targetViewId);
+  if (targetPane) {
+    targetPane.classList.remove('hidden');
+  }
+
+  // Toggle Hotkey Bulb (only show in Setup Manager)
+  const hotkeyBulbWrapper = document.querySelector('.hotkey-bulb-wrapper');
+  if (hotkeyBulbWrapper) {
+    if (targetViewId === 'view-setup') {
+      hotkeyBulbWrapper.classList.remove('hidden');
+    } else {
+      hotkeyBulbWrapper.classList.add('hidden');
+    }
+  }
+
+  // If opening setup manager, auto-focus first input
+  if (targetViewId === 'view-setup') {
+    const firstNameInput = document.querySelector('.input-p-name');
+    if (firstNameInput) firstNameInput.focus();
+  }
+
+  // If opening Quick-Actions, load current channel title & game
+  if (targetViewId === 'view-quickactions') {
+    loadStreamChannelInfo();
+  }
+
+  // If opening Mod-HQ, start real-time chat sync & load panels, reset unread badge
+  if (targetViewId === 'view-modchat') {
+    unreadModChatCount = 0;
+    const badge = document.getElementById('hub-modchat-unread');
+    if (badge) {
+      badge.classList.add('hidden');
+      badge.textContent = '0';
+    }
+    lastSeenModChatTimestamp = Date.now();
+    startModHQSync();
+  } else {
+    stopModHQSync();
+  }
+
+  // If opening Giveaways, start live sync of winners history for all mods
+  if (targetViewId === 'view-giveaways') {
+    loadGiveawayWinnersHistory();
+    if (!giveawaySyncInterval) {
+      giveawaySyncInterval = setInterval(loadGiveawayWinnersHistory, 2500);
+    }
+  } else {
+    if (giveawaySyncInterval) {
+      clearInterval(giveawaySyncInterval);
+      giveawaySyncInterval = null;
+    }
+  }
+
+  // If opening Q&A & Umfragen, load state & start live sync
+  if (targetViewId === 'view-qna') {
+    unreadQnACount = 0;
+    const badge = document.getElementById('hub-qna-unread');
+    if (badge) {
+      badge.classList.add('hidden');
+      badge.textContent = '0';
+    }
+    loadQnAState();
+    if (!qnaSyncInterval) {
+      qnaSyncInterval = setInterval(loadQnAState, 2500);
+    }
+  } else {
+    if (qnaSyncInterval) {
+      clearInterval(qnaSyncInterval);
+      qnaSyncInterval = null;
+    }
+  }
+}
+
+function setupHubNavigation() {
+  // Tile clicks on Landing Page
+  const hubTiles = document.querySelectorAll('.hub-tile-card');
+  hubTiles.forEach(tile => {
+    tile.addEventListener('click', () => {
+      const targetViewId = tile.getAttribute('data-target');
+      if (targetViewId) showView(targetViewId);
+    });
+
+    // Keyboard Accessibility (Enter or Space to open tile)
+    tile.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const targetViewId = tile.getAttribute('data-target');
+        if (targetViewId) showView(targetViewId);
+      }
+    });
+  });
+
+  // Back buttons inside tool views
+  const backButtons = document.querySelectorAll('.btn-back-hub');
+  backButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      showView('view-landing');
+    });
+  });
+
+  // Global ESC key shortcut: Return to landing page if no modal is open
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const openModal = document.querySelector('.modal-overlay:not(.hidden)');
+      if (openModal) return; // let modal close handler handle ESC if any
+
+      const landingPane = document.getElementById('view-landing');
+      if (landingPane && landingPane.classList.contains('hidden')) {
+        e.preventDefault();
+        showView('view-landing');
+      }
+    }
+  });
+}
+
+// Check Live Stream Status
+async function checkLiveStreamStatus() {
+  if (!streamStatusText || !streamStatusDot) return;
+  const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+
+  try {
+    const res = await ipcRenderer.invoke('twitch:check-stream-status', channel);
+    if (res && res.live) {
+      streamStatusDot.className = 'status-indicator-dot red pulse';
+      const viewers = res.viewer_count !== undefined ? ` (${res.viewer_count.toLocaleString('de-DE')} 👁️)` : '';
+      const game = res.game_name ? ` • ${res.game_name}` : '';
+      streamStatusText.textContent = `#${channel}: 🔴 LIVE${viewers}${game}`;
+      if (streamStatusPill) {
+        streamStatusPill.title = `Live: ${res.title || 'Stream'}\nSpiel: ${res.game_name || '-'}\nZuschauer: ${res.viewer_count || 0}`;
+      }
+    } else {
+      streamStatusDot.className = 'status-indicator-dot grey';
+      streamStatusText.textContent = `#${channel}: Offline`;
+      if (streamStatusPill) {
+        streamStatusPill.title = `Kanal #${channel} ist aktuell offline.`;
+      }
+    }
+  } catch (err) {
+    streamStatusDot.className = 'status-indicator-dot grey';
+    streamStatusText.textContent = `#${channel}: Offline`;
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // Load Database Catalog
 async function loadCatalog() {
@@ -161,6 +380,7 @@ function updateDatalists() {
   populateDatalist('list-hmds', state.catalog.hmds || []);
   populateDatalist('list-tobacco', state.catalog.tobacco || []);
   populateDatalist('list-charcoal', state.catalog.charcoal || []);
+  populateDatalist('list-persons', state.catalog.persons || []);
   populateDatalist('list-tastings', state.catalog.tastings || []);
   populateDatalist('list-promos', state.catalog.promos || []);
 }
@@ -211,6 +431,9 @@ function updateChannelBotTooltips() {
 
 function updateTwitchUI() {
   const previewModName = document.getElementById('preview-mod-name');
+  const userColorPicker = document.getElementById('user-color-picker');
+  const savedColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+
   if (state.twitchUser) {
     btnTwitchLogin.classList.add('hidden');
     twitchUserBadge.classList.remove('hidden');
@@ -219,12 +442,17 @@ function updateTwitchUI() {
     userAvatar.src = state.twitchUser.profile_image_url || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
     if (previewModName) {
       previewModName.textContent = `${name}:`;
+      previewModName.style.color = savedColor;
+    }
+    if (userColorPicker) {
+      userColorPicker.value = savedColor.startsWith('#') ? savedColor : '#FF7F00';
     }
   } else {
     btnTwitchLogin.classList.remove('hidden');
     twitchUserBadge.classList.add('hidden');
     if (previewModName) {
       previewModName.textContent = 'Mod:';
+      previewModName.style.color = savedColor;
     }
   }
 }
@@ -237,7 +465,10 @@ function initDefaultPersons() {
       pipe: '',
       bowl: '',
       hmd: '',
-      tobaccos: ['']
+      tobaccos: [''],
+      tobaccoAmounts: [''],
+      tobaccoUnit: 'g',
+      showTobaccoAmounts: false
     }
   ];
 }
@@ -254,7 +485,10 @@ function renderPersonsGrid() {
         pipe: '',
         bowl: '',
         hmd: '',
-        tobaccos: ['']
+        tobaccos: [''],
+        tobaccoAmounts: [''],
+        tobaccoUnit: 'g',
+        showTobaccoAmounts: false
       };
       state.persons[i] = p;
     }
@@ -262,21 +496,36 @@ function renderPersonsGrid() {
     if (!p.tobaccos || p.tobaccos.length === 0) {
       p.tobaccos = [''];
     }
+    if (!p.tobaccoAmounts) {
+      p.tobaccoAmounts = p.tobaccos.map(() => '');
+    }
+    if (!p.tobaccoUnit) {
+      p.tobaccoUnit = 'g';
+    }
 
     const card = document.createElement('div');
     card.className = 'person-card';
     card.setAttribute('data-index', i);
 
     // Build Tobacco Slot HTML
-    const tobaccoSlotsHtml = (p.tobaccos || ['']).map((tVal, tIdx) => `
+    const tobaccoSlotsHtml = (p.tobaccos || ['']).map((tVal, tIdx) => {
+      const amtVal = (p.tobaccoAmounts && p.tobaccoAmounts[tIdx] !== undefined) ? p.tobaccoAmounts[tIdx] : '';
+      const unit = p.tobaccoUnit || 'g';
+      return `
       <div class="tobacco-slot-row">
         <div class="clearable-input-wrapper" style="flex:1;">
           <input type="text" class="input-p-tob" data-pindex="${i}" data-tindex="${tIdx}" list="list-tobacco" value="${escapeHtml(tVal)}" placeholder="Tabak ${tIdx + 1}">
           <button class="btn-clear-field ${tVal ? '' : 'hidden'}" tabindex="-1" title="Feld leeren">✕</button>
         </div>
+        ${p.showTobaccoAmounts ? `
+        <div class="tobacco-amount-input-wrapper">
+          <input type="text" class="input-p-tob-amount" data-pindex="${i}" data-tindex="${tIdx}" value="${escapeHtml(amtVal)}" placeholder="${unit === '%' ? '50%' : '12g'}">
+        </div>
+        ` : ''}
         ${tIdx > 0 ? `<button class="btn-icon btn-remove-tobacco-slot" data-pindex="${i}" data-tindex="${tIdx}" title="Tabaksortenslot entfernen">✕</button>` : ''}
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     const isElectric = !!p.isElectric;
     const isOptionalOpen = state.expandedOptionalCards.has(i) || !!(p.vessel || p.vesselColor);
@@ -359,7 +608,21 @@ function renderPersonsGrid() {
       </div>
 
       <div class="input-group full-width tobacco-mix-wrapper">
-        <label>Tabaksorte(n):</label>
+        <div class="tobacco-header-bar">
+          <label style="margin-bottom:0;">Tabaksorte(n):</label>
+          <div class="tobacco-amount-toggle-group">
+            <label class="tobacco-amount-switch-label" title="Mischverhältnis oder Mengenangaben (% oder g) aktivieren">
+              <input type="checkbox" class="chk-p-tob-amount" data-pindex="${i}" ${p.showTobaccoAmounts ? 'checked' : ''}>
+              <span>⚖️ Mengen</span>
+            </label>
+            ${p.showTobaccoAmounts ? `
+              <div class="unit-selector-pills">
+                <button type="button" class="btn-unit-pill ${p.tobaccoUnit === 'g' ? 'active' : ''}" data-pindex="${i}" data-unit="g">g</button>
+                <button type="button" class="btn-unit-pill ${p.tobaccoUnit === '%' ? 'active' : ''}" data-pindex="${i}" data-unit="%">%</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
         <div class="tobacco-mix-inputs">
           ${tobaccoSlotsHtml}
         </div>
@@ -387,6 +650,9 @@ function attachCardInputListeners() {
           // Seamless Auto-expand: typing into the last slot automatically appends a new empty slot!
           if (tobIdx === state.persons[personIdx].tobaccos.length - 1 && e.target.value.trim() !== '') {
             state.persons[personIdx].tobaccos.push('');
+            if (state.persons[personIdx].tobaccoAmounts) {
+              state.persons[personIdx].tobaccoAmounts.push('');
+            }
             renderPersonsGrid();
             const newInputs = document.querySelectorAll(`.input-p-tob[data-pindex="${personIdx}"]`);
             if (newInputs[tobIdx]) {
@@ -394,6 +660,15 @@ function attachCardInputListeners() {
               newInputs[tobIdx].setSelectionRange(e.target.value.length, e.target.value.length);
             }
           }
+        }
+      } else if (e.target.classList.contains('input-p-tob-amount')) {
+        const personIdx = parseInt(e.target.getAttribute('data-pindex'));
+        const tobIdx = parseInt(e.target.getAttribute('data-tindex'));
+        if (!isNaN(personIdx) && state.persons[personIdx]) {
+          if (!state.persons[personIdx].tobaccoAmounts) {
+            state.persons[personIdx].tobaccoAmounts = [];
+          }
+          state.persons[personIdx].tobaccoAmounts[tobIdx] = e.target.value;
         }
       } else if (!isNaN(pIdx) && state.persons[pIdx]) {
         const p = state.persons[pIdx];
@@ -417,7 +692,58 @@ function attachCardInputListeners() {
         }
       }
 
+      // Auto-fill Person 1 name with 'Marvin' if any field of Person 1 has content and name is empty/default
+      const personIndexForCheck = !isNaN(pIdx) ? pIdx : (typeof personIdx !== 'undefined' ? personIdx : null);
+      if (personIndexForCheck === 0 && !e.target.classList.contains('input-p-name')) {
+        const p1 = state.persons[0];
+        if (p1 && (!p1.name || p1.name.trim() === '' || p1.name === 'Person 1')) {
+          const hasContent = !!(p1.pipe || p1.vessel || p1.vesselColor || p1.bowl || p1.hmd || (p1.tobaccos && p1.tobaccos.some(t => t && t.trim())));
+          if (hasContent) {
+            p1.name = 'Marvin';
+            const nameInput = document.querySelector('.input-p-name[data-index="0"]');
+            if (nameInput) {
+              nameInput.value = 'Marvin';
+              const clearBtn = nameInput.parentElement ? nameInput.parentElement.querySelector('.btn-clear-field') : null;
+              if (clearBtn) clearBtn.classList.remove('hidden');
+            }
+            const nameDisplay = document.querySelector('.person-card[data-index="0"] .person-name-display');
+            if (nameDisplay) nameDisplay.textContent = 'Marvin';
+          }
+        }
+      }
+
       generateCommandString();
+    });
+  });
+
+  // Tobacco Amount Checkbox Toggle Listener
+  document.querySelectorAll('.chk-p-tob-amount').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
+      if (!isNaN(pIdx) && state.persons[pIdx]) {
+        state.persons[pIdx].showTobaccoAmounts = e.currentTarget.checked;
+        if (!state.persons[pIdx].tobaccoAmounts) {
+          state.persons[pIdx].tobaccoAmounts = state.persons[pIdx].tobaccos.map(() => '');
+        }
+        if (!state.persons[pIdx].tobaccoUnit) {
+          state.persons[pIdx].tobaccoUnit = 'g';
+        }
+        renderPersonsGrid();
+        generateCommandString();
+      }
+    });
+  });
+
+  // Tobacco Amount Unit Toggle Pills (g / %)
+  document.querySelectorAll('.btn-unit-pill').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const pIdx = parseInt(e.currentTarget.getAttribute('data-pindex'));
+      const unit = e.currentTarget.getAttribute('data-unit');
+      if (!isNaN(pIdx) && state.persons[pIdx]) {
+        state.persons[pIdx].tobaccoUnit = unit;
+        renderPersonsGrid();
+        generateCommandString();
+      }
     });
   });
 
@@ -428,8 +754,12 @@ function attachCardInputListeners() {
       const tIdx = parseInt(e.currentTarget.getAttribute('data-tindex'));
       if (!isNaN(pIdx) && state.persons[pIdx] && state.persons[pIdx].tobaccos[tIdx] !== undefined) {
         state.persons[pIdx].tobaccos.splice(tIdx, 1);
+        if (state.persons[pIdx].tobaccoAmounts && state.persons[pIdx].tobaccoAmounts[tIdx] !== undefined) {
+          state.persons[pIdx].tobaccoAmounts.splice(tIdx, 1);
+        }
         if (state.persons[pIdx].tobaccos.length === 0) {
           state.persons[pIdx].tobaccos = [''];
+          if (state.persons[pIdx].tobaccoAmounts) state.persons[pIdx].tobaccoAmounts = [''];
         }
         renderPersonsGrid();
         generateCommandString();
@@ -448,7 +778,7 @@ function attachCardInputListeners() {
           updatePersonCountLabel();
         } else {
           // If only 1 person, clear fields of the remaining card
-          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
+          state.persons[0] = { name: '', pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], tobaccoAmounts: [''], tobaccoUnit: 'g', showTobaccoAmounts: false, isElectric: false };
         }
         renderPersonsGrid();
         generateCommandString();
@@ -516,6 +846,29 @@ function generateCommandString() {
     }
   }
 
+  const hasNonElectricPerson = state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return !p.isElectric && !bName.includes('xkah') && !bName.includes('elektr') && !bName.includes('imoto') && !bName.includes('e-kopf');
+  });
+
+  const isMixedSetup = state.personCount > 1 && state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return p.isElectric || bName.includes('xkah') || bName.includes('elektr') || bName.includes('imoto') || bName.includes('e-kopf');
+  }) && hasNonElectricPerson;
+
+  let kohle = hasNonElectricPerson ? (inputGlobalKohle ? inputGlobalKohle.value : '').trim() : '';
+  let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
+
+  if (promoText) {
+    if (promoTarget === 'kohle') {
+      kohle = kohle ? `${kohle} ${promoText}` : promoText;
+    } else if (promoTarget === 'extra') {
+      extra = extra ? `${extra} ${promoText}` : promoText;
+    }
+  }
+
   const parts = [];
 
   for (let i = 0; i < state.personCount; i++) {
@@ -541,7 +894,7 @@ function generateCommandString() {
 
     let bowlVal = (p.bowl || '').trim();
     let hmdVal = (p.hmd || '').trim();
-    const isElec = !!p.isElectric || bowlVal.toLowerCase().includes('xkah') || bowlVal.toLowerCase().includes('elektr');
+    const isElec = !!p.isElectric || bowlVal.toLowerCase().includes('xkah') || bowlVal.toLowerCase().includes('elektr') || bowlVal.toLowerCase().includes('imoto') || bowlVal.toLowerCase().includes('e-kopf');
 
     if (promoText) {
       if (promoTarget === 'pipe' && pipeVal) pipeVal = `${pipeVal} ${promoText}`;
@@ -553,9 +906,31 @@ function generateCommandString() {
     if (bowlVal) personSegments.push(bowlVal);
     if (hmdVal && !isElec) personSegments.push(hmdVal);
 
-    const tobaccos = (p.tobaccos || [])
-      .map(t => (t || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim())
-      .filter(Boolean);
+    // Kohle (Magic Charcoal) placed directly behind HMD!
+    if (!isElec && kohle) {
+      personSegments.push(kohle);
+    }
+
+    const tobaccos = [];
+    const rawTobaccos = p.tobaccos || [];
+    const rawAmounts = p.tobaccoAmounts || [];
+    const showAmt = !!p.showTobaccoAmounts;
+    const unit = p.tobaccoUnit || 'g';
+
+    for (let tIdx = 0; tIdx < rawTobaccos.length; tIdx++) {
+      let tVal = (rawTobaccos[tIdx] || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (!tVal) continue;
+      const amtVal = (rawAmounts[tIdx] || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (showAmt && amtVal) {
+        const cleanAmt = amtVal.replace(/[^0-9.,]/g, '').trim();
+        if (cleanAmt) {
+          tVal = `${tVal} (${cleanAmt}${unit})`;
+        } else {
+          tVal = `${tVal} (${amtVal})`;
+        }
+      }
+      tobaccos.push(tVal);
+    }
 
     if (tobaccos.length > 0) {
       let tobStr = '';
@@ -583,27 +958,10 @@ function generateCommandString() {
 
   let fullCommand = `!editsetup ${parts.join(' // ')}`;
 
-  const hasNonElectricPerson = state.persons.slice(0, state.personCount).some(p => {
-    if (!p) return false;
-    const bName = (p.bowl || '').toLowerCase();
-    return !p.isElectric && !bName.includes('xkah') && !bName.includes('elektr');
-  });
+  const globalParts = [];
+  if (extra) globalParts.push(extra);
 
-  let kohle = hasNonElectricPerson ? (inputGlobalKohle ? inputGlobalKohle.value : '').trim() : '';
-  let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
-
-  if (promoText) {
-    if (promoTarget === 'kohle') {
-      kohle = kohle ? `${kohle} ${promoText}` : promoText;
-    } else if (promoTarget === 'extra') {
-      extra = extra ? `${extra} ${promoText}` : promoText;
-    }
-  }
-
-  if (kohle || extra) {
-    const globalParts = [];
-    if (kohle) globalParts.push(kohle);
-    if (extra) globalParts.push(extra);
+  if (globalParts.length > 0) {
     fullCommand += ` // ${globalParts.join(' // ')} //`;
   } else if (parts.length > 0) {
     fullCommand += ' //';
@@ -617,18 +975,12 @@ function generateCommandString() {
   if (previewModName) {
     const name = state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod';
     previewModName.textContent = `${name}:`;
+    const color = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+    previewModName.style.color = color;
   }
   if (previewChatText) {
     previewChatText.textContent = fullCommand;
   }
-
-  // Live Sync to OBS Overlay Server & Cloud Gist
-  ipcRenderer.invoke('obs:publish-setup', {
-    commandText: fullCommand,
-    persons: state.persons,
-    kohle,
-    extra
-  }).catch(() => {});
 
   const len = fullCommand.length;
   if (commandLengthBadge) {
@@ -640,6 +992,48 @@ function generateCommandString() {
       commandLengthBadge.textContent = `${len} / 500`;
     }
   }
+}
+
+// Smart Tobacco String Splitter (splits by comma, ' und ', ' & ', ' + ')
+function splitTobaccoString(str) {
+  if (!str) return [];
+  const normalized = str
+    .replace(/\s+und\s+/gi, ', ')
+    .replace(/\s*&\s*/g, ', ')
+    .replace(/\s*\+\s*/g, ', ');
+  return normalized.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+// Parse individual tobacco item for amount and unit e.g. "MustH - Pynkman (12g)", "Pinkman 12 Gramm", "50%"
+function parseTobaccoItem(item) {
+  let name = (item || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+  let amount = '';
+  let unit = 'g';
+  let hasAmount = false;
+
+  // Check for bracketed amount e.g. "(12g)", "(12 g)", "(50%)"
+  const bracketMatch = name.match(/\(([^)]+)\)$/);
+  if (bracketMatch) {
+    const inner = bracketMatch[1].trim();
+    const amtMatch = inner.match(/^(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
+    if (amtMatch) {
+      amount = amtMatch[1].replace(',', '.');
+      unit = (amtMatch[2] && amtMatch[2].startsWith('%')) ? '%' : 'g';
+      hasAmount = true;
+      name = name.substring(0, bracketMatch.index).trim();
+    }
+  } else {
+    // Check for trailing amount e.g. "12g", "12 Gramm", "12 g", "50%", "50 %"
+    const trailingMatch = name.match(/\s+(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
+    if (trailingMatch && trailingMatch[2]) {
+      amount = trailingMatch[1].replace(',', '.');
+      unit = trailingMatch[2].startsWith('%') ? '%' : 'g';
+      hasAmount = true;
+      name = name.substring(0, trailingMatch.index).trim();
+    }
+  }
+
+  return { name, amount, unit, hasAmount };
 }
 
 // Clean & Robust Parser for Chat Setup Messages
@@ -678,11 +1072,24 @@ function parseChatSetupMessage(rawText) {
 
       let pipe = '';
       let tobaccos = [];
+      let tobaccoAmounts = [];
+      let hasAmounts = false;
+      let unit = 'g';
 
-      if (pSetup.includes('&')) {
-        const parts = pSetup.split('&').map(x => x.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim());
-        pipe = parts[0];
-        if (parts[1]) tobaccos.push(parts[1]);
+      if (pSetup.includes('&') || pSetup.includes(',') || pSetup.includes(' und ')) {
+        const rawTobs = splitTobaccoString(pSetup);
+        pipe = rawTobs.shift() || '';
+        rawTobs.forEach(tRaw => {
+          const parsedItem = parseTobaccoItem(tRaw);
+          if (parsedItem.name) {
+            tobaccos.push(parsedItem.name);
+            tobaccoAmounts.push(parsedItem.amount);
+            if (parsedItem.hasAmount) {
+              hasAmounts = true;
+              unit = parsedItem.unit;
+            }
+          }
+        });
       } else {
         pipe = pSetup;
       }
@@ -692,46 +1099,78 @@ function parseChatSetupMessage(rawText) {
         pipe: pipe,
         bowl: '',
         hmd: '',
-        tobaccos: tobaccos.length > 0 ? tobaccos : ['']
+        tobaccos: tobaccos.length > 0 ? tobaccos : [''],
+        tobaccoAmounts: tobaccoAmounts.length > 0 ? tobaccoAmounts : [''],
+        tobaccoUnit: unit,
+        showTobaccoAmounts: hasAmounts
       });
-    } else if (seg.toLowerCase().includes('!kohle') || seg.toLowerCase().includes('kohle') || seg.toLowerCase().includes('cubes')) {
+    } else if (seg.toLowerCase().includes('!kohle') || seg.toLowerCase().includes('kohle') || seg.toLowerCase().includes('cubes') || seg.toLowerCase().includes('zauberwürfel') || seg.toLowerCase().includes('charcoal')) {
       globalKohle = seg;
     } else if (seg.toLowerCase().includes('tasting') || seg.toLowerCase().includes('no aroma')) {
       globalExtra = seg;
-    } else if (seg.toLowerCase().includes('hmd') || seg.toLowerCase().includes('grani') || seg.toLowerCase().includes('lotus')) {
+    } else if (seg.toLowerCase().includes('hmd') || seg.toLowerCase().includes('grani') || seg.toLowerCase().includes('lotus') || seg.toLowerCase().includes('onmo') || seg.toLowerCase().includes('ao 912')) {
       sharedHmd = seg;
-    } else if (seg.toLowerCase().includes('bowl') || seg.toLowerCase().includes('phunnel') || seg.toLowerCase().includes('shot')) {
-      if (seg.includes('und') && (seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('darkside'))) {
-        const parts = seg.split('und').map(x => x.trim());
-        if (parsedPersons.length > 0) {
-          if (!parsedPersons[0].tobaccos[0] || parsedPersons[0].tobaccos[0] === '') {
-            parsedPersons[0].tobaccos[0] = parts[0];
-          } else {
-            parsedPersons[0].tobaccos.push(parts[0]);
-          }
-          if (parts[1]) sharedBowl = parts[1];
-        } else {
-          sharedBowl = seg;
-        }
-      } else {
-        sharedBowl = seg;
-      }
+    } else if (seg.toLowerCase().includes('bowl') || seg.toLowerCase().includes('phunnel') || seg.toLowerCase().includes('shot') || seg.toLowerCase().includes('mehrloch') || seg.toLowerCase().includes('cosmo')) {
+      sharedBowl = seg;
     } else {
-      if (parsedPersons.length > 0) {
-        if (!parsedPersons[0].tobaccos[0]) {
-          parsedPersons[0].tobaccos[0] = seg;
+      // Tobacco segment (e.g. "MustH - Pynkman, Blackburn - Green T und Kismet - Black Lavender")
+      const currentPerson = parsedPersons.length > 0 ? parsedPersons[parsedPersons.length - 1] : null;
+      const rawTobs = splitTobaccoString(seg);
+
+      if (currentPerson && (!currentPerson.pipe || currentPerson.tobaccos[0])) {
+        // If first person has no pipe yet and this doesn't look like a mix, assign as pipe
+        if (!currentPerson.pipe && rawTobs.length === 1 && !rawTobs[0].includes('-')) {
+          currentPerson.pipe = seg;
         } else {
-          parsedPersons[0].tobaccos.push(seg);
+          // Append tobacco items
+          rawTobs.forEach(tRaw => {
+            const parsedItem = parseTobaccoItem(tRaw);
+            if (parsedItem.name) {
+              if (currentPerson.tobaccos.length === 1 && !currentPerson.tobaccos[0]) {
+                currentPerson.tobaccos[0] = parsedItem.name;
+                currentPerson.tobaccoAmounts[0] = parsedItem.amount;
+              } else {
+                currentPerson.tobaccos.push(parsedItem.name);
+                currentPerson.tobaccoAmounts.push(parsedItem.amount);
+              }
+              if (parsedItem.hasAmount) {
+                currentPerson.showTobaccoAmounts = true;
+                currentPerson.tobaccoUnit = parsedItem.unit;
+              }
+            }
+          });
         }
-      } else {
-        // Fallback: create default Person 1 (Marvin) if no colon was present
-        parsedPersons.push({
+      } else if (!currentPerson) {
+        // Create default Person 1 (Marvin)
+        const newPerson = {
           name: 'Marvin',
-          pipe: seg,
+          pipe: '',
           bowl: '',
           hmd: '',
-          tobaccos: ['']
-        });
+          tobaccos: [],
+          tobaccoAmounts: [],
+          tobaccoUnit: 'g',
+          showTobaccoAmounts: false
+        };
+
+        if (rawTobs.length === 1 && !rawTobs[0].includes('-')) {
+          newPerson.pipe = seg;
+          newPerson.tobaccos = [''];
+          newPerson.tobaccoAmounts = [''];
+        } else {
+          rawTobs.forEach(tRaw => {
+            const parsedItem = parseTobaccoItem(tRaw);
+            if (parsedItem.name) {
+              newPerson.tobaccos.push(parsedItem.name);
+              newPerson.tobaccoAmounts.push(parsedItem.amount);
+              if (parsedItem.hasAmount) {
+                newPerson.showTobaccoAmounts = true;
+                newPerson.tobaccoUnit = parsedItem.unit;
+              }
+            }
+          });
+        }
+        parsedPersons.push(newPerson);
       }
     }
   }
@@ -743,7 +1182,10 @@ function parseChatSetupMessage(rawText) {
       pipe: segments[0] || '',
       bowl: sharedBowl,
       hmd: sharedHmd,
-      tobaccos: segments.length > 1 ? [segments[1]] : ['']
+      tobaccos: segments.length > 1 ? [segments[1]] : [''],
+      tobaccoAmounts: [''],
+      tobaccoUnit: 'g',
+      showTobaccoAmounts: false
     });
   }
 
@@ -806,6 +1248,497 @@ function parseChatSetupMessage(rawText) {
   }
 
   return false;
+}
+
+async function triggerAutoLearn() {
+  try {
+    const res = await ipcRenderer.invoke('db:auto-learn', {
+      persons: state.persons,
+      kohle: inputGlobalKohle ? inputGlobalKohle.value : '',
+      extra: inputGlobalExtra ? inputGlobalExtra.value : ''
+    });
+    if (res && res.addedCount > 0) {
+      state.catalog = res.catalog;
+      updateDatalists();
+      showToast(`${res.addedCount} neue(s) Element(e) automatisch in die Datenbank aufgenommen!`, 'success');
+    }
+  } catch(e) {}
+}
+
+const COMMON_PERSON_NAMES = [
+  'marvin', 'marv', 'basti', 'gary', 'janni', 'yanni', 'dennis', 'daniel',
+  'niklas', 'tim', 'alex', 'chris', 'jan', 'max', 'sven', 'leon', 'robin',
+  'nils', 'lukas', 'jonas', 'paul', 'finn', 'elias', 'noah', 'luis', 'david', 'simon',
+  'hannes', 'erik', 'marc', 'lars', 'julian', 'flo', 'stefan', 'micha', 'christian',
+  'hasty', 'hastydj', 'bazztee', 'bazzteedj',
+  'person 1', 'person 2', 'person 3', 'person 4', 'person 5', 'person 6'
+];
+
+const KNOWN_TOBACCO_TERMS = [
+  'darkside', 'musthave', 'musth', 'pinkman', 'pynkman', 'black burn', 'burn', 'haribo',
+  'holster', 'kaktuz', 'ice kaktuz', 'trofimoff', 'trofimoffs', 'zaghoul', 'anejo',
+  'nameless', 'black nana', 'al massiva', 'massiva', 'handgemacht', 'tangiers',
+  'fumari', 'social smoke', 'adalya', 'love 66', 'african queen', 'os tobacco',
+  'fog your life', 'hookain', 'blaze', 'maridan', 'tingle tangle', 'revoshi', 'chaos',
+  'superberry', 'intro', 'shot', 'falling star', 'wild forest', 'bounty hunter', 'space flavour'
+];
+
+function matchNotesToForm(text) {
+  if (!text || text.trim().length < 2) {
+    if (state.persons[0]) {
+      const pName = state.persons[0].name || 'Marvin';
+      state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
+    }
+    if (inputGlobalKohle) inputGlobalKohle.value = '';
+    renderPersonsGrid();
+    generateCommandString();
+    return;
+  }
+
+  const catalog = state.catalog || {};
+  const origText = text.trim();
+  const lowerText = origText.toLowerCase();
+  const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
+
+  // 1. Gather all catalog gear for structure lookahead
+  const dbPersons = (catalog.persons || []).map(p => getItemName(p).toLowerCase());
+  const allKnownPersons = Array.from(new Set([...COMMON_PERSON_NAMES, ...dbPersons]));
+
+  const pipesList = (catalog.pipes || []).map(p => getItemName(p).toLowerCase());
+  const bowlsList = (catalog.bowls || []).map(b => getItemName(b).toLowerCase());
+  const hmdsList = (catalog.hmds || []).map(h => getItemName(h).toLowerCase());
+  const charcoalList = (catalog.charcoal || []).map(c => getItemName(c).toLowerCase());
+  const tobaccoList = (catalog.tobacco || []).map(t => getItemName(t).toLowerCase());
+
+  function isKnownGearToken(tok) {
+    if (!tok || tok.length < 2) return false;
+    if (SHISHA_SYNONYMS[tok]) return true;
+    const allGear = [...pipesList, ...bowlsList, ...hmdsList, ...charcoalList, ...tobaccoList, ...KNOWN_TOBACCO_TERMS];
+    return allGear.some(item => {
+      const parts = item.split(/[\s-]+/);
+      return parts.some(p => p === tok || similarityScore(p, tok) >= 0.82);
+    });
+  }
+
+  function isKnownPipeOrBowl(tok, nextTok = '') {
+    const combined = nextTok ? `${tok} ${nextTok}` : tok;
+    if (pipesList.some(p => p.includes(tok) || p.includes(combined)) || bowlsList.some(b => b.includes(tok) || b.includes(combined))) return true;
+    if (SHISHA_SYNONYMS[tok] || (nextTok && SHISHA_SYNONYMS[combined])) return true;
+    return false;
+  }
+
+  // 2. Multi-Person Delimiter Detection (//, \n, ;, or strict known person names / Name: prefix)
+  let rawSegments = [];
+
+  if (origText.includes('//')) {
+    rawSegments = origText.split(/\/{2,}/);
+  } else if (origText.includes('\n')) {
+    rawSegments = origText.split(/\n+/);
+  } else if (origText.includes(';')) {
+    rawSegments = origText.split(/;+/);
+  } else {
+    // Continuous text: Scan strictly for KNOWN person names or explicit "Name:" pattern
+    const words = lowerText.split(/\s+/).filter(Boolean);
+    const origWords = origText.split(/\s+/).filter(Boolean);
+    const foundIndices = [];
+
+    for (let i = 0; i < words.length; i++) {
+      const cleanW = words[i].replace(/[:;,]/g, '');
+      const isColonName = words[i].endsWith(':') && cleanW.length >= 2;
+      const isKnownPerson = allKnownPersons.includes(cleanW);
+
+      if (isColonName || (isKnownPerson && (i === 0 || isKnownPipeOrBowl(words[i - 1])))) {
+        foundIndices.push({ index: i, name: cleanW });
+      }
+    }
+
+    if (foundIndices.length > 0) {
+      // If there is text before the first person name, that's Person 1
+      if (foundIndices[0].index > 0) {
+        rawSegments.push(origWords.slice(0, foundIndices[0].index).join(' '));
+      }
+
+      for (let k = 0; k < foundIndices.length; k++) {
+        const startIdx = foundIndices[k].index;
+        const endIdx = (k + 1 < foundIndices.length) ? foundIndices[k + 1].index : origWords.length;
+        rawSegments.push(origWords.slice(startIdx, endIdx).join(' '));
+      }
+    } else {
+      rawSegments = [origText];
+    }
+  }
+
+  rawSegments = rawSegments.map(s => s.trim()).filter(Boolean);
+
+  // Global Charcoal Scanner
+  let globalCharcoal = '';
+  const isCharcoalWord = lowerText.includes('zauber') || lowerText.includes('cubes') || lowerText.includes('magic') || lowerText.includes('blackcoco') || lowerText.includes('kohle');
+  if (isCharcoalWord) {
+    const charcoalList = catalog.charcoal || [];
+    for (const c of charcoalList) {
+      const cName = getItemName(c);
+      const cLower = cName.toLowerCase();
+      if (lowerText.includes('zauber') && (cLower.includes('zauber') || cLower.includes('magic'))) { globalCharcoal = cName; break; }
+      if (lowerText.includes('magic') && cLower.includes('magic')) { globalCharcoal = cName; break; }
+      if (lowerText.includes('cubes') && cLower.includes('cubes')) { globalCharcoal = cName; break; }
+      if (lowerText.includes('blackcoco') && cLower.includes('black')) { globalCharcoal = cName; break; }
+    }
+    if (!globalCharcoal) {
+      const cMatch = findBestFuzzyMatch(lowerText, charcoalList, 0.65);
+      globalCharcoal = cMatch ? cMatch.name : (charcoalList[0] ? getItemName(charcoalList[0]) : 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)');
+    }
+  }
+
+  // Global Tasting Scanner
+  let globalExtra = '';
+  const isTastingWord = lowerText.includes('no aroma') || lowerText.includes('blind') || lowerText.includes('tasting');
+  if (isTastingWord) {
+    const tastingList = catalog.tastings || [];
+    if (lowerText.includes('no aroma')) {
+      const match = tastingList.find(t => getItemName(t).toLowerCase().includes('no aroma'));
+      globalExtra = match ? getItemName(match) : 'Trofimoffs No Aroma Tasting';
+    } else if (lowerText.includes('blind')) {
+      const match = tastingList.find(t => getItemName(t).toLowerCase().includes('blind'));
+      globalExtra = match ? getItemName(match) : 'Blind Tasting im Stream';
+    } else {
+      const tMatch = findBestFuzzyMatch(lowerText, tastingList, 0.65);
+      if (tMatch) globalExtra = tMatch.name;
+    }
+  }
+
+  // Filter out pure charcoal or tasting segments if delimited
+  const candidateSegments = [];
+  for (const seg of rawSegments) {
+    const sLower = seg.toLowerCase();
+    const isPureCharcoal = (sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('magic') || sLower.includes('blackcoco')) && !Object.values(catalog).flat().some(item => {
+      const iName = getItemName(item).toLowerCase();
+      if ((catalog.charcoal || []).some(c => getItemName(c).toLowerCase() === iName)) return false;
+      return sLower.includes(iName.split(' ')[0]);
+    }) && !allKnownPersons.some(n => sLower.includes(n));
+
+    const isPureTasting = (sLower.includes('no aroma') || sLower.includes('blind') || sLower === 'tasting') && !allKnownPersons.some(n => sLower.includes(n));
+
+    if (!isPureCharcoal && !isPureTasting) {
+      candidateSegments.push(seg);
+    }
+  }
+
+  const segmentsToProcess = candidateSegments.length > 0 ? candidateSegments : [origText];
+  const newPersons = [];
+
+  for (let idx = 0; idx < segmentsToProcess.length; idx++) {
+    const seg = segmentsToProcess[idx];
+    const sLower = seg.toLowerCase();
+    const tokens = sLower.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
+    const usedIndices = new Set();
+
+    // 1. Name Scanner
+    let matchedName = `Person ${idx + 1}`;
+    if (seg.includes(':')) {
+      const colonPrefix = seg.split(':')[0].trim();
+      if (colonPrefix.length > 0) {
+        matchedName = capitalize(colonPrefix);
+        const prefixTokens = colonPrefix.toLowerCase().split(/[\s,./\\;:+&|]+/).filter(Boolean);
+        for (let i = 0; i < prefixTokens.length && i < tokens.length; i++) {
+          usedIndices.add(i);
+        }
+      }
+    } else if (tokens[0] && allKnownPersons.includes(tokens[0])) {
+      matchedName = capitalize(tokens[0]);
+      usedIndices.add(0);
+    }
+
+    // Auto-fill Person 1 name with 'Marvin' if not explicitly given another name
+    if (idx === 0 && (!matchedName || matchedName === 'Person 1')) {
+      matchedName = 'Marvin';
+    }
+
+    // Step 1: Hardware Gear Scanners (Highest score selection & unambiguous brand tokens)
+    function scanCategory(catList) {
+      if (!catList || catList.length === 0) return null;
+      let best = null;
+      let highestScore = 0;
+
+      function findFromSynonym(syn) {
+        if (!syn) return null;
+        const s = syn.toLowerCase().trim();
+        let m = catList.find(item => getItemName(item).toLowerCase().trim() === s);
+        if (m) return m;
+        m = catList.find(item => getItemName(item).toLowerCase().trim().includes(s));
+        if (m) return m;
+        m = catList.find(item => s.includes(getItemName(item).toLowerCase().trim()));
+        if (m) return m;
+        return null;
+      }
+
+      // 1. Three-word windows (e.g. 'aeon edition 6', 'moze breeze pro', 'cosmo bowl shot')
+      for (let i = 0; i <= tokens.length - 3; i++) {
+        if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
+        const window3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
+        const syn = SHISHA_SYNONYMS[window3];
+        if (syn) {
+          const match = findFromSynonym(syn);
+          if (match) {
+            const score = 1.0;
+            if (score > highestScore) {
+              highestScore = score;
+              best = { name: getItemName(match), item: match, indices: [i, i + 1, i + 2] };
+            }
+          }
+        }
+        const m3 = findBestFuzzyMatch(window3, catList, 0.70);
+        if (m3 && m3.score > highestScore) {
+          highestScore = m3.score;
+          best = { name: m3.name, item: m3.item, indices: [i, i + 1, i + 2] };
+        }
+      }
+
+      // 2. Two-word windows
+      for (let i = 0; i < tokens.length - 1; i++) {
+        if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
+        const window2 = `${tokens[i]} ${tokens[i + 1]}`;
+        const syn = SHISHA_SYNONYMS[window2];
+        if (syn) {
+          const match = findFromSynonym(syn);
+          if (match) {
+            const score = 1.0;
+            if (score > highestScore) {
+              highestScore = score;
+              best = { name: getItemName(match), item: match, indices: [i, i + 1] };
+            }
+          }
+        }
+        const m2 = findBestFuzzyMatch(window2, catList, 0.70);
+        if (m2 && m2.score > highestScore) {
+          highestScore = m2.score;
+          best = { name: m2.name, item: m2.item, indices: [i, i + 1] };
+        }
+      }
+
+      // 3. Single tokens
+      for (let i = 0; i < tokens.length; i++) {
+        if (usedIndices.has(i)) continue;
+        const tok = tokens[i];
+        if (tok.length < 2) continue;
+        if (tok === 'dark' || tok === 'darkside') continue;
+
+        const syn = SHISHA_SYNONYMS[tok];
+        if (syn) {
+          const match = findFromSynonym(syn);
+          if (match) {
+            const score = 0.95;
+            if (score > highestScore) {
+              highestScore = score;
+              best = { name: getItemName(match), item: match, indices: [i] };
+            }
+          }
+        }
+        const m1 = findBestFuzzyMatch(tok, catList, 0.70);
+        if (m1 && m1.score > highestScore) {
+          highestScore = m1.score;
+          best = { name: m1.name, item: m1.item, indices: [i] };
+        }
+      }
+
+      if (best && best.indices) {
+        best.indices.forEach(idx => usedIndices.add(idx));
+      }
+      return best;
+    }
+
+    const pipeMatch = scanCategory(catalog.pipes || []);
+    const pipe = pipeMatch ? pipeMatch.name : '';
+
+    let bowl = '';
+    let isElectric = false;
+    if (sLower.includes('xkah') || sLower.includes('xk-ah') || sLower.includes('xk ah') || sLower.includes('xklite') || sLower.includes('xkpro')) {
+      bowl = (sLower.includes('pro') || sLower.includes('xkpro')) ? (catalog.bowls && catalog.bowls.some(b => getItemName(b).includes('Pro')) ? 'XKAH Pro E-Kopf & E-HMD' : 'XKAH Pro') : (catalog.bowls && catalog.bowls.some(b => getItemName(b).includes('LITE')) ? 'XKAH LITE E-Kopf & E-HMD' : 'XKAH Lite');
+      isElectric = true;
+    } else {
+      const bowlMatch = scanCategory(catalog.bowls || []);
+      if (bowlMatch) {
+        bowl = bowlMatch.name;
+        if (bowlMatch.item && bowlMatch.item.isElectric) isElectric = true;
+      }
+    }
+
+    let hmd = '';
+    if (!isElectric) {
+      const hmdMatch = scanCategory(catalog.hmds || []);
+      if (hmdMatch) hmd = hmdMatch.name;
+    }
+
+    const vesselMatch = scanCategory(catalog.vases || []);
+    const vessel = vesselMatch ? vesselMatch.name : '';
+
+    // Pre-reserve charcoal tokens in usedIndices so they are NEVER matched as tobacco
+    for (let i = 0; i <= tokens.length - 2; i++) {
+      if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
+      const w2 = `${tokens[i]} ${tokens[i + 1]}`;
+      if (w2 === 'magic charcoal' || w2 === 'magic cubes' || w2 === 'black coco' || w2 === 'black coco26' || w2 === 'black coco27' || w2 === 'zauber würfel' || w2 === 'zauber wuerfel' || w2 === 'one nation' || w2 === 'cocodice 27mm' || w2 === 'shaman 26mm') {
+        usedIndices.add(i);
+        usedIndices.add(i + 1);
+      }
+    }
+
+    const CHARCOAL_SINGLE_TOKENS = new Set(['zauber', 'zauberwürfel', 'zauberwuerfel', 'cubes', 'blackcoco', 'charcoal', 'kohle', 'shaman', 'cocodice']);
+    for (let i = 0; i < tokens.length; i++) {
+      if (CHARCOAL_SINGLE_TOKENS.has(tokens[i])) {
+        usedIndices.add(i);
+      }
+    }
+
+    const isPersonTok = (tok) => allKnownPersons.includes(tok) || (matchedName && matchedName.toLowerCase() === tok);
+
+    // Step 2 & 3: Multi-Word and Single-Token Tobacco Scanning with Amount Detection
+    let detectedUnit = 'g';
+    const tobaccoMatchesWithAmounts = [];
+
+    function extractAmountFollowing(lastIdx) {
+      const nextIdx = lastIdx + 1;
+      if (nextIdx >= tokens.length) return '';
+      const nextTok = tokens[nextIdx];
+      if (usedIndices.has(nextIdx)) return '';
+
+      // Check format like '13g', '3g', '50%', '13.5g'
+      const mInline = nextTok.match(/^(\d+(?:[.,]\d+)?)(g|gramm|%|prozent)?$/i);
+      if (mInline) {
+        const num = mInline[1].replace(',', '.');
+        const unit = mInline[2] ? mInline[2].toLowerCase() : '';
+        if (unit.includes('%') || unit.includes('prozent')) {
+          detectedUnit = '%';
+        } else if (unit) {
+          detectedUnit = 'g';
+        }
+        usedIndices.add(nextIdx);
+
+        // Check if next token is unit (e.g. '13' followed by 'g' / 'gramm' / '%')
+        if (!unit && nextIdx + 1 < tokens.length && !usedIndices.has(nextIdx + 1)) {
+          const uTok = tokens[nextIdx + 1];
+          if (/^(g|gramm|%|prozent)$/i.test(uTok)) {
+            if (/^(%|prozent)$/i.test(uTok)) detectedUnit = '%';
+            else detectedUnit = 'g';
+            usedIndices.add(nextIdx + 1);
+          }
+        }
+        return num;
+      }
+      return '';
+    }
+
+    // 2. Multi-word phrase scanning (3-word & 2-word)
+    for (let i = 0; i <= tokens.length - 3; i++) {
+      if (usedIndices.has(i) || usedIndices.has(i + 1) || usedIndices.has(i + 2)) continue;
+      if (isPersonTok(tokens[i]) || isPersonTok(tokens[i + 1]) || isPersonTok(tokens[i + 2])) continue;
+      const w3 = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
+      const syn = SHISHA_SYNONYMS[w3];
+      if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
+        usedIndices.add(i); usedIndices.add(i + 1); usedIndices.add(i + 2);
+        const amt = extractAmountFollowing(i + 2);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: syn, amount: amt });
+        continue;
+      }
+      const m = findBestFuzzyMatch(w3, catalog.tobacco || [], 0.75);
+      if (m) {
+        usedIndices.add(i); usedIndices.add(i + 1); usedIndices.add(i + 2);
+        const amt = extractAmountFollowing(i + 2);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: m.name, amount: amt });
+      }
+    }
+
+    for (let i = 0; i <= tokens.length - 2; i++) {
+      if (usedIndices.has(i) || usedIndices.has(i + 1)) continue;
+      if (isPersonTok(tokens[i]) || isPersonTok(tokens[i + 1])) continue;
+      const w2 = `${tokens[i]} ${tokens[i + 1]}`;
+      const syn = SHISHA_SYNONYMS[w2];
+      if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
+        usedIndices.add(i); usedIndices.add(i + 1);
+        const amt = extractAmountFollowing(i + 1);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: syn, amount: amt });
+        continue;
+      }
+      const m = findBestFuzzyMatch(w2, catalog.tobacco || [], 0.75);
+      if (m) {
+        usedIndices.add(i); usedIndices.add(i + 1);
+        const amt = extractAmountFollowing(i + 1);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: m.name, amount: amt });
+      }
+    }
+
+    // Step 3: Single-Token Tobacco Scanning for remaining unreserved tokens
+    const HARDWARE_ONLY_TOKENS = new Set([
+      'dark', 'shot', 'intro', 'aeon', 'edition', 'breeze', 'varity', 'futr', 'pedal',
+      'flashbang', 'flash', 'bang', 'specter', 'fibonacci', 'cosmo', 'mumiya', 'mumia', 'vosku', 'litbowl',
+      'onmo', 'nagrani', 'kaloud', 'lotus', 'cubes', 'magic', 'zauber', 'zauberwürfel', 'zauberwuerfel', 'xkah', 'smart', 'stratos',
+      'ocean', 'kaif', 'solaris', 'vandenberg', 'oblako', 'moon', 'alpha',
+      'charcoal', 'kohle', 'blackcoco', 'shaman', 'cocodice', 'würfel', 'wuerfel', '26er', '27er',
+      ...allKnownPersons
+    ]);
+
+    for (let i = 0; i < tokens.length; i++) {
+      if (usedIndices.has(i)) continue;
+      const tok = tokens[i];
+      if (tok.length < 3) continue;
+      if (HARDWARE_ONLY_TOKENS.has(tok)) continue;
+      if (isPersonTok(tok)) continue;
+
+      const syn = SHISHA_SYNONYMS[tok];
+      if (syn && (catalog.tobacco || []).some(t => getItemName(t) === syn)) {
+        usedIndices.add(i);
+        const amt = extractAmountFollowing(i);
+        if (!tobaccoMatchesWithAmounts.some(t => t.name === syn)) {
+          tobaccoMatchesWithAmounts.push({ firstIdx: i, name: syn, amount: amt });
+        }
+        continue;
+      }
+      const m = findBestFuzzyMatch(tok, catalog.tobacco || [], 0.70);
+      if (m && !tobaccoMatchesWithAmounts.some(t => t.name === m.name)) {
+        usedIndices.add(i);
+        const amt = extractAmountFollowing(i);
+        tobaccoMatchesWithAmounts.push({ firstIdx: i, name: m.name, amount: amt });
+      }
+    }
+
+    // Sort tobaccos by position in text
+    tobaccoMatchesWithAmounts.sort((a, b) => a.firstIdx - b.firstIdx);
+
+    const matchedTobaccos = tobaccoMatchesWithAmounts.map(t => t.name);
+    const matchedAmounts = tobaccoMatchesWithAmounts.map(t => t.amount || '');
+    const hasAmounts = matchedAmounts.some(a => a && a.trim() !== '');
+
+    newPersons.push({
+      name: matchedName,
+      pipe,
+      bowl,
+      hmd,
+      vessel,
+      vesselColor: '',
+      tobaccos: matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''],
+      showTobaccoAmounts: hasAmounts,
+      tobaccoAmounts: hasAmounts ? [...matchedAmounts, ''] : [],
+      tobaccoUnit: detectedUnit || 'g',
+      isElectric
+    });
+  }
+
+  state.personCount = Math.min(10, Math.max(1, newPersons.length));
+  updatePersonCountLabel();
+  state.persons = newPersons;
+
+  if (inputGlobalKohle) {
+    inputGlobalKohle.value = globalCharcoal;
+    const btn = inputGlobalKohle.parentElement ? inputGlobalKohle.parentElement.querySelector('.btn-clear-field') : null;
+    if (btn) btn.classList.toggle('hidden', !globalCharcoal);
+  }
+
+  if (inputGlobalExtra) {
+    inputGlobalExtra.value = globalExtra;
+    const btn = inputGlobalExtra.parentElement ? inputGlobalExtra.parentElement.querySelector('.btn-clear-field') : null;
+    if (btn) btn.classList.toggle('hidden', !globalExtra);
+  }
+
+  renderPersonsGrid();
+  generateCommandString();
 }
 
 // Global Event Listeners
@@ -902,7 +1835,9 @@ function setupEventListeners() {
     targetChannelInput.addEventListener('change', async () => {
       state.targetChannel = targetChannelInput.value.trim().toLowerCase() || 'marved';
       updateChannelBotTooltips();
+      if (typeof updateObsUrls === 'function') updateObsUrls();
       await ipcRenderer.invoke('twitch:set-channel', state.targetChannel);
+      checkLiveStreamStatus();
       showToast(`Ziel-Kanal auf #${state.targetChannel} gesetzt`, 'success');
     });
   }
@@ -949,6 +1884,7 @@ function setupEventListeners() {
       updateTwitchUI();
       twitchModal.classList.add('hidden');
       inputOauthToken.value = '';
+      checkLiveStreamStatus();
       showToast(`Erfolgreich eingeloggt als ${res.user.display_name || res.user.login}!`, 'success');
     } else {
       showToast(res.error || 'Ungültiger Twitch Token', 'error');
@@ -966,6 +1902,7 @@ function setupEventListeners() {
     await ipcRenderer.invoke('twitch:logout');
     state.twitchUser = null;
     updateTwitchUI();
+    checkLiveStreamStatus();
     showToast('Erfolgreich von Twitch abgemeldet', 'info');
   });
 
@@ -973,8 +1910,44 @@ function setupEventListeners() {
     state.twitchUser = user;
     updateTwitchUI();
     twitchModal.classList.add('hidden');
+    checkLiveStreamStatus();
     showToast(`Erfolgreich eingeloggt als ${user.display_name || user.login}!`, 'success');
   });
+
+  // User Chat Color Customization & Sync
+  const previewModName = document.getElementById('preview-mod-name');
+  const userColorPicker = document.getElementById('user-color-picker');
+
+  if (previewModName && userColorPicker) {
+    previewModName.style.cursor = 'pointer';
+    previewModName.addEventListener('click', () => {
+      userColorPicker.click();
+    });
+
+    userColorPicker.addEventListener('input', (e) => {
+      const newColor = e.target.value;
+      previewModName.style.color = newColor;
+      localStorage.setItem('swg_user_color', newColor);
+      ipcRenderer.invoke('twitch:set-color', newColor).catch(() => {});
+    });
+  }
+
+  ipcRenderer.on('twitch:color-updated', (event, { color }) => {
+    if (color) {
+      localStorage.setItem('swg_user_color', color);
+      if (previewModName) previewModName.style.color = color;
+      if (userColorPicker) userColorPicker.value = color;
+    }
+  });
+
+  // Query color from Twitch on startup
+  ipcRenderer.invoke('twitch:get-color').then(c => {
+    if (c) {
+      localStorage.setItem('swg_user_color', c);
+      if (previewModName) previewModName.style.color = c;
+      if (userColorPicker) userColorPicker.value = c;
+    }
+  }).catch(() => {});
 
   // Fetch Setup from Twitch Chat
   btnFetchChatSetup.addEventListener('click', async () => {
@@ -1050,220 +2023,20 @@ function setupEventListeners() {
     if (res.success) {
       showToast(`!editsetup Befehl in #${state.targetChannel} gesendet!`, 'success');
       triggerAutoLearn();
+
+      // Publish confirmed setup to OBS Overlay Server & Cloud Gist
+      const kohleVal = (inputGlobalKohle ? inputGlobalKohle.value : '').trim();
+      const extraVal = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
+      ipcRenderer.invoke('obs:publish-setup', {
+        commandText: message,
+        persons: state.persons,
+        kohle: kohleVal,
+        extra: extraVal
+      }).catch(() => {});
     } else {
       showToast(`Fehler beim Senden: ${res.error}`, 'error');
     }
   });
-
-async function triggerAutoLearn() {
-  try {
-    const res = await ipcRenderer.invoke('db:auto-learn', {
-      persons: state.persons,
-      kohle: inputGlobalKohle ? inputGlobalKohle.value : '',
-      extra: inputGlobalExtra ? inputGlobalExtra.value : ''
-    });
-    if (res && res.addedCount > 0) {
-      state.catalog = res.catalog;
-      updateDatalists();
-      showToast(`${res.addedCount} neue(s) Element(e) automatisch in die Datenbank aufgenommen!`, 'success');
-    }
-  } catch(e) {}
-}
-
-function matchNotesToForm(text) {
-  if (!text || text.trim().length < 2) {
-    if (state.persons[0]) {
-      const pName = state.persons[0].name || 'Marvin';
-      state.persons[0] = { name: pName, pipe: '', vessel: '', vesselColor: '', bowl: '', hmd: '', tobaccos: [''], isElectric: false };
-    }
-    if (inputGlobalKohle) inputGlobalKohle.value = '';
-    renderPersonsGrid();
-    generateCommandString();
-    return;
-  }
-
-  const catalog = state.catalog || {};
-  const origText = text.trim();
-  const lowerText = origText.toLowerCase();
-
-  const capitalize = (str) => str ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : '';
-
-  // 1. Flexible Multi-Person Delimiter Detection (//, /, ;, \n, or multiple person names in sequence)
-  let rawSegments = [];
-
-  if (origText.includes('//')) {
-    rawSegments = origText.split(/\/{2,}/);
-  } else if (origText.includes('\n')) {
-    rawSegments = origText.split(/\n+/);
-  } else if (origText.includes(';')) {
-    rawSegments = origText.split(/;+/);
-  } else if (origText.includes('/')) {
-    rawSegments = origText.split(/\/+/);
-  } else {
-    // Check if multiple names appear in continuous text (e.g. "marvin futr cosmo onmo basti breeze litbowl nagrani")
-    const knownNames = ['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'person 1', 'person 2', 'person 3', 'person 4'];
-    const words = lowerText.split(/\s+/);
-    const foundIndices = [];
-
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i].replace(/[:;,]/g, '');
-      if (knownNames.includes(w)) {
-        foundIndices.push({ index: i, name: w });
-      }
-    }
-
-    if (foundIndices.length > 1) {
-      for (let k = 0; k < foundIndices.length; k++) {
-        const startIdx = foundIndices[k].index;
-        const endIdx = (k + 1 < foundIndices.length) ? foundIndices[k + 1].index : words.length;
-        rawSegments.push(words.slice(startIdx, endIdx).join(' '));
-      }
-    } else {
-      rawSegments = [origText];
-    }
-  }
-
-  rawSegments = rawSegments.map(s => s.trim()).filter(Boolean);
-
-  let globalCharcoal = '';
-  const candidateSegments = [];
-
-  for (const seg of rawSegments) {
-    const sLower = seg.toLowerCase();
-    const cMatch = findBestFuzzyMatch(seg, catalog.charcoal || [], 0.70);
-    const isCharcoalOnly = (cMatch || sLower.includes('zauber') || sLower.includes('cubes') || sLower.includes('blackcoco')) && !sLower.includes('futr') && !sLower.includes('breeze') && !sLower.includes('cosmo');
-    if (isCharcoalOnly) {
-      globalCharcoal = cMatch ? cMatch.name : (sLower.includes('black') ? 'Black Coco 26mm' : 'Magic Cubes (Zauberwürfel) !kohle');
-    } else {
-      candidateSegments.push(seg);
-    }
-  }
-
-  const segmentsToProcess = candidateSegments.length > 0 ? candidateSegments : [origText];
-  const newPersons = [];
-
-  for (let idx = 0; idx < segmentsToProcess.length; idx++) {
-    const seg = segmentsToProcess[idx];
-    const sLower = seg.toLowerCase();
-    const tokens = sLower.split(/[\s,./\\;:+&|]+/).filter(t => t.length > 0);
-
-    // 1. Name Scanner
-    let matchedName = `Person ${idx + 1}`;
-    const firstTok = tokens[0];
-    if (firstTok) {
-      if (['marvin', 'marv', 'basti', 'tobi', 'kevin', 'felix', 'dennis', 'daniel', 'niklas', 'tim', 'tasting'].includes(firstTok)) {
-        matchedName = capitalize(firstTok);
-      } else if (seg.includes(':')) {
-        matchedName = capitalize(seg.split(':')[0].trim());
-      } else {
-        const isKnownShishaTerm = Object.values(catalog).flat().some(item => getItemName(item).toLowerCase().includes(firstTok)) || !!SHISHA_SYNONYMS[firstTok];
-        if (!isKnownShishaTerm && firstTok.length >= 3) {
-          matchedName = capitalize(firstTok);
-        }
-      }
-    }
-
-    function scanCategory(catList) {
-      if (!catList || catList.length === 0) return null;
-      for (let i = 0; i < tokens.length - 1; i++) {
-        const window2 = `${tokens[i]} ${tokens[i + 1]}`;
-        const syn = SHISHA_SYNONYMS[window2];
-        if (syn && catList.some(item => getItemName(item) === syn)) {
-          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
-        }
-        const m2 = findBestFuzzyMatch(window2, catList, 0.70);
-        if (m2) return m2;
-      }
-      for (const tok of tokens) {
-        if (tok.length < 3) continue;
-        const syn = SHISHA_SYNONYMS[tok];
-        if (syn && catList.some(item => getItemName(item) === syn)) {
-          return { name: syn, item: catList.find(item => getItemName(item) === syn) };
-        }
-        for (const item of catList) {
-          const iName = getItemName(item);
-          const iTokens = iName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2);
-          if (iTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
-            return { name: iName, item };
-          }
-        }
-        const m1 = findBestFuzzyMatch(tok, catList, 0.72);
-        if (m1) return m1;
-      }
-      return null;
-    }
-
-    const pipeMatch = scanCategory(catalog.pipes || []);
-    const pipe = pipeMatch ? pipeMatch.name : '';
-
-    let bowl = '';
-    let isElectric = false;
-    if (sLower.includes('xkah') || sLower.includes('xk-ah') || sLower.includes('xk ah') || sLower.includes('xklite') || sLower.includes('xkpro')) {
-      bowl = (sLower.includes('pro') || sLower.includes('xkpro')) ? 'XKAH Pro' : 'XKAH Lite';
-      isElectric = true;
-    } else {
-      const bowlMatch = scanCategory(catalog.bowls || []);
-      if (bowlMatch) {
-        bowl = bowlMatch.name;
-        if (bowlMatch.item && bowlMatch.item.isElectric) isElectric = true;
-      }
-    }
-
-    let hmd = '';
-    if (!isElectric) {
-      const hmdMatch = scanCategory(catalog.hmds || []);
-      if (hmdMatch) hmd = hmdMatch.name;
-    }
-
-    const vesselMatch = scanCategory(catalog.vases || []);
-    const vessel = vesselMatch ? vesselMatch.name : '';
-
-    const matchedTobaccos = [];
-    for (const item of catalog.tobacco || []) {
-      const tName = getItemName(item);
-      const tTokens = tName.toLowerCase().split(/[\s-]+/).filter(w => w.length > 2 && w !== 'tobacco');
-      for (const tok of tokens) {
-        if (tok.length > 2 && tTokens.some(it => it === tok || similarityScore(it, tok) >= 0.80)) {
-          if (!matchedTobaccos.includes(tName)) matchedTobaccos.push(tName);
-        }
-      }
-    }
-
-    // Check charcoal if not found globally
-    if (!globalCharcoal) {
-      const cMatch = scanCategory(catalog.charcoal || []);
-      if (cMatch) {
-        globalCharcoal = cMatch.name;
-      } else if (sLower.includes('zauber') || sLower.includes('magic') || sLower.includes('cubes')) {
-        globalCharcoal = 'Magic Cubes (Zauberwürfel) !kohle';
-      }
-    }
-
-    newPersons.push({
-      name: matchedName,
-      pipe,
-      bowl,
-      hmd,
-      vessel,
-      vesselColor: '',
-      tobaccos: matchedTobaccos.length > 0 ? [...matchedTobaccos, ''] : [''],
-      isElectric
-    });
-  }
-
-  state.personCount = Math.min(10, Math.max(1, newPersons.length));
-  updatePersonCountLabel();
-  state.persons = newPersons;
-
-  if (globalCharcoal && inputGlobalKohle) {
-    inputGlobalKohle.value = globalCharcoal;
-    const btn = inputGlobalKohle.parentElement ? inputGlobalKohle.parentElement.querySelector('.btn-clear-field') : null;
-    if (btn) btn.classList.toggle('hidden', !globalCharcoal);
-  }
-
-  renderPersonsGrid();
-  generateCommandString();
-}
 
   // Clearable Input Field Listeners (1-Click Clear Button ✕)
   document.addEventListener('input', (e) => {
@@ -1347,7 +2120,7 @@ function matchNotesToForm(text) {
     }
   });
 
-  // OBS Stream Overlay Modal Listeners
+  // OBS Stream Overlay Modal Elements
   const btnOpenObs = document.getElementById('btn-open-obs');
   const obsModal = document.getElementById('obs-modal');
   const btnCloseObsModal = document.getElementById('btn-close-obs-modal');
@@ -1356,8 +2129,17 @@ function matchNotesToForm(text) {
   const btnCopyObsLocal = document.getElementById('btn-copy-obs-local');
   const btnTestOverlayBrowser = document.getElementById('btn-test-overlay-browser');
 
+  function updateObsUrls() {
+    const chan = (state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const cloudInput = document.getElementById('obs-cloud-url');
+    if (cloudInput) {
+      cloudInput.value = `https://bazztee.github.io/shishawg-mod-setup-tool/overlay.html?channel=${chan}`;
+    }
+  }
+
   if (btnOpenObs && obsModal) {
     btnOpenObs.addEventListener('click', () => {
+      updateObsUrls();
       obsModal.classList.remove('hidden');
       if (hamburgerDropdownMenu) hamburgerDropdownMenu.classList.add('hidden');
     });
@@ -1384,7 +2166,8 @@ function matchNotesToForm(text) {
   }
   if (btnTestOverlayBrowser) {
     btnTestOverlayBrowser.addEventListener('click', () => {
-      ipcRenderer.invoke('app:open-external', 'http://localhost:18942/overlay');
+      const chan = (state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+      ipcRenderer.invoke('app:open-external', `https://bazztee.github.io/shishawg-mod-setup-tool/overlay.html?channel=${chan}`);
     });
   }
 
@@ -1455,8 +2238,24 @@ function matchNotesToForm(text) {
     });
   }
 
+  let notesDebounceTimer = null;
   if (notesTextarea) {
     notesTextarea.addEventListener('input', () => {
+      if (notesDebounceTimer) clearTimeout(notesDebounceTimer);
+      notesDebounceTimer = setTimeout(() => {
+        matchNotesToForm(notesTextarea.value);
+      }, 500);
+    });
+
+    notesTextarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (notesDebounceTimer) clearTimeout(notesDebounceTimer);
+        matchNotesToForm(notesTextarea.value);
+      }
+    });
+
+    notesTextarea.addEventListener('blur', () => {
+      if (notesDebounceTimer) clearTimeout(notesDebounceTimer);
       matchNotesToForm(notesTextarea.value);
     });
   }
@@ -1492,18 +2291,15 @@ function matchNotesToForm(text) {
       btnSyncGithubDb.textContent = '🔄 Abgleich läuft...';
       const res = await ipcRenderer.invoke('db:sync-github');
       btnSyncGithubDb.disabled = false;
-      btnSyncGithubDb.textContent = '🔄 GitHub Sync';
+      btnSyncGithubDb.textContent = '🔄 Sync (HookahTools + GitHub)';
       if (res && res.success) {
         state.catalog = res.catalog;
         updateDatalists();
         renderCatalogList();
-        if (res.addedCount > 0) {
-          showToast(`${res.addedCount} neue Katalog-Einträge geladen!`, 'success');
-        } else {
-          showToast('Katalog ist bereits auf dem neuesten Stand!', 'info');
-        }
+        const tobaccoMsg = res.tobaccoCount ? `${res.tobaccoCount} Tabaksorten von HookahTools` : 'Tabak';
+        showToast(`Katalog synchronisiert (${tobaccoMsg} & Hardware)!`, 'success');
       } else {
-        showToast('Konnte Community-Katalog nicht abgleichen', 'error');
+        showToast('Konnte Katalog nicht abgleichen', 'error');
       }
     });
   }
@@ -1657,6 +2453,10 @@ function setupUpdaterEvents() {
   });
 
   ipcRenderer.on('updater:error', (event, errMessage) => {
+    if (!errMessage) return;
+    if (errMessage.includes('app-update.yml') || errMessage.includes('ENOENT') || errMessage.includes('dev-app-update.yml')) {
+      return; // Silently ignore in portable test build
+    }
     updaterStatusText.textContent = `Fehler: ${errMessage || 'Asset-Name auf GitHub weicht ab'}`;
     btnUpdaterAction.disabled = false;
     btnUpdaterAction.textContent = '🌐 Im Browser öffnen & Herunterladen';
@@ -1685,6 +2485,7 @@ function getCategoryKeyForTab(tabId) {
     case 'tab-vases': return 'vases';
     case 'tab-hmds': return 'hmds';
     case 'tab-charcoal': return 'charcoal';
+    case 'tab-persons': return 'persons';
     case 'tab-tastings': return 'tastings';
     case 'tab-promos': return 'promos';
     default: return 'tobacco';
@@ -1709,8 +2510,18 @@ function renderCatalogList() {
   catalogListItems.innerHTML = items.map((item, idx) => {
     const itemName = typeof item === 'string' ? item : item.name;
     const isElectricItem = typeof item === 'object' && item.isElectric;
+    const isGistTobacco = catKey === 'tobacco' && (typeof item === 'object' ? (item.source === 'gist' || item.isCustom) : true);
+    const isHookahToolsTobacco = catKey === 'tobacco' && (typeof item === 'object' && item.source === 'hookahtools');
+
     let displayHtml = `<span>${escapeHtml(itemName)}${isElectricItem ? ' <span class="char-badge" style="color:var(--accent-cyan); margin-left:6px;">⚡ Elektro</span>' : ''}</span>`;
-    if (catKey === 'promos') {
+    
+    if (catKey === 'tobacco') {
+      if (isGistTobacco) {
+        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-gist" title="Eigene Custom-Sorte (bearbeitbar & löschbar)">🟢 Custom</span></span>`;
+      } else if (isHookahToolsTobacco) {
+        displayHtml = `<span>${escapeHtml(itemName)} <span class="badge-source-ht" title="Automatisch von HookahTools.de synchronisiert">🌐 HookahTools</span></span>`;
+      }
+    } else if (catKey === 'promos') {
       const match = itemName.match(/^([^\(]+?)(?:\s*\((.+)\))?$/);
       if (match) {
         const code = match[1].trim();
@@ -1718,15 +2529,29 @@ function renderCatalogList() {
         displayHtml = `<span><strong class="promo-code">${escapeHtml(code)}</strong>${desc ? `<span class="promo-desc">(${escapeHtml(desc)})</span>` : ''}</span>`;
       }
     }
+
     const itemAttr = escapeHtml(typeof item === 'string' ? item : JSON.stringify(item));
+
+    // Action buttons: HookahTools items have NEITHER trash nor edit button
+    let actionsHtml = '';
+    if (catKey === 'tobacco' && isHookahToolsTobacco) {
+      actionsHtml = `<span class="ht-sync-info" title="Automatisch von HookahTools.de synchronisiert">🌐 Synchronisiert</span>`;
+    } else {
+      actionsHtml = `
+        <div class="catalog-actions">
+          <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${itemAttr}" title="Bearbeiten">✏️</button>
+          <button class="btn-icon btn-delete-item" data-item="${itemAttr}" title="Löschen">🗑️</button>
+        </div>
+      `;
+    }
+
+    const itemClass = (catKey === 'tobacco' && isGistTobacco) ? 'catalog-item item-source-gist catalog-item-fade' : 'catalog-item catalog-item-fade';
+
     return `
-      <div class="catalog-item catalog-item-fade" id="catalog-item-${idx}">
+      <div class="${itemClass}" id="catalog-item-${idx}">
         <div class="item-view" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
           ${displayHtml}
-          <div class="catalog-actions">
-            <button class="btn-icon btn-edit-item" data-idx="${idx}" data-item="${itemAttr}" title="Bearbeiten">✏️</button>
-            <button class="btn-icon btn-delete-item" data-item="${itemAttr}" title="Löschen">🗑️</button>
-          </div>
+          ${actionsHtml}
         </div>
       </div>
     `;
@@ -1839,14 +2664,17 @@ function renderCatalogList() {
 }
 
 // Toast Helper
+let toastTimer = null;
 function showToast(msg, type = 'info') {
+  if (!toastMessage || !toastBanner) return;
   toastMessage.textContent = msg;
   toastBanner.className = `toast ${type}`;
   toastBanner.classList.remove('hidden');
 
-  setTimeout(() => {
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
     toastBanner.classList.add('hidden');
-  }, 4000);
+  }, 4500);
 }
 
 // Utility HTML escape
@@ -1859,3 +2687,3624 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// =========================================================================
+// QUICK-ACTIONS & STREAM-MANAGER LOGIC
+// =========================================================================
+
+// Quick Actions Elements
+const btnRefreshStreamInfo = document.getElementById('btn-refresh-stream-info');
+const qaInputTitle = document.getElementById('qa-input-title');
+const qaTitleCharCount = document.getElementById('qa-title-char-count');
+const btnQaUpdateTitle = document.getElementById('btn-qa-update-title');
+const qaInputGame = document.getElementById('qa-input-game');
+const qaCategorySuggestions = document.getElementById('qa-category-suggestions');
+const btnQaUpdateGame = document.getElementById('btn-qa-update-game');
+
+// Clip Elements
+const btnQaCreateClip = document.getElementById('btn-qa-create-clip');
+const qaClipResult = document.getElementById('qa-clip-result');
+const qaClipUrl = document.getElementById('qa-clip-url');
+const btnQaTrimClip = document.getElementById('btn-qa-trim-clip');
+const btnQaPostClipChat = document.getElementById('btn-qa-post-clip-chat');
+const btnQaCopyClip = document.getElementById('btn-qa-copy-clip');
+let currentClipData = null;
+
+// Raid Elements
+const qaInputRaidTarget = document.getElementById('qa-input-raid-target');
+const qaRaidSuggestions = document.getElementById('qa-raid-suggestions');
+const btnQaStartRaid = document.getElementById('btn-qa-start-raid');
+const btnQaCancelRaid = document.getElementById('btn-qa-cancel-raid');
+const qaRaidSelectedTarget = document.getElementById('qa-raid-selected-target');
+const qaRaidTargetAvatar = document.getElementById('qa-raid-target-avatar');
+const qaRaidTargetName = document.getElementById('qa-raid-target-name');
+const qaRaidTargetStatus = document.getElementById('qa-raid-target-status');
+const qaRaidTargetGame = document.getElementById('qa-raid-target-game');
+
+// Custom Commands Elements
+const qaCommandsGrid = document.getElementById('qa-commands-grid');
+const btnQaAddCustomCmd = document.getElementById('btn-qa-add-custom-cmd');
+const qaCustomCmdModal = document.getElementById('qa-custom-cmd-modal');
+const btnCloseQaCustomModal = document.getElementById('btn-close-qa-custom-modal');
+const inputCustomCmdLabel = document.getElementById('input-custom-cmd-label');
+const inputCustomCmdText = document.getElementById('input-custom-cmd-text');
+const btnCancelCustomCmd = document.getElementById('btn-cancel-custom-cmd');
+const btnSaveCustomCmd = document.getElementById('btn-save-custom-cmd');
+
+const DEFAULT_QUICK_COMMANDS = [
+  { id: 'cmd-discord', label: '💬 !discord', command: '!discord', isDefault: true },
+  { id: 'cmd-setup', label: '💨 !setup', command: '!setup', isDefault: true },
+  { id: 'cmd-shisha', label: '🫁 !shisha', command: '!shisha', isDefault: true },
+  { id: 'cmd-tabak', label: '🍂 !tabak', command: '!tabak', isDefault: true },
+  { id: 'cmd-masterclass', label: '🎓 !masterclass', command: '!masterclass', isDefault: true }
+];
+
+let quickCommands = [];
+
+function loadQuickCommands() {
+  try {
+    const saved = localStorage.getItem('swg_quick_commands');
+    if (saved) {
+      quickCommands = JSON.parse(saved);
+    } else {
+      quickCommands = [...DEFAULT_QUICK_COMMANDS];
+      saveQuickCommands();
+    }
+  } catch(e) {
+    quickCommands = [...DEFAULT_QUICK_COMMANDS];
+  }
+  renderQuickCommands();
+}
+
+function saveQuickCommands() {
+  try {
+    localStorage.setItem('swg_quick_commands', JSON.stringify(quickCommands));
+  } catch(e) {}
+}
+
+function renderQuickCommands() {
+  if (!qaCommandsGrid) return;
+  qaCommandsGrid.innerHTML = '';
+
+  quickCommands.forEach(cmd => {
+    const card = document.createElement('div');
+    card.className = 'qa-cmd-card';
+    card.title = `Klicken zum Senden: ${cmd.command}`;
+    
+    card.innerHTML = `
+      <div class="qa-cmd-info">
+        <span class="qa-cmd-label">${escapeHtml(cmd.label)}</span>
+        <span class="qa-cmd-text">${escapeHtml(cmd.command)}</span>
+      </div>
+      <div class="qa-cmd-actions">
+        ${!cmd.isDefault ? `<button class="btn-delete-cmd" data-id="${cmd.id}" title="Löschen">✕</button>` : ''}
+      </div>
+    `;
+
+    // Click to send command
+    card.addEventListener('click', async (e) => {
+      if (e.target.closest('.btn-delete-cmd')) return;
+      try {
+        const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        const res = await ipcRenderer.invoke('twitch:send-chat', { message: cmd.command, channel });
+        if (res.success) {
+          showToast(`Befehl '${cmd.command}' gesendet!`, 'success');
+        } else {
+          showToast(res.error || 'Fehler beim Senden', 'error');
+        }
+      } catch(err) {
+        showToast(err.message || 'Fehler beim Senden', 'error');
+      }
+    });
+
+    // Delete custom button
+    const btnDel = card.querySelector('.btn-delete-cmd');
+    if (btnDel) {
+      btnDel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        quickCommands = quickCommands.filter(c => c.id !== cmd.id);
+        saveQuickCommands();
+        renderQuickCommands();
+        showToast('Button entfernt', 'info');
+      });
+    }
+
+    qaCommandsGrid.appendChild(card);
+  });
+}
+
+// Load Channel Information (Title & Game)
+async function loadStreamChannelInfo() {
+  const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  if (!qaInputTitle || !qaInputGame) return;
+
+  try {
+    const info = await ipcRenderer.invoke('twitch:get-channel-info', channel);
+    if (info && info.success) {
+      if (info.title !== undefined) {
+        qaInputTitle.value = info.title;
+        if (qaTitleCharCount) qaTitleCharCount.textContent = `${info.title.length} / 140`;
+      }
+      if (info.game_name !== undefined) {
+        qaInputGame.value = info.game_name;
+      }
+    }
+  } catch(e) {
+    console.error('Error loading stream info:', e);
+  }
+}
+
+// Setup Quick-Actions Listeners
+function setupQuickActionsListeners() {
+  loadQuickCommands();
+
+  if (btnRefreshStreamInfo) {
+    btnRefreshStreamInfo.addEventListener('click', async () => {
+      showToast('Lade Kanal-Info von Twitch...', 'info');
+      await loadStreamChannelInfo();
+      showToast('Kanal-Info aktualisiert!', 'success');
+    });
+  }
+
+  // Title Char Counter
+  if (qaInputTitle && qaTitleCharCount) {
+    qaInputTitle.addEventListener('input', () => {
+      qaTitleCharCount.textContent = `${qaInputTitle.value.length} / 140`;
+    });
+  }
+
+  // Update Title Button
+  if (btnQaUpdateTitle && qaInputTitle) {
+    btnQaUpdateTitle.addEventListener('click', async () => {
+      const title = qaInputTitle.value.trim();
+      if (!title) {
+        showToast('Bitte gib einen Streamtitel ein.', 'error');
+        return;
+      }
+      btnQaUpdateTitle.disabled = true;
+      btnQaUpdateTitle.textContent = 'Speichere...';
+      const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const res = await ipcRenderer.invoke('twitch:set-title', { title, channel });
+      btnQaUpdateTitle.disabled = false;
+      btnQaUpdateTitle.textContent = '💾 Titel setzen';
+
+      if (res.success) {
+        showToast(`Streamtitel auf "${title}" gesetzt!`, 'success');
+        checkLiveStreamStatus();
+      } else {
+        showToast(res.error || 'Fehler beim Setzen des Titels', 'error');
+      }
+    });
+  }
+
+  // Category Search with Debounce
+  let catSearchTimeout = null;
+  if (qaInputGame && qaCategorySuggestions) {
+    qaInputGame.addEventListener('input', () => {
+      clearTimeout(catSearchTimeout);
+      const query = qaInputGame.value.trim();
+      if (query.length < 2) {
+        qaCategorySuggestions.classList.add('hidden');
+        qaCategorySuggestions.innerHTML = '';
+        return;
+      }
+
+      catSearchTimeout = setTimeout(async () => {
+        const results = await ipcRenderer.invoke('twitch:search-categories', query);
+        if (results && results.length > 0) {
+          qaCategorySuggestions.innerHTML = '';
+          results.slice(0, 8).forEach(cat => {
+            const item = document.createElement('div');
+            item.className = 'qa-suggestion-item';
+            item.innerHTML = `
+              <img src="${escapeHtml(cat.box_art_url)}" alt="${escapeHtml(cat.name)}" class="qa-cat-thumb" onerror="this.style.display='none'">
+              <div class="qa-sugg-info">
+                <span class="qa-sugg-name">${escapeHtml(cat.name)}</span>
+              </div>
+            `;
+            item.addEventListener('click', () => {
+              qaInputGame.value = cat.name;
+              qaCategorySuggestions.classList.add('hidden');
+            });
+            qaCategorySuggestions.appendChild(item);
+          });
+          qaCategorySuggestions.classList.remove('hidden');
+        } else {
+          qaCategorySuggestions.classList.add('hidden');
+        }
+      }, 250);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.qa-category-input-wrapper')) {
+        qaCategorySuggestions.classList.add('hidden');
+      }
+    });
+  }
+
+  // Update Game Button
+  if (btnQaUpdateGame && qaInputGame) {
+    btnQaUpdateGame.addEventListener('click', async () => {
+      const game = qaInputGame.value.trim();
+      if (!game) {
+        showToast('Bitte wähle eine Spiel-Kategorie.', 'error');
+        return;
+      }
+      btnQaUpdateGame.disabled = true;
+      btnQaUpdateGame.textContent = 'Speichere...';
+      const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const res = await ipcRenderer.invoke('twitch:set-game', { game, channel });
+      btnQaUpdateGame.disabled = false;
+      btnQaUpdateGame.textContent = '🎮 Spiel setzen';
+
+      if (res.success) {
+        showToast(`Kategorie auf "${game}" gesetzt!`, 'success');
+        checkLiveStreamStatus();
+      } else {
+        showToast(res.error || 'Fehler beim Setzen des Spiels', 'error');
+      }
+    });
+  }
+
+  // Quick Category Pills
+  document.querySelectorAll('.btn-quick-cat').forEach(pill => {
+    pill.addEventListener('click', async () => {
+      const game = pill.getAttribute('data-game');
+      if (game && qaInputGame) {
+        qaInputGame.value = game;
+        btnQaUpdateGame.click();
+      }
+    });
+  });
+
+  // Clip Creation
+  if (btnQaCreateClip) {
+    btnQaCreateClip.addEventListener('click', async () => {
+      btnQaCreateClip.disabled = true;
+      btnQaCreateClip.textContent = '⏳ Erstelle Clip...';
+      const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const res = await ipcRenderer.invoke('twitch:create-clip', channel);
+      btnQaCreateClip.disabled = false;
+      btnQaCreateClip.innerHTML = `
+        <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+        🎬 Clip der letzten 60s erstellen
+      `;
+
+      if (res.success) {
+        currentClipData = res;
+        qaClipUrl.value = res.clip_url;
+        qaClipResult.classList.remove('hidden');
+        showToast('Clip erfolgreich erstellt!', 'success');
+      } else {
+        showToast(res.error || 'Clip konnte nicht erstellt werden', 'error');
+      }
+    });
+  }
+
+  if (btnQaTrimClip) {
+    btnQaTrimClip.addEventListener('click', () => {
+      if (currentClipData && currentClipData.edit_url) {
+        ipcRenderer.invoke('app:open-external', currentClipData.edit_url);
+      } else if (currentClipData && currentClipData.clip_url) {
+        ipcRenderer.invoke('app:open-external', currentClipData.clip_url);
+      }
+    });
+  }
+
+  if (btnQaPostClipChat) {
+    btnQaPostClipChat.addEventListener('click', async () => {
+      if (currentClipData && currentClipData.clip_url) {
+        const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        const res = await ipcRenderer.invoke('twitch:send-chat', { message: `Clip: ${currentClipData.clip_url}`, channel });
+        if (res.success) {
+          showToast('Clip-Link in Chat gepostet!', 'success');
+        } else {
+          showToast(res.error || 'Fehler beim Posten', 'error');
+        }
+      }
+    });
+  }
+
+  if (btnQaCopyClip) {
+    btnQaCopyClip.addEventListener('click', () => {
+      if (qaClipUrl && qaClipUrl.value) {
+        navigator.clipboard.writeText(qaClipUrl.value);
+        showToast('Clip-Link kopiert!', 'info');
+      }
+    });
+  }
+
+  // Raid Search with Debounce
+  let raidSearchTimeout = null;
+  let selectedRaidTarget = '';
+  if (qaInputRaidTarget && qaRaidSuggestions) {
+    qaInputRaidTarget.addEventListener('input', () => {
+      clearTimeout(raidSearchTimeout);
+      const query = qaInputRaidTarget.value.trim();
+      if (query.length < 2) {
+        qaRaidSuggestions.classList.add('hidden');
+        qaRaidSuggestions.innerHTML = '';
+        return;
+      }
+
+      raidSearchTimeout = setTimeout(async () => {
+        const results = await ipcRenderer.invoke('twitch:search-channels', query);
+        if (results && results.length > 0) {
+          qaRaidSuggestions.innerHTML = '';
+          results.slice(0, 6).forEach(ch => {
+            const item = document.createElement('div');
+            item.className = 'qa-suggestion-item';
+            const statusTag = ch.is_live ? '<span class="status-pill-small live">🔴 LIVE</span>' : '<span class="status-pill-small offline">Offline</span>';
+            const gameText = ch.game_name ? ` • ${escapeHtml(ch.game_name)}` : '';
+            
+            item.innerHTML = `
+              <img src="${escapeHtml(ch.thumbnail_url || '')}" alt="${escapeHtml(ch.display_name)}" class="qa-raid-thumb" onerror="this.style.display='none'">
+              <div class="qa-sugg-info">
+                <div class="qa-sugg-name">${escapeHtml(ch.display_name)} (${escapeHtml(ch.broadcaster_login)})</div>
+                <div class="qa-sugg-sub">${statusTag}${gameText}</div>
+              </div>
+            `;
+
+            item.addEventListener('click', () => {
+              selectedRaidTarget = ch.broadcaster_login;
+              qaInputRaidTarget.value = ch.display_name;
+              qaRaidSuggestions.classList.add('hidden');
+
+              if (qaRaidSelectedTarget) {
+                qaRaidSelectedTarget.classList.remove('hidden');
+                if (qaRaidTargetAvatar) qaRaidTargetAvatar.src = ch.thumbnail_url || '';
+                if (qaRaidTargetName) qaRaidTargetName.textContent = ch.display_name;
+                if (qaRaidTargetStatus) {
+                  qaRaidTargetStatus.className = `status-pill-small ${ch.is_live ? 'live' : 'offline'}`;
+                  qaRaidTargetStatus.textContent = ch.is_live ? '🔴 LIVE' : 'Offline';
+                }
+                if (qaRaidTargetGame) qaRaidTargetGame.textContent = ch.game_name ? `Spielt: ${ch.game_name}` : (ch.title || 'Keine Kategorie');
+              }
+            });
+
+            qaRaidSuggestions.appendChild(item);
+          });
+          qaRaidSuggestions.classList.remove('hidden');
+        } else {
+          qaRaidSuggestions.classList.add('hidden');
+        }
+      }, 250);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.qa-raid-input-wrapper')) {
+        qaRaidSuggestions.classList.add('hidden');
+      }
+    });
+  }
+
+  // Start Raid
+  if (btnQaStartRaid) {
+    btnQaStartRaid.addEventListener('click', async () => {
+      const target = selectedRaidTarget || (qaInputRaidTarget ? qaInputRaidTarget.value.trim() : '');
+      if (!target) {
+        showToast('Bitte wähle einen Zielkanal für den Raid.', 'error');
+        return;
+      }
+      btnQaStartRaid.disabled = true;
+      btnQaStartRaid.textContent = 'Starte Raid...';
+      const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const res = await ipcRenderer.invoke('twitch:start-raid', { target, channel });
+      btnQaStartRaid.disabled = false;
+      btnQaStartRaid.textContent = '🚀 Raid starten';
+
+      if (res.success) {
+        showToast(`Raid auf #${target} gestartet! (/raid ${target})`, 'success');
+      } else {
+        showToast(res.error || 'Fehler beim Starten des Raids', 'error');
+      }
+    });
+  }
+
+  // Cancel Raid
+  if (btnQaCancelRaid) {
+    btnQaCancelRaid.addEventListener('click', async () => {
+      const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const res = await ipcRenderer.invoke('twitch:cancel-raid', channel);
+      if (res.success) {
+        showToast('Raid abgebrochen (/unraid)', 'info');
+      } else {
+        showToast(res.error || 'Fehler beim Abbrechen', 'error');
+      }
+    });
+  }
+
+  // Custom Command Modal Listeners
+  if (btnQaAddCustomCmd && qaCustomCmdModal) {
+    btnQaAddCustomCmd.addEventListener('click', () => {
+      qaCustomCmdModal.classList.remove('hidden');
+      if (inputCustomCmdLabel) inputCustomCmdLabel.value = '';
+      if (inputCustomCmdText) inputCustomCmdText.value = '';
+      if (inputCustomCmdLabel) inputCustomCmdLabel.focus();
+    });
+  }
+
+  if (btnCloseQaCustomModal && qaCustomCmdModal) {
+    btnCloseQaCustomModal.addEventListener('click', () => {
+      qaCustomCmdModal.classList.add('hidden');
+    });
+  }
+
+  if (btnCancelCustomCmd && qaCustomCmdModal) {
+    btnCancelCustomCmd.addEventListener('click', () => {
+      qaCustomCmdModal.classList.add('hidden');
+    });
+  }
+
+  if (btnSaveCustomCmd) {
+    btnSaveCustomCmd.addEventListener('click', () => {
+      const label = inputCustomCmdLabel ? inputCustomCmdLabel.value.trim() : '';
+      const command = inputCustomCmdText ? inputCustomCmdText.value.trim() : '';
+
+      if (!label || !command) {
+        showToast('Bitte fülle Beschriftung und Befehl aus.', 'error');
+        return;
+      }
+
+      quickCommands.push({
+        id: 'cmd-' + Date.now(),
+        label: label,
+        command: command,
+        isDefault: false
+      });
+      saveQuickCommands();
+      renderQuickCommands();
+      if (qaCustomCmdModal) qaCustomCmdModal.classList.add('hidden');
+      showToast(`Quick-Command '${label}' hinzugefügt!`, 'success');
+    });
+  }
+
+  // Initialize YouTube Video Finder
+  setupYouTubeVideoFinder();
+}
+
+// =========================================================================
+// SHISHAWG YOUTUBE VIDEO-FINDER & QUICK-SHARE
+// =========================================================================
+
+const qaYtSearchInput = document.getElementById('qa-yt-search-input');
+const btnQaClearYtSearch = document.getElementById('btn-qa-clear-yt-search');
+const qaYtPinnedGrid = document.getElementById('qa-yt-pinned-grid');
+const qaYtSuggestionsList = document.getElementById('qa-yt-suggestions-list');
+const btnQaAddCustomVideo = document.getElementById('btn-qa-add-custom-video');
+const qaCustomYtModal = document.getElementById('qa-custom-yt-modal');
+const btnCloseQaYtModal = document.getElementById('btn-close-qa-yt-modal');
+const btnCancelCustomYt = document.getElementById('btn-cancel-custom-yt');
+const btnSaveCustomYt = document.getElementById('btn-save-custom-yt');
+const inputCustomYtUrl = document.getElementById('input-custom-yt-url');
+const inputCustomYtTitle = document.getElementById('input-custom-yt-title');
+const inputCustomYtCategory = document.getElementById('input-custom-yt-category');
+
+const DEFAULT_SHISHAWG_VIDEOS = [
+  {
+    id: 'yt-phunnel-guide',
+    title: 'Der ultimative Phunnel Kopfbau Guide (Schritt für Schritt)',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Kopfbau',
+    desc: 'Perfekter Durchzug & Hitzeverteilung im Phunnel-Kopf. Tabak locker flockig verteilen & Alufolie / HMD.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-hmd-guide',
+    title: 'HMD Guide: AO 912 vs ONMO vs Na Grani im Hitzetest',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'HMD',
+    desc: 'Welcher HMD passt zu welchem Setup? Hitzeentwicklung, Aluguss vs. Edelstahl und Kohleverbrauch.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-kohle-guide',
+    title: 'Kohle richtig anmachen & Hitze managen (Magic Charcoal)',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Kohle',
+    desc: 'Tipps zum schnellen & gleichmäßigen Durchglühen der Naturkohlen ohne Aschebildung oder Eigengeschmack.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-darkblend-tipps',
+    title: 'Darkblend für Einsteiger: MustH & Blackburn rauchen ohne Kratzen',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Tabak',
+    desc: 'Bauweise, Hitzetoleranz und Tipps für starken Grundtabak. So schmeckt Darkblend intensiv & smooth.',
+    pinned: true,
+    isDefault: true
+  },
+  {
+    id: 'yt-mehrloch-guide',
+    title: 'Mehrlochkopf / Traditional Bowl richtig bauen & rauchen',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Kopfbau',
+    desc: 'Fluffig oder leicht angedrückt? Alles über Durchzug, Alufolie vs. Kamin und HMD auf Mehrlochköpfen.',
+    pinned: false,
+    isDefault: true
+  },
+  {
+    id: 'yt-reinigung-guide',
+    title: 'Shisha, Bowl & Schläuche richtig reinigen',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Pflege',
+    desc: 'Schmand und Ablagerungen sauber entfernen – für dauerhaft frischen Durchzug & puren Geschmack.',
+    pinned: false,
+    isDefault: true
+  },
+  {
+    id: 'yt-fehler-guide',
+    title: 'Die 5 häufigsten Fehler beim Shisha Kopfbau & wie man sie vermeidet',
+    url: 'https://www.youtube.com/@shishawg',
+    category: 'Tutorial',
+    desc: 'Warum der Kopf kratzt, anbrennt oder zu wenig Rauch liefert – Fehleranalyse & Soforthilfe.',
+    pinned: false,
+    isDefault: true
+  }
+];
+
+let youtubeVideos = [];
+
+function extractYouTubeVideoId(url) {
+  if (!url) return '';
+  const clean = url.trim();
+  const match = clean.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|(?:embed|v|shorts)\/))([\w-]{11})/i);
+  if (match) return match[1];
+  if (/^[\w-]{11}$/.test(clean)) return clean;
+  return '';
+}
+
+function loadYouTubeVideos() {
+  try {
+    const saved = localStorage.getItem('swg_youtube_videos');
+    if (saved) {
+      youtubeVideos = JSON.parse(saved);
+    } else {
+      youtubeVideos = [...DEFAULT_SHISHAWG_VIDEOS];
+    }
+  } catch(e) {
+    youtubeVideos = [...DEFAULT_SHISHAWG_VIDEOS];
+  }
+  renderYouTubeBoard();
+}
+
+let ytSearchDebounce = null;
+let lastLiveQuery = '';
+let liveSearchResults = [];
+
+function renderYouTubeBoard(isLiveSearch = false) {
+  if (!qaYtPinnedGrid) return;
+
+  const rawQuery = (qaYtSearchInput ? qaYtSearchInput.value : '');
+  const searchQuery = rawQuery.toLowerCase().trim();
+
+  // 1. Render Pinned Videos Bar
+  qaYtPinnedGrid.innerHTML = '';
+  const pinnedVideos = youtubeVideos.filter(v => v.pinned);
+  if (pinnedVideos.length === 0) {
+    qaYtPinnedGrid.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">Keine Favoriten angeheftet. Klicke in der Suche bei einem Video auf "📌".</span>';
+  } else {
+    pinnedVideos.forEach(v => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-yt-pinned';
+      btn.title = `Klicken zum Posten im Chat:\n"${v.title}"\n(${v.url})`;
+      btn.innerHTML = `💬 ${escapeHtml(v.title.length > 34 ? v.title.substring(0, 34) + '...' : v.title)}`;
+      btn.addEventListener('click', () => postYouTubeVideoToChat(v));
+      qaYtPinnedGrid.appendChild(btn);
+    });
+  }
+
+  // 2. Suggestions List
+  if (!qaYtSuggestionsList) return;
+
+  if (!searchQuery) {
+    qaYtSuggestionsList.classList.add('hidden');
+    qaYtSuggestionsList.innerHTML = '';
+    liveSearchResults = [];
+    lastLiveQuery = '';
+    return;
+  }
+
+  // Combine local videos and live results (deduplicating by videoId / URL)
+  const localFiltered = youtubeVideos.filter(v => {
+    const titleMatch = (v.title || '').toLowerCase().includes(searchQuery);
+    const catMatch = (v.category || '').toLowerCase().includes(searchQuery);
+    const descMatch = (v.desc || '').toLowerCase().includes(searchQuery);
+    return titleMatch || catMatch || descMatch;
+  });
+
+  const combined = [...localFiltered];
+  const seenUrls = new Set(localFiltered.map(v => v.url.toLowerCase()));
+
+  liveSearchResults.forEach(liveVid => {
+    if (!seenUrls.has(liveVid.url.toLowerCase())) {
+      seenUrls.add(liveVid.url.toLowerCase());
+      combined.push(liveVid);
+    }
+  });
+
+  qaYtSuggestionsList.innerHTML = '';
+  qaYtSuggestionsList.classList.remove('hidden');
+
+  if (combined.length === 0) {
+    if (!isLiveSearch) {
+      qaYtSuggestionsList.innerHTML = `
+        <div style="text-align:center; padding: 14px; color: var(--text-muted); font-size: 0.85rem;">
+          ⏳ Suche auf ShishaWG YouTube-Kanal nach "<strong>${escapeHtml(searchQuery)}</strong>"...
+        </div>
+      `;
+    } else {
+      qaYtSuggestionsList.innerHTML = `
+        <div style="text-align:center; padding: 16px; color: var(--text-muted); font-size: 0.85rem;">
+          🔍 Kein YouTube-Video zu "<strong>${escapeHtml(searchQuery)}</strong>" gefunden.
+          <br><button id="btn-qa-yt-add-from-search" class="btn btn-secondary btn-sm" style="margin-top:8px;">➕ Video-Link manuell hinzufügen</button>
+        </div>
+      `;
+      const btnAddSearch = document.getElementById('btn-qa-yt-add-from-search');
+      if (btnAddSearch) {
+        btnAddSearch.addEventListener('click', () => {
+          if (qaCustomYtModal) qaCustomYtModal.classList.remove('hidden');
+          if (inputCustomYtTitle) inputCustomYtTitle.value = rawQuery;
+          if (inputCustomYtCategory) inputCustomYtCategory.value = 'Tutorial';
+        });
+      }
+    }
+    return;
+  }
+
+  combined.forEach(video => {
+    const item = document.createElement('div');
+    item.className = 'qa-yt-suggestion-item';
+
+    const videoId = video.videoId || extractYouTubeVideoId(video.url);
+    const thumbUrl = video.thumb || (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : '');
+    const isPinned = youtubeVideos.some(v => v.url === video.url && v.pinned);
+
+    item.innerHTML = `
+      <div class="qa-yt-sugg-left">
+        ${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" class="qa-yt-thumb-mini" alt="Thumb" onerror="this.style.display='none'">` : '<div class="qa-yt-icon-badge">▶</div>'}
+        <div class="qa-yt-sugg-content">
+          <div class="qa-yt-sugg-title-row">
+            <span class="qa-yt-category-tag">${escapeHtml(video.category || (video.channel || 'ShishaWG'))}</span>
+            <span class="qa-yt-sugg-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</span>
+          </div>
+          <div class="qa-yt-sugg-desc" title="${escapeHtml(video.desc || video.url)}">${escapeHtml(video.desc || video.url)}</div>
+        </div>
+      </div>
+      <div class="qa-yt-sugg-actions">
+        <button class="btn-yt-share" title="Diesen Video-Link direkt im Twitch-Chat posten">
+          💬 In Chat
+        </button>
+        <button class="btn-icon btn-yt-pin-toggle ${isPinned ? 'pinned' : ''}" title="${isPinned ? 'Von Favoriten lösen' : 'Oben als Favorit anheften'}">
+          ${isPinned ? '📌' : '☆'}
+        </button>
+        <button class="btn-icon btn-yt-copy" title="Link kopieren" style="padding:6px 8px; font-size:0.8rem; background:rgba(255,255,255,0.06); border-radius:6px;">
+          📋
+        </button>
+        <button class="btn-icon btn-yt-open" title="Auf YouTube ansehen" style="padding:6px 8px; font-size:0.8rem; background:rgba(255,255,255,0.06); border-radius:6px;">
+          🔗
+        </button>
+        ${!video.isDefault && !video.isLiveResult ? `
+          <button class="btn-icon btn-yt-delete" title="Video löschen" style="padding:6px 8px; font-size:0.8rem; color:#ef4444; background:rgba(239,68,68,0.1); border-radius:6px;">
+            ✕
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    // Share button listener
+    const btnShare = item.querySelector('.btn-yt-share');
+    if (btnShare) {
+      btnShare.addEventListener('click', () => postYouTubeVideoToChat(video));
+    }
+
+    // Pin toggle listener
+    const btnPin = item.querySelector('.btn-yt-pin-toggle');
+    if (btnPin) {
+      btnPin.addEventListener('click', () => {
+        let existing = youtubeVideos.find(v => v.url === video.url);
+        if (existing) {
+          existing.pinned = !existing.pinned;
+        } else {
+          youtubeVideos.push({
+            id: 'yt-' + (video.videoId || Date.now()),
+            title: video.title,
+            url: video.url,
+            videoId: video.videoId || '',
+            category: video.category || 'ShishaWG',
+            desc: video.desc || '',
+            pinned: true,
+            isDefault: false
+          });
+        }
+        saveYouTubeVideos();
+        renderYouTubeBoard(true);
+        showToast('Favorit aktualisiert', 'info');
+      });
+    }
+
+    // Copy link listener
+    const btnCopy = item.querySelector('.btn-yt-copy');
+    if (btnCopy) {
+      btnCopy.addEventListener('click', () => {
+        navigator.clipboard.writeText(video.url);
+        showToast('Video-Link in Zwischenablage kopiert!', 'info');
+      });
+    }
+
+    // Open link listener
+    const btnOpen = item.querySelector('.btn-yt-open');
+    if (btnOpen) {
+      btnOpen.addEventListener('click', () => {
+        ipcRenderer.invoke('app:open-external', video.url);
+      });
+    }
+
+    // Delete custom video
+    const btnDel = item.querySelector('.btn-yt-delete');
+    if (btnDel) {
+      btnDel.addEventListener('click', () => {
+        youtubeVideos = youtubeVideos.filter(v => v.id !== video.id && v.url !== video.url);
+        saveYouTubeVideos();
+        renderYouTubeBoard(true);
+        showToast('Video gelöscht', 'info');
+      });
+    }
+
+    qaYtSuggestionsList.appendChild(item);
+  });
+}
+
+async function postYouTubeVideoToChat(video) {
+  if (!video || !video.url) return;
+  try {
+    const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const message = `🎥 Video-Tipp von Marvin: "${video.title}" 👉 ${video.url}`;
+    const res = await ipcRenderer.invoke('twitch:send-chat', { message, channel });
+    if (res && res.success) {
+      showToast(`Video im Chat gepostet: ${video.title}`, 'success');
+    } else {
+      showToast(res.error || 'Fehler beim Senden', 'error');
+    }
+  } catch(err) {
+    showToast(err.message || 'Fehler beim Senden in Chat', 'error');
+  }
+}
+
+function setupYouTubeVideoFinder() {
+  loadYouTubeVideos();
+
+  // Live Search input listener with Debounce & YouTube Live API
+  if (qaYtSearchInput) {
+    qaYtSearchInput.addEventListener('input', () => {
+      const q = qaYtSearchInput.value.trim();
+      if (btnQaClearYtSearch) {
+        btnQaClearYtSearch.classList.toggle('hidden', !q);
+      }
+
+      renderYouTubeBoard(false);
+
+      if (ytSearchDebounce) clearTimeout(ytSearchDebounce);
+      if (q.length >= 2) {
+        ytSearchDebounce = setTimeout(async () => {
+          try {
+            const liveRes = await ipcRenderer.invoke('youtube:search', q);
+            if (Array.isArray(liveRes) && qaYtSearchInput.value.trim() === q) {
+              liveSearchResults = liveRes;
+              lastLiveQuery = q;
+              renderYouTubeBoard(true);
+            }
+          } catch(err) {
+            console.error('YouTube live search error:', err);
+          }
+        }, 250);
+      }
+    });
+
+    qaYtSearchInput.addEventListener('focus', () => {
+      if (qaYtSearchInput.value.trim()) {
+        renderYouTubeBoard(true);
+      }
+    });
+  }
+
+  // Close suggestions on click outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.qa-yt-search-wrapper')) {
+      if (qaYtSuggestionsList) {
+        qaYtSuggestionsList.classList.add('hidden');
+      }
+    }
+  });
+
+  // Clear search button
+  if (btnQaClearYtSearch) {
+    btnQaClearYtSearch.addEventListener('click', () => {
+      if (qaYtSearchInput) qaYtSearchInput.value = '';
+      btnQaClearYtSearch.classList.add('hidden');
+      renderYouTubeBoard(false);
+      if (qaYtSearchInput) qaYtSearchInput.focus();
+    });
+  }
+
+  // Open custom video modal
+  if (btnQaAddCustomVideo && qaCustomYtModal) {
+    btnQaAddCustomVideo.addEventListener('click', () => {
+      qaCustomYtModal.classList.remove('hidden');
+      if (inputCustomYtUrl) inputCustomYtUrl.value = '';
+      if (inputCustomYtTitle) inputCustomYtTitle.value = '';
+      if (inputCustomYtCategory) inputCustomYtCategory.value = '';
+      if (inputCustomYtUrl) inputCustomYtUrl.focus();
+    });
+  }
+
+  if (btnCloseQaYtModal && qaCustomYtModal) {
+    btnCloseQaYtModal.addEventListener('click', () => {
+      qaCustomYtModal.classList.add('hidden');
+    });
+  }
+
+  if (btnCancelCustomYt && qaCustomYtModal) {
+    btnCancelCustomYt.addEventListener('click', () => {
+      qaCustomYtModal.classList.add('hidden');
+    });
+  }
+
+  // Save custom video
+  if (btnSaveCustomYt) {
+    btnSaveCustomYt.addEventListener('click', () => {
+      const url = inputCustomYtUrl ? inputCustomYtUrl.value.trim() : '';
+      const title = inputCustomYtTitle ? inputCustomYtTitle.value.trim() : '';
+      const category = inputCustomYtCategory ? inputCustomYtCategory.value.trim() : 'Video';
+
+      if (!url || !title) {
+        showToast('Bitte gib mindestens einen YouTube-Link und Titel ein.', 'error');
+        return;
+      }
+
+      const videoId = extractYouTubeVideoId(url);
+      const newVideo = {
+        id: 'yt-' + Date.now(),
+        title: title,
+        url: url,
+        videoId: videoId || 'custom',
+        category: category || 'Video',
+        desc: `YouTube Video: ${title}`,
+        pinned: true,
+        isDefault: false
+      };
+
+      youtubeVideos.unshift(newVideo);
+      saveYouTubeVideos();
+      renderYouTubeBoard();
+      if (qaCustomYtModal) qaCustomYtModal.classList.add('hidden');
+      showToast(`Video "${title}" erfolgreich hinzugefügt!`, 'success');
+    });
+  }
+}
+
+// =========================================================================
+// MOD-HQ & LIVE-TEAM-CHAT LOGIC
+// =========================================================================
+
+// Mod-Chat Elements
+const btnRefreshModChat = document.getElementById('btn-refresh-mod-chat');
+const btnClearModChat = document.getElementById('btn-clear-mod-chat');
+const modChatMessages = document.getElementById('mod-chat-messages');
+const chatLoggedName = document.getElementById('chat-logged-name');
+const inputModChat = document.getElementById('input-mod-chat');
+const btnSendModChat = document.getElementById('btn-send-mod-chat');
+
+// Cutter-Marker Elements
+const inputCustomMarker = document.getElementById('input-custom-marker');
+const btnAddCustomMarker = document.getElementById('btn-add-custom-marker');
+const markersCount = document.getElementById('markers-count');
+const btnCopyCutterTimestamps = document.getElementById('btn-copy-cutter-timestamps');
+const btnClearMarkers = document.getElementById('btn-clear-markers');
+const markersStreamList = document.getElementById('markers-stream-list');
+
+// Watchlist Elements
+const inputWatchlistName = document.getElementById('input-watchlist-name');
+const inputWatchlistNote = document.getElementById('input-watchlist-note');
+const btnAddWatchlistItem = document.getElementById('btn-add-watchlist-item');
+const watchlistItemsList = document.getElementById('watchlist-items-list');
+
+let modChatPollInterval = null;
+let streamMarkers = [];
+let watchlistItems = [];
+let lastRenderedMessagesCount = 0;
+let lastMessagesSignature = '';
+
+function getActiveModInfo() {
+  const customColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#00f0ff');
+  const customModName = localStorage.getItem('swg_custom_mod_name');
+  const senderName = customModName || (state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod');
+  const senderAvatar = state.twitchUser && state.twitchUser.profile_image_url ? state.twitchUser.profile_image_url : 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+
+  return { name: senderName, avatar: senderAvatar, color: customColor };
+}
+
+function startModHQSync() {
+  updateModHQUserInfo();
+  loadModChatMessages();
+  loadStreamMarkers();
+  loadWatchlist();
+  loadChatters();
+}
+
+function stopModHQSync() {
+  // Global watcher handles chat polling seamlessly
+}
+
+// Notification Audio Synthesizer (Crystal 2-Tone Chime)
+function playNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+
+    const now = ctx.currentTime;
+    
+    // Tone 1: E5 (659.25 Hz)
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(659.25, now);
+    gain1.gain.setValueAtTime(0.18, now);
+    gain1.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.35);
+
+    // Tone 2: B5 (987.77 Hz - Harmonic sparkle)
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(987.77, now + 0.08);
+    gain2.gain.setValueAtTime(0.22, now + 0.08);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.08);
+    osc2.stop(now + 0.6);
+  } catch(e) {
+    console.warn('Could not play notification sound:', e);
+  }
+}
+
+async function startGlobalModChatWatcher() {
+  try {
+    const res = await ipcRenderer.invoke('modchat:get-messages');
+    if (res && res.success && Array.isArray(res.messages) && res.messages.length > 0) {
+      const maxTs = Math.max(...res.messages.map(m => m.timestamp || 0));
+      lastSeenModChatTimestamp = Math.max(maxTs, Date.now() - 500);
+    } else {
+      lastSeenModChatTimestamp = Date.now();
+    }
+  } catch(e) {
+    lastSeenModChatTimestamp = Date.now();
+  }
+
+  if (globalModChatInterval) clearInterval(globalModChatInterval);
+  globalModChatInterval = setInterval(async () => {
+    try {
+      const res = await ipcRenderer.invoke('modchat:get-messages');
+      if (res && res.success && Array.isArray(res.messages)) {
+        const currentMod = getActiveModInfo();
+        const currentUserName = (currentMod.name || '').toLowerCase();
+
+        // Check for new incoming messages from other mods
+        const newIncoming = res.messages.filter(m => 
+          m.timestamp && 
+          m.timestamp > lastSeenModChatTimestamp && 
+          m.senderName && 
+          m.senderName.toLowerCase() !== currentUserName
+        );
+
+        if (newIncoming.length > 0) {
+          const isWindowFocused = document.hasFocus();
+          const isActivelyInChat = (currentActiveView === 'view-modchat') && isWindowFocused;
+
+          // Play sound & flash taskbar when NOT actively looking at the chat
+          if (!isActivelyInChat) {
+            playNotificationSound();
+            ipcRenderer.invoke('app:notify-background').catch(() => {});
+          }
+
+          if (currentActiveView === 'view-modchat') {
+            renderModChatMessages(res.messages);
+            lastSeenModChatTimestamp = Math.max(...newIncoming.map(m => m.timestamp || 0), Date.now());
+          } else {
+            newIncoming.forEach(msg => {
+              const preview = msg.text.length > 60 ? msg.text.substring(0, 60) + '...' : msg.text;
+              showToast(`💬 ${msg.senderName}: ${preview}`, 'info');
+              unreadModChatCount++;
+            });
+
+            const maxTs = Math.max(...newIncoming.map(m => m.timestamp || 0));
+            lastSeenModChatTimestamp = Math.max(maxTs, Date.now());
+
+            const badge = document.getElementById('hub-modchat-unread');
+            if (badge) {
+              badge.textContent = unreadModChatCount;
+              badge.classList.remove('hidden');
+            }
+          }
+        } else if (currentActiveView === 'view-modchat') {
+          renderModChatMessages(res.messages);
+        }
+      }
+    } catch(e) {}
+  }, 4000);
+}
+
+function updateModHQUserInfo() {
+  const modInfo = getActiveModInfo();
+  if (chatLoggedName) {
+    chatLoggedName.textContent = modInfo.name;
+    chatLoggedName.style.color = modInfo.color;
+  }
+  const chatLoggedAvatar = document.getElementById('chat-logged-avatar');
+  if (chatLoggedAvatar) {
+    chatLoggedAvatar.src = modInfo.avatar;
+    chatLoggedAvatar.classList.remove('hidden');
+  }
+}
+
+async function loadModChatMessages(silent = false) {
+  if (!modChatMessages) return;
+  try {
+    const res = await ipcRenderer.invoke('modchat:get-messages');
+    if (res && res.success && Array.isArray(res.messages)) {
+      renderModChatMessages(res.messages);
+    }
+  } catch(e) {
+    if (!silent) console.error('Error loading mod chat:', e);
+  }
+}
+
+function renderModChatMessages(messages) {
+  if (!modChatMessages) return;
+
+  const currentMod = getActiveModInfo();
+  const currentUserName = currentMod.name.toLowerCase();
+
+  // If no messages
+  if (!messages || messages.length === 0) {
+    if (lastMessagesSignature !== 'empty') {
+      lastMessagesSignature = 'empty';
+      modChatMessages.innerHTML = `
+        <div class="chat-welcome-notice">
+          <span>👋 Willkommen im internen Mod-Team-Chat! Hier könnt ihr euch während des Streams absprechen.</span>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  // Create signature to compare
+  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}`).join('|');
+  if (sig === lastMessagesSignature) {
+    // Absolutely no changes, do NOT re-render DOM to prevent any flickering!
+    return;
+  }
+  lastMessagesSignature = sig;
+
+  // Check if user was scrolled near bottom
+  const wasScrolledToBottom = modChatMessages.scrollHeight - modChatMessages.clientHeight <= modChatMessages.scrollTop + 60;
+
+  let html = `
+    <div class="chat-welcome-notice">
+      <span>👋 Willkommen im internen Mod-Team-Chat! Hier könnt ihr euch während des Streams absprechen.</span>
+    </div>
+  `;
+
+  messages.forEach(msg => {
+    const isOwn = currentUserName && msg.senderName && msg.senderName.toLowerCase() === currentUserName;
+    const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const senderColor = msg.senderColor || '#00f0ff';
+    const avatarSrc = msg.senderAvatar || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+
+    html += `
+      <div class="mod-chat-msg-row ${isOwn ? 'outgoing' : 'incoming'}">
+        <img src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(msg.senderName)}" class="chat-msg-avatar" onerror="this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png'">
+        <div class="chat-bubble">
+          <div class="chat-bubble-header">
+            <span class="chat-sender-name" style="color: ${escapeHtml(senderColor)}">${escapeHtml(msg.senderName || 'Mod')}</span>
+            <span class="chat-time">${escapeHtml(timeStr)}</span>
+          </div>
+          <div class="chat-text">${escapeHtml(msg.text)}</div>
+        </div>
+      </div>
+    `;
+  });
+
+  modChatMessages.innerHTML = html;
+
+  if (wasScrolledToBottom) {
+    modChatMessages.scrollTop = modChatMessages.scrollHeight;
+  }
+}
+
+async function sendModChatMessage() {
+  if (!inputModChat) return;
+  const text = inputModChat.value.trim();
+  if (!text) return;
+
+  const modInfo = getActiveModInfo();
+
+  const msgObj = {
+    id: 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+    senderName: modInfo.name,
+    senderAvatar: modInfo.avatar,
+    senderColor: modInfo.color,
+    text,
+    timestamp: Date.now()
+  };
+
+  inputModChat.value = '';
+  inputModChat.focus();
+
+  try {
+    const res = await ipcRenderer.invoke('modchat:send-message', msgObj);
+    if (res && res.success && Array.isArray(res.messages)) {
+      renderModChatMessages(res.messages);
+    } else {
+      showToast('Fehler beim Senden der Nachricht: ' + (res && res.error ? res.error : 'Unbekannter Fehler'), 'error');
+    }
+  } catch(e) {
+    showToast('Fehler beim Senden der Nachricht: ' + e.message, 'error');
+  }
+}
+
+
+
+// Chatters List
+async function loadChatters() {
+  const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  const chattersCountEl = document.getElementById('chatters-count');
+  const modalChattersCount = document.getElementById('modal-chatters-count');
+  const chattersListGrid = document.getElementById('chatters-list-grid');
+
+  try {
+    const res = await ipcRenderer.invoke('twitch:get-chatters', channel);
+    if (res) {
+      const total = res.total || (res.chatters ? res.chatters.length : 0);
+      if (chattersCountEl) chattersCountEl.textContent = total;
+      if (modalChattersCount) modalChattersCount.textContent = total;
+      if (chattersListGrid) {
+        if (res.chatters && res.chatters.length > 0) {
+          chattersListGrid.innerHTML = res.chatters.map(c => `
+            <span class="chatter-pill">👤 ${escapeHtml(c.name || c.login)}</span>
+          `).join('');
+        } else {
+          chattersListGrid.innerHTML = '<div class="empty-list-placeholder">Keine Chatters gefunden oder Twitch-Login erforderlich.</div>';
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+// Cutter Stream Markers Logic
+async function loadStreamMarkers() {
+  try {
+    const res = await ipcRenderer.invoke('markers:get');
+    if (res && res.success) {
+      streamMarkers = res.markers || [];
+      renderStreamMarkers();
+    }
+  } catch(e) {}
+}
+
+function renderStreamMarkers() {
+  if (!markersStreamList || !markersCount) return;
+  markersCount.textContent = streamMarkers.length;
+
+  if (streamMarkers.length === 0) {
+    markersStreamList.innerHTML = '<div class="empty-list-placeholder">Noch keine Marker in dieser Session gesetzt.</div>';
+    return;
+  }
+
+  let html = '';
+  streamMarkers.forEach((m, idx) => {
+    html += `
+      <div class="marker-item">
+        <span class="marker-time-badge">${escapeHtml(m.timeStr || '00:00:00')}</span>
+        <span class="marker-desc" title="${escapeHtml(m.description)}">${escapeHtml(m.description)}</span>
+        <button class="btn-delete-cmd btn-delete-marker" data-idx="${idx}" title="Löschen">✕</button>
+      </div>
+    `;
+  });
+
+  markersStreamList.innerHTML = html;
+
+  markersStreamList.querySelectorAll('.btn-delete-marker').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.currentTarget.getAttribute('data-idx'));
+      streamMarkers.splice(idx, 1);
+      await ipcRenderer.invoke('markers:save', streamMarkers);
+      renderStreamMarkers();
+      showToast('Marker gelöscht', 'info');
+    });
+  });
+}
+
+function formatVodTime(seconds) {
+  const s = Math.floor(seconds % 60);
+  const m = Math.floor((seconds / 60) % 60);
+  const h = Math.floor(seconds / 3600);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+async function addMarker(description) {
+  if (!description) return;
+  const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  let timeFormatted = nowStr;
+
+  try {
+    const res = await ipcRenderer.invoke('twitch:create-stream-marker', { description, channel });
+    if (res && res.success && res.position_seconds !== undefined) {
+      timeFormatted = formatVodTime(res.position_seconds);
+      showToast(`Twitch-Marker (${timeFormatted}) gesetzt!`, 'success');
+    } else {
+      showToast(`Marker "${description}" lokal notiert!`, 'info');
+    }
+  } catch(e) {
+    showToast(`Marker "${description}" notiert (${timeFormatted})`, 'info');
+  }
+
+  streamMarkers.unshift({
+    id: 'marker-' + Date.now(),
+    timeStr: timeFormatted,
+    description: description,
+    createdAt: Date.now()
+  });
+
+  await ipcRenderer.invoke('markers:save', streamMarkers);
+  renderStreamMarkers();
+}
+
+function copyCutterTimestamps() {
+  if (!streamMarkers || streamMarkers.length === 0) {
+    showToast('Keine Marker zum Kopieren vorhanden', 'info');
+    return;
+  }
+
+  // Sort chronological for cutter
+  const sorted = [...streamMarkers].reverse();
+  const text = sorted.map(m => `${m.timeStr} - ${m.description}`).join('\n');
+  navigator.clipboard.writeText(text);
+  showToast(`${sorted.length} Timestamps für Cutter kopiert!`, 'success');
+}
+
+// Watchlist Logic
+async function loadWatchlist() {
+  try {
+    const res = await ipcRenderer.invoke('watchlist:get');
+    if (res && res.success) {
+      watchlistItems = res.list || [];
+      renderWatchlist();
+    }
+  } catch(e) {}
+}
+
+function renderWatchlist() {
+  if (!watchlistItemsList) return;
+  if (watchlistItems.length === 0) {
+    watchlistItemsList.innerHTML = '<div class="empty-list-placeholder">Keine vermerkten User auf der Watchlist.</div>';
+    return;
+  }
+
+  let html = '';
+  watchlistItems.forEach(item => {
+    html += `
+      <div class="watchlist-item ${item.completed ? 'completed' : ''}" data-id="${item.id}">
+        <div class="watchlist-info">
+          <span class="watchlist-name">${escapeHtml(item.username)}</span>
+          <span class="watchlist-note">${escapeHtml(item.note)}</span>
+        </div>
+        <div class="watchlist-actions">
+          <button class="btn btn-secondary btn-xs btn-toggle-watchlist" data-id="${item.id}" title="${item.completed ? 'Als offen markieren' : 'Erledigt'}">
+            ${item.completed ? '↩️' : '✓'}
+          </button>
+          <button class="btn-delete-cmd btn-delete-watchlist" data-id="${item.id}" title="Löschen">✕</button>
+        </div>
+      </div>
+    `;
+  });
+
+  watchlistItemsList.innerHTML = html;
+
+  watchlistItemsList.querySelectorAll('.btn-toggle-watchlist').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      const item = watchlistItems.find(w => w.id === id);
+      if (item) {
+        item.completed = !item.completed;
+        await ipcRenderer.invoke('watchlist:save', watchlistItems);
+        renderWatchlist();
+      }
+    });
+  });
+
+  watchlistItemsList.querySelectorAll('.btn-delete-watchlist').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      watchlistItems = watchlistItems.filter(w => w.id !== id);
+      await ipcRenderer.invoke('watchlist:save', watchlistItems);
+      renderWatchlist();
+      showToast('Eintrag gelöscht', 'info');
+    });
+  });
+}
+
+// Setup Mod-HQ Listeners
+function setupModHQListeners() {
+  if (btnRefreshModChat) {
+    btnRefreshModChat.addEventListener('click', async () => {
+      showToast('Aktualisiere Mod-Chat...', 'info');
+      await loadModChatMessages();
+      showToast('Mod-Chat aktualisiert!', 'success');
+    });
+  }
+
+  if (btnClearModChat) {
+    btnClearModChat.addEventListener('click', async () => {
+      lastMessagesSignature = '';
+      await ipcRenderer.invoke('modchat:clear-messages');
+      renderModChatMessages([]);
+      showToast('Mod-Chat geleert', 'info');
+      if (inputModChat) {
+        inputModChat.disabled = false;
+        inputModChat.focus();
+      }
+    });
+  }
+
+  if (btnSendModChat) {
+    btnSendModChat.addEventListener('click', sendModChatMessage);
+  }
+
+  if (inputModChat) {
+    inputModChat.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendModChatMessage();
+      }
+    });
+  }
+
+  // Quick Chat Emojis
+  document.querySelectorAll('.btn-chat-emoji').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const emoji = btn.getAttribute('data-emoji');
+      if (emoji && inputModChat) {
+        inputModChat.value += emoji;
+        inputModChat.focus();
+      }
+    });
+  });
+
+  // Marker Quick Tags
+  document.querySelectorAll('.btn-marker-tag').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tag = btn.getAttribute('data-tag');
+      if (tag) addMarker(tag);
+    });
+  });
+
+  // Custom Marker
+  if (btnAddCustomMarker && inputCustomMarker) {
+    btnAddCustomMarker.addEventListener('click', () => {
+      const text = inputCustomMarker.value.trim();
+      if (!text) {
+        showToast('Bitte gib einen Marker-Text ein', 'error');
+        return;
+      }
+      addMarker(`🎯 ${text}`);
+      inputCustomMarker.value = '';
+    });
+
+    inputCustomMarker.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        btnAddCustomMarker.click();
+      }
+    });
+  }
+
+  if (btnCopyCutterTimestamps) {
+    btnCopyCutterTimestamps.addEventListener('click', copyCutterTimestamps);
+  }
+
+  if (btnClearMarkers) {
+    btnClearMarkers.addEventListener('click', async () => {
+      streamMarkers = [];
+      await ipcRenderer.invoke('markers:save', streamMarkers);
+      renderStreamMarkers();
+      showToast('Marker geleert', 'info');
+    });
+  }
+
+  // Add Watchlist Item
+  if (btnAddWatchlistItem && inputWatchlistName && inputWatchlistNote) {
+    btnAddWatchlistItem.addEventListener('click', async () => {
+      const username = inputWatchlistName.value.trim().replace('@', '');
+      const note = inputWatchlistNote.value.trim();
+      if (!username || !note) {
+        showToast('Bitte gib Username und Vermerk ein', 'error');
+        return;
+      }
+
+      watchlistItems.unshift({
+        id: 'wl-' + Date.now(),
+        username,
+        note,
+        completed: false,
+        createdAt: Date.now()
+      });
+
+      await ipcRenderer.invoke('watchlist:save', watchlistItems);
+      inputWatchlistName.value = '';
+      inputWatchlistNote.value = '';
+      renderWatchlist();
+      showToast(`User '${username}' vermerkt`, 'success');
+    });
+
+    inputWatchlistNote.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        btnAddWatchlistItem.click();
+      }
+    });
+  }
+
+  // Edit Mod Profile (Custom Name & Color Modal)
+  const btnEditModName = document.getElementById('btn-edit-mod-name');
+  const modProfileModal = document.getElementById('mod-profile-modal');
+  const inputEditModName = document.getElementById('input-edit-mod-name');
+  const inputEditModColor = document.getElementById('input-edit-mod-color');
+  const previewEditModBadge = document.getElementById('preview-edit-mod-badge');
+  const btnCloseModProfileModal = document.getElementById('btn-close-mod-profile-modal');
+  const btnCancelModProfile = document.getElementById('btn-cancel-mod-profile');
+  const btnSaveModProfile = document.getElementById('btn-save-mod-profile');
+
+  function updateModProfilePreview() {
+    if (!previewEditModBadge) return;
+    const name = (inputEditModName ? inputEditModName.value.trim() : '') || (state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod');
+    const color = inputEditModColor ? inputEditModColor.value : '#00f0ff';
+    previewEditModBadge.textContent = name + ':';
+    previewEditModBadge.style.color = color;
+  }
+
+  if (btnEditModName && modProfileModal) {
+    btnEditModName.addEventListener('click', () => {
+      const currentName = localStorage.getItem('swg_custom_mod_name') || '';
+      const currentColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#00f0ff');
+
+      if (inputEditModName) inputEditModName.value = currentName;
+      if (inputEditModColor) inputEditModColor.value = currentColor;
+
+      updateModProfilePreview();
+      modProfileModal.classList.remove('hidden');
+      if (inputEditModName) inputEditModName.focus();
+    });
+  }
+
+  if (inputEditModName) inputEditModName.addEventListener('input', updateModProfilePreview);
+  if (inputEditModColor) inputEditModColor.addEventListener('input', updateModProfilePreview);
+
+  if (btnCloseModProfileModal && modProfileModal) {
+    btnCloseModProfileModal.addEventListener('click', () => modProfileModal.classList.add('hidden'));
+  }
+  if (btnCancelModProfile && modProfileModal) {
+    btnCancelModProfile.addEventListener('click', () => modProfileModal.classList.add('hidden'));
+  }
+
+  if (btnSaveModProfile && modProfileModal) {
+    btnSaveModProfile.addEventListener('click', () => {
+      const newName = inputEditModName ? inputEditModName.value.trim() : '';
+      const newColor = inputEditModColor ? inputEditModColor.value : '#00f0ff';
+
+      if (newName) {
+        localStorage.setItem('swg_custom_mod_name', newName);
+      } else {
+        localStorage.removeItem('swg_custom_mod_name');
+      }
+
+      localStorage.setItem('swg_user_color', newColor);
+      if (userColorPicker) userColorPicker.value = newColor;
+
+      updateModHQUserInfo();
+      updateTwitchUI();
+      modProfileModal.classList.add('hidden');
+      showToast('Mod-Profil erfolgreich gespeichert!', 'success');
+    });
+  }
+
+  // Chatters Modal Listeners
+  const btnShowChatters = document.getElementById('btn-show-chatters');
+  const chattersModal = document.getElementById('chatters-modal');
+  const btnCloseChattersModal = document.getElementById('btn-close-chatters-modal');
+  const btnReloadChatters = document.getElementById('btn-reload-chatters');
+
+  if (btnShowChatters && chattersModal) {
+    btnShowChatters.addEventListener('click', async () => {
+      chattersModal.classList.remove('hidden');
+      await loadChatters();
+    });
+  }
+
+  if (btnCloseChattersModal && chattersModal) {
+    btnCloseChattersModal.addEventListener('click', () => {
+      chattersModal.classList.add('hidden');
+    });
+  }
+
+  if (btnReloadChatters) {
+    btnReloadChatters.addEventListener('click', async () => {
+      showToast('Lade Chatters...', 'info');
+      await loadChatters();
+      showToast('Chatter-Liste aktualisiert!', 'success');
+    });
+  }
+}
+
+// =========================================================================
+// GIVEAWAYS & 2-STUFEN DSGVO-ADRESSVERSAND LOGIC
+// =========================================================================
+
+let giveawaySyncInterval = null;
+
+const giveawayState = {
+  isActive: false,
+  prize: '',
+  mode: 'keyword',
+  keyword: '!join',
+  participants: new Map(),
+  currentWinner: null,
+  winnersHistory: []
+};
+
+// UI Elements
+const inputGiveawayPrize = document.getElementById('input-giveaway-prize');
+const selectGiveawayMode = document.getElementById('select-giveaway-mode');
+const groupGwKeyword = document.getElementById('group-gw-keyword');
+const inputGiveawayKeyword = document.getElementById('input-giveaway-keyword');
+const giveawayStatusIndicator = document.getElementById('giveaway-status-indicator');
+
+// Filters
+const chkGwExcludeBots = document.getElementById('chk-gw-exclude-bots');
+const chkGwExcludeMods = document.getElementById('chk-gw-exclude-mods');
+const chkGwExcludeWatchlist = document.getElementById('chk-gw-exclude-watchlist');
+const chkGwExcludePrevWinners = document.getElementById('chk-gw-exclude-prev-winners');
+const chkGwSendChat = document.getElementById('chk-gw-send-chat');
+
+// Buttons
+const btnStartGiveaway = document.getElementById('btn-start-giveaway');
+const btnStopGiveaway = document.getElementById('btn-stop-giveaway');
+const btnClearParticipants = document.getElementById('btn-clear-participants');
+const btnDrawWinner = document.getElementById('btn-draw-winner');
+const btnResetGiveaway = document.getElementById('btn-reset-giveaway');
+
+// Participants Grid
+const giveawayParticipantsCount = document.getElementById('giveaway-participants-count');
+const giveawayParticipantsGrid = document.getElementById('giveaway-participants-grid');
+
+// Winner Display Elements
+const winnerDisplayContainer = document.getElementById('winner-display-container');
+const winnerQuickActions = document.getElementById('winner-quick-actions');
+const btnRerollWinner = document.getElementById('btn-reroll-winner');
+
+// Address & Telegram Elements
+const winnerAddressStatusPill = document.getElementById('winner-address-status-pill');
+const displayWinnerPrize = document.getElementById('display-winner-prize');
+const inputWinnerFullname = document.getElementById('input-winner-fullname');
+const inputWinnerStreet = document.getElementById('input-winner-street');
+const inputWinnerZip = document.getElementById('input-winner-zip');
+const inputWinnerCity = document.getElementById('input-winner-city');
+const inputWinnerCountry = document.getElementById('input-winner-country');
+const btnSendWinnerTelegram = document.getElementById('btn-send-winner-telegram');
+const btnCopyWinnerTelegramText = document.getElementById('btn-copy-winner-telegram-text');
+const btnSaveWinnerAddress = document.getElementById('btn-save-winner-address');
+const btnFinishGiveaway = document.getElementById('btn-finish-giveaway');
+
+// History Table
+const winnersHistoryTbody = document.getElementById('winners-history-tbody');
+const btnRefreshWinnersHistory = document.getElementById('btn-refresh-winners-history');
+
+// Telegram Config Modal Elements
+const btnOpenTelegramConfig = document.getElementById('btn-open-telegram-config');
+const telegramConfigModal = document.getElementById('telegram-config-modal');
+const btnCloseTelegramConfigModal = document.getElementById('btn-close-telegram-config-modal');
+const btnCancelTelegramConfig = document.getElementById('btn-cancel-telegram-config');
+const btnSaveTelegramConfig = document.getElementById('btn-save-telegram-config');
+const btnTestTelegramBot = document.getElementById('btn-test-telegram-bot');
+const inputTelegramBotToken = document.getElementById('input-telegram-bot-token');
+const inputTelegramChatId = document.getElementById('input-telegram-chat-id');
+const inputGiveawayClaimUrl = document.getElementById('input-giveaway-claim-url');
+
+const KNOWN_BOTS = ['nightbot', 'streamelements', 'moobot', 'wizebot', 'fossabot', 'marvedbot', 'bot', 'soundbot', 'chatterino', 'streamlabs'];
+
+function isParticipantExcluded(participant) {
+  const login = (participant.login || '').toLowerCase();
+
+  // Bot check
+  if (chkGwExcludeBots && chkGwExcludeBots.checked) {
+    if (KNOWN_BOTS.includes(login) || login.endsWith('bot')) return true;
+  }
+
+  // Mod check
+  if (chkGwExcludeMods && chkGwExcludeMods.checked) {
+    if (participant.isMod) return true;
+  }
+
+  // Watchlist check
+  if (chkGwExcludeWatchlist && chkGwExcludeWatchlist.checked) {
+    if (watchlistItems && watchlistItems.some(w => (w.username || '').toLowerCase() === login)) {
+      return true;
+    }
+  }
+
+  // Previous winners check
+  if (chkGwExcludePrevWinners && chkGwExcludePrevWinners.checked) {
+    if (giveawayState.winnersHistory && giveawayState.winnersHistory.some(w => (w.username || '').toLowerCase() === login)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function renderParticipantsPool() {
+  if (!giveawayParticipantsGrid || !giveawayParticipantsCount) return;
+
+  const validParticipants = Array.from(giveawayState.participants.values()).filter(p => !isParticipantExcluded(p));
+  giveawayParticipantsCount.textContent = validParticipants.length;
+
+  if (validParticipants.length === 0) {
+    giveawayParticipantsGrid.innerHTML = giveawayState.isActive 
+      ? '<div class="empty-list-placeholder">Warte auf Teilnehmer im Chat...</div>'
+      : '<div class="empty-list-placeholder">Noch keine Teilnehmer. Starte die Registrierung, damit Zuschauer beitreten können.</div>';
+    return;
+  }
+
+  giveawayParticipantsGrid.innerHTML = validParticipants.map(p => `
+    <span class="participant-pill ${p.isMod ? 'is-mod' : ''} ${p.isSub ? 'is-sub' : ''}">
+      <span style="color: ${escapeHtml(p.color || '#00f0ff')}">●</span>
+      <span>${escapeHtml(p.displayName || p.login)}</span>
+      ${p.isSub ? '⭐' : ''}
+      <button class="btn-remove-participant" data-login="${escapeHtml(p.login)}" title="${escapeHtml(p.displayName || p.login)} aus dem Pool entfernen">✕</button>
+    </span>
+  `).join('');
+
+  // Attach remove button listeners
+  giveawayParticipantsGrid.querySelectorAll('.btn-remove-participant').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const login = btn.getAttribute('data-login');
+      if (login && giveawayState.participants.has(login.toLowerCase())) {
+        const removed = giveawayState.participants.get(login.toLowerCase());
+        giveawayState.participants.delete(login.toLowerCase());
+        renderParticipantsPool();
+        showToast(`👤 ${removed ? removed.displayName : login} aus dem Pool entfernt`, 'info');
+      }
+    });
+  });
+}
+
+function updateGiveawayStatus(status) {
+  if (!giveawayStatusIndicator) return;
+  if (status === 'live') {
+    giveawayStatusIndicator.className = 'gw-status-badge live';
+    giveawayStatusIndicator.innerHTML = '<span class="status-dot"></span><span class="status-text">Registrierung läuft</span>';
+  } else if (status === 'closed') {
+    giveawayStatusIndicator.className = 'gw-status-badge closed';
+    giveawayStatusIndicator.innerHTML = '<span class="status-dot"></span><span class="status-text">Geschlossen</span>';
+  } else {
+    giveawayStatusIndicator.className = 'gw-status-badge offline';
+    giveawayStatusIndicator.innerHTML = '<span class="status-dot"></span><span class="status-text">Bereit</span>';
+  }
+}
+
+async function startGiveawayRegistration() {
+  const prize = inputGiveawayPrize ? inputGiveawayPrize.value.trim() : '';
+  if (!prize) {
+    showToast('⚠️ Bitte gib zuerst einen Gewinnpreis ein, bevor du das Giveaway startest!', 'error');
+    if (inputGiveawayPrize) inputGiveawayPrize.focus();
+    return;
+  }
+  giveawayState.prize = prize;
+  giveawayState.mode = selectGiveawayMode ? selectGiveawayMode.value : 'keyword';
+  giveawayState.keyword = inputGiveawayKeyword ? inputGiveawayKeyword.value.trim() : '!join';
+
+  const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+
+  if (giveawayState.mode === 'keyword') {
+    const res = await ipcRenderer.invoke('giveaway:start-listener', { keyword: giveawayState.keyword, channel });
+    if (res && !res.success) {
+      showToast(res.error || 'Fehler beim Starten des Twitch-Listeners', 'error');
+      return;
+    }
+  } else {
+    // Chatters Mode: Load current chatters into pool
+    try {
+      const res = await ipcRenderer.invoke('twitch:get-chatters', channel);
+      if (res && res.chatters) {
+        giveawayState.participants.clear();
+        res.chatters.forEach(c => {
+          giveawayState.participants.set(c.login.toLowerCase(), {
+            login: c.login.toLowerCase(),
+            displayName: c.name || c.login,
+            color: '#00f0ff',
+            isMod: false,
+            isSub: false,
+            timestamp: Date.now()
+          });
+        });
+      }
+    } catch(e) {}
+  }
+
+  giveawayState.isActive = true;
+
+  if (btnStartGiveaway) btnStartGiveaway.classList.add('hidden');
+  if (btnStopGiveaway) btnStopGiveaway.classList.remove('hidden');
+  updateGiveawayStatus('live');
+
+  renderParticipantsPool();
+
+  // Automatically post start announcement in Twitch chat (if enabled)
+  const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+  if (sendChat) {
+    const startMsg = giveawayState.mode === 'keyword'
+      ? `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Schreibt ${giveawayState.keyword} in den Chat, um teilzunehmen!`
+      : `🎉 GIVEAWAY GESTARTET! Gewinn: "${prize}" | Alle aktiven Chatter sind im Lostopf!`;
+
+    try {
+      await ipcRenderer.invoke('twitch:send-chat', { message: startMsg, channel });
+      showToast('Giveaway gestartet & Start-Ansage automatisch im Chat gepostet!', 'success');
+    } catch(e) {
+      showToast('Giveaway gestartet!', 'success');
+    }
+  } else {
+    showToast('Giveaway gestartet (Stiller Test-Modus – keine Chat-Ansage).', 'info');
+  }
+}
+
+async function stopGiveawayRegistration(notifyChat = true) {
+  await ipcRenderer.invoke('giveaway:stop-listener');
+  giveawayState.isActive = false;
+
+  if (btnStartGiveaway) btnStartGiveaway.classList.remove('hidden');
+  if (btnStopGiveaway) btnStopGiveaway.classList.add('hidden');
+  updateGiveawayStatus('closed');
+
+  const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+  if (notifyChat && sendChat) {
+    const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    try {
+      await ipcRenderer.invoke('twitch:send-chat', { message: '🔒 Die Giveaway-Registrierung ist beendet! Der Gewinner wird jetzt ermittelt...', channel });
+    } catch(e) {}
+    showToast('Giveaway-Registrierung geschlossen & Chat informiert.', 'info');
+  } else if (notifyChat) {
+    showToast('Giveaway-Registrierung geschlossen (Stiller Modus).', 'info');
+  }
+}
+
+// Roulette / Dice Drawing
+async function drawGiveawayWinner() {
+  const validParticipants = Array.from(giveawayState.participants.values()).filter(p => !isParticipantExcluded(p));
+
+  if (validParticipants.length === 0) {
+    showToast('Keine berechtigten Teilnehmer im Pool gefunden!', 'error');
+    return;
+  }
+
+  if (btnDrawWinner) {
+    btnDrawWinner.disabled = true;
+    btnDrawWinner.classList.add('rolling');
+    btnDrawWinner.textContent = '🎲 ZIEHE GEWINNER...';
+  }
+
+  // Animation: rapidly cycle names
+  let count = 0;
+  const maxShuffles = 18;
+  const interval = setInterval(async () => {
+    count++;
+    const randomPick = validParticipants[Math.floor(Math.random() * validParticipants.length)];
+    if (winnerDisplayContainer) {
+      winnerDisplayContainer.innerHTML = `
+        <div class="winner-card-inner" style="justify-content:center;">
+          <div class="winner-username-hero" style="color:var(--accent-cyan); font-size:1.6rem; animation: participantPop 0.1s;">
+            🎲 ${escapeHtml(randomPick.displayName || randomPick.login)}
+          </div>
+        </div>
+      `;
+    }
+
+    if (count >= maxShuffles) {
+      clearInterval(interval);
+
+      // Final Winner Selected
+      const finalWinner = validParticipants[Math.floor(Math.random() * validParticipants.length)];
+      const prize = inputGiveawayPrize ? inputGiveawayPrize.value.trim() : giveawayState.prize;
+
+      const winnerObj = {
+        id: 'gw-' + Date.now(),
+        username: finalWinner.login,
+        displayName: finalWinner.displayName || finalWinner.login,
+        avatar: 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png',
+        prize: prize || 'Shisha-Paket',
+        timestamp: Date.now(),
+        status: 'waiting_address',
+        address: {
+          fullName: '',
+          street: '',
+          zip: '',
+          city: '',
+          country: 'Deutschland',
+          note: ''
+        }
+      };
+
+      // Fetch avatar from Twitch Helix backend
+      try {
+        const uRes = await ipcRenderer.invoke('twitch:get-user-info', finalWinner.login);
+        if (uRes && uRes.user && uRes.user.profile_image_url) {
+          winnerObj.avatar = uRes.user.profile_image_url;
+        }
+      } catch(e) {}
+
+      giveawayState.currentWinner = winnerObj;
+      await ipcRenderer.invoke('giveaway:save-winner', winnerObj);
+
+      renderWinnerHero(winnerObj);
+      renderAddressReview(winnerObj);
+      loadGiveawayWinnersHistory();
+
+      // Play victory chime
+      playNotificationSound();
+
+      if (btnDrawWinner) {
+        btnDrawWinner.disabled = false;
+        btnDrawWinner.classList.remove('rolling');
+        btnDrawWinner.textContent = '🎲 GEWINNER AUSLOSEN';
+      }
+
+      // Announce winner in Twitch chat (if enabled)
+      const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+      if (sendChat) {
+        const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        let claimBaseUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
+        try {
+          const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
+          if (cfg && cfg.claimUrl && cfg.claimUrl.trim()) {
+            claimBaseUrl = cfg.claimUrl.trim();
+          }
+        } catch(e) {}
+
+        const sep = claimBaseUrl.includes('?') ? '&' : '?';
+        const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}&v=${Date.now()}`;
+        const winChatMsg = `🎉 Glückwunsch @${winnerObj.username}! Du hast "${winnerObj.prize}" gewonnen! 🎁 Bitte trage deine Versandadresse direkt hier ein: ${link}`;
+
+        try {
+          await ipcRenderer.invoke('twitch:send-chat', { message: winChatMsg, channel });
+          showToast(`🎉 Gewinner ausgelost & live im Twitch-Chat verkündet: @${winnerObj.displayName}!`, 'success');
+        } catch(e) {
+          showToast(`🎉 Gewinner ausgelost: ${winnerObj.displayName}!`, 'success');
+        }
+      } else {
+        showToast(`🎉 Gewinner ausgelost (Stiller Modus): @${winnerObj.displayName}!`, 'success');
+      }
+    }
+  }, 90);
+}
+
+function renderWinnerHero(winner) {
+  if (!winnerDisplayContainer) return;
+  if (!winner) {
+    winnerDisplayContainer.className = 'winner-hero-box';
+    winnerDisplayContainer.innerHTML = `
+      <div class="empty-winner-state">
+        <span>🎲 Klicke auf <strong>„GEWINNER AUSLOSEN“</strong>, um einen Gewinner zu ermitteln.</span>
+      </div>
+    `;
+    if (winnerQuickActions) winnerQuickActions.classList.add('hidden');
+    return;
+  }
+
+  const timeStr = new Date(winner.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  winnerDisplayContainer.className = 'winner-hero-box celebrate';
+  winnerDisplayContainer.innerHTML = `
+    <div class="winner-card-inner">
+      <img src="${escapeHtml(winner.avatar)}" alt="${escapeHtml(winner.displayName)}" class="winner-avatar-lg" onerror="this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png'">
+      <div class="winner-details-col">
+        <span class="winner-username-hero">${escapeHtml(winner.displayName)}</span>
+        <span class="winner-time-badge">🏆 Gewonnen um ${escapeHtml(timeStr)} Uhr</span>
+      </div>
+    </div>
+  `;
+
+  if (winnerQuickActions) winnerQuickActions.classList.remove('hidden');
+}
+
+function renderAddressReview(winner) {
+  if (!displayWinnerPrize) return;
+
+  if (!winner) {
+    displayWinnerPrize.textContent = '—';
+    if (winnerAddressStatusPill) {
+      winnerAddressStatusPill.className = 'address-status-pill pending';
+      winnerAddressStatusPill.textContent = 'Kein Gewinner';
+    }
+    if (inputWinnerFullname) inputWinnerFullname.value = '';
+    if (inputWinnerStreet) inputWinnerStreet.value = '';
+    if (inputWinnerZip) inputWinnerZip.value = '';
+    if (inputWinnerCity) inputWinnerCity.value = '';
+    if (inputWinnerCountry) inputWinnerCountry.value = 'Deutschland';
+    return;
+  }
+
+  displayWinnerPrize.textContent = `🎁 ${winner.prize || 'Shisha-Paket'}`;
+
+  // Update Status Pill
+  if (winnerAddressStatusPill) {
+    if (winner.status === 'sent_to_telegram') {
+      winnerAddressStatusPill.className = 'address-status-pill sent';
+      winnerAddressStatusPill.textContent = '✅ An Marvin übermittelt';
+    } else if (winner.status === 'address_received') {
+      winnerAddressStatusPill.className = 'address-status-pill received';
+      winnerAddressStatusPill.textContent = '📥 Adresse eingegangen (Prüfen)';
+    } else if (winner.status === 'shipped') {
+      winnerAddressStatusPill.className = 'address-status-pill shipped';
+      winnerAddressStatusPill.textContent = '📦 Verschickt';
+    } else {
+      winnerAddressStatusPill.className = 'address-status-pill waiting';
+      winnerAddressStatusPill.textContent = '⏳ Wartet auf Adresse';
+    }
+  }
+
+  // Populate address inputs if present
+  const addr = winner.address || {};
+  if (inputWinnerFullname) inputWinnerFullname.value = addr.fullName || '';
+  if (inputWinnerStreet) inputWinnerStreet.value = addr.street || '';
+  if (inputWinnerZip) inputWinnerZip.value = addr.zip || '';
+  if (inputWinnerCity) inputWinnerCity.value = addr.city || '';
+  if (inputWinnerCountry) inputWinnerCountry.value = addr.country || 'Deutschland';
+}
+
+async function loadGiveawayWinnersHistory() {
+  try {
+    const res = await ipcRenderer.invoke('giveaway:get-winners');
+    if (res && res.success && Array.isArray(res.winners)) {
+      giveawayState.winnersHistory = res.winners;
+      renderWinnersHistory(res.winners);
+
+      // Auto-update the active winner form if an address was submitted
+      if (giveawayState.currentWinner) {
+        const updated = res.winners.find(w => w.id === giveawayState.currentWinner.id || (w.username && w.username.toLowerCase() === giveawayState.currentWinner.username.toLowerCase()));
+        if (updated) {
+          const hadNoAddress = !giveawayState.currentWinner.address || !giveawayState.currentWinner.address.street;
+          const nowHasAddress = updated.address && updated.address.street;
+          
+          giveawayState.currentWinner = updated;
+          renderAddressReview(updated);
+
+          if (hadNoAddress && nowHasAddress) {
+            playNotificationSound();
+            showToast(`📥 Lieferadresse für @${updated.displayName || updated.username} eingegangen!`, 'success');
+          }
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+function renderWinnersHistory(winners) {
+  if (!winnersHistoryTbody) return;
+  if (!winners || winners.length === 0) {
+    winnersHistoryTbody.innerHTML = '<tr><td colspan="7" class="empty-list-placeholder">Noch keine Gewinner in der Historie.</td></tr>';
+    return;
+  }
+
+  let html = '';
+  winners.forEach(w => {
+    const timeStr = w.timestamp ? new Date(w.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const dateStr = w.timestamp ? new Date(w.timestamp).toLocaleDateString([], { day: '2-digit', month: '2-digit' }) : '';
+    const addr = w.address || {};
+    const addrPreview = addr.street ? `${addr.street}, ${addr.zip} ${addr.city}` : '—';
+    const recipient = addr.fullName || '—';
+
+    let statusHtml = '<span class="address-status-pill waiting">Wartend</span>';
+    if (w.status === 'sent_to_telegram') statusHtml = '<span class="address-status-pill sent">✅ Telegram</span>';
+    if (w.status === 'address_received') statusHtml = '<span class="address-status-pill received">📥 Prüfen</span>';
+    if (w.status === 'shipped') statusHtml = '<span class="address-status-pill shipped">📦 Verschickt</span>';
+
+    html += `
+      <tr data-id="${w.id}">
+        <td><span style="color:var(--text-secondary); font-size:0.75rem;">${dateStr} ${timeStr}</span></td>
+        <td><strong style="color:var(--accent-cyan)">@${escapeHtml(w.username)}</strong></td>
+        <td><span style="font-size:0.78rem; font-weight:600;">${escapeHtml(w.prize)}</span></td>
+        <td>${escapeHtml(recipient)}</td>
+        <td><span style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(addrPreview)}</span></td>
+        <td>${statusHtml}</td>
+        <td>
+          <div style="display:flex; gap:4px;">
+            <button class="btn btn-secondary btn-xs btn-load-winner" data-id="${w.id}" title="In Adressmaske laden">👁️</button>
+            <button class="btn-delete-cmd btn-delete-winner" data-id="${w.id}" title="Löschen">✕</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  winnersHistoryTbody.innerHTML = html;
+
+  // Row Action Listeners
+  winnersHistoryTbody.querySelectorAll('.btn-load-winner').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      const found = giveawayState.winnersHistory.find(w => w.id === id);
+      if (found) {
+        giveawayState.currentWinner = found;
+        renderWinnerHero(found);
+        renderAddressReview(found);
+        showToast(`Gewinner @${found.username} in Adressmaske geladen.`, 'info');
+      }
+    });
+  });
+
+  winnersHistoryTbody.querySelectorAll('.btn-delete-winner').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      // Optimistic instant UI deletion
+      giveawayState.winnersHistory = giveawayState.winnersHistory.filter(w => w.id !== id);
+      renderWinnersHistory(giveawayState.winnersHistory);
+
+      const res = await ipcRenderer.invoke('giveaway:delete-winner', id);
+      if (res && res.success && Array.isArray(res.winners)) {
+        giveawayState.winnersHistory = res.winners;
+        renderWinnersHistory(res.winners);
+      }
+      showToast('Eintrag aus Gewinner-Historie gelöscht', 'info');
+    });
+  });
+}
+
+function getFormattedTelegramMessage(winner) {
+  if (!winner) return '';
+  const addr = winner.address || {};
+  const dateStr = new Date(winner.timestamp || Date.now()).toLocaleString('de-DE');
+
+  return `🎁 <b>NEUER GEWINNER - ShishaWG Giveaway</b>\n` +
+         `🏆 <b>Twitch-User:</b> @${winner.username}\n` +
+         `📦 <b>Gewinn:</b> ${winner.prize || 'Shisha Paket'}\n` +
+         `👤 <b>Empfänger:</b> ${addr.fullName || '—'}\n` +
+         `🏠 <b>Adresse:</b> ${addr.street || '—'}, ${addr.zip || ''} ${addr.city || ''} (${addr.country || 'Deutschland'})\n` +
+         `📅 <b>Datum:</b> ${dateStr}\n` +
+         `✅ <b>Status:</b> Adresse von Mod-Team geprüft & freigegeben`;
+}
+
+function setupGiveawaysListeners() {
+  // Mode Change
+  if (selectGiveawayMode && groupGwKeyword) {
+    selectGiveawayMode.addEventListener('change', () => {
+      if (selectGiveawayMode.value === 'keyword') {
+        groupGwKeyword.classList.remove('hidden');
+      } else {
+        groupGwKeyword.classList.add('hidden');
+      }
+    });
+  }
+
+  // Chat Announcement Toggle
+  if (chkGwSendChat) {
+    chkGwSendChat.addEventListener('change', () => {
+      if (btnStartGiveaway) {
+        btnStartGiveaway.textContent = chkGwSendChat.checked
+          ? '▶️ Giveaway starten & Chat informieren'
+          : '▶️ Giveaway starten (Stiller Test-Modus)';
+      }
+      showToast(chkGwSendChat.checked ? '📢 Twitch-Chat Benachrichtigungen aktiviert' : '🔇 Stiller Test-Modus aktiv (keine Chat-Nachrichten)', 'info');
+    });
+  }
+
+  // Start Giveaway
+  if (btnStartGiveaway) {
+    btnStartGiveaway.addEventListener('click', startGiveawayRegistration);
+  }
+
+  // Stop Giveaway
+  if (btnStopGiveaway) {
+    btnStopGiveaway.addEventListener('click', stopGiveawayRegistration);
+  }
+
+  // Clear Participants
+  if (btnClearParticipants) {
+    btnClearParticipants.addEventListener('click', () => {
+      giveawayState.participants.clear();
+      renderParticipantsPool();
+      showToast('Teilnehmerliste geleert', 'info');
+    });
+  }
+
+  // Draw Winner Button
+  if (btnDrawWinner) {
+    btnDrawWinner.addEventListener('click', drawGiveawayWinner);
+  }
+
+  // Reroll Winner Button
+  if (btnRerollWinner) {
+    btnRerollWinner.addEventListener('click', () => {
+      drawGiveawayWinner();
+    });
+  }
+
+  // Save Address Button
+  if (btnSaveWinnerAddress) {
+    btnSaveWinnerAddress.addEventListener('click', async () => {
+      if (!giveawayState.currentWinner) {
+        showToast('Kein aktiver Gewinner ausgewählt', 'error');
+        return;
+      }
+
+      const addr = {
+        fullName: inputWinnerFullname ? inputWinnerFullname.value.trim() : '',
+        street: inputWinnerStreet ? inputWinnerStreet.value.trim() : '',
+        zip: inputWinnerZip ? inputWinnerZip.value.trim() : '',
+        city: inputWinnerCity ? inputWinnerCity.value.trim() : '',
+        country: inputWinnerCountry ? inputWinnerCountry.value.trim() : 'Deutschland'
+      };
+
+      giveawayState.currentWinner.address = addr;
+      if (giveawayState.currentWinner.status === 'waiting_address' && addr.street) {
+        giveawayState.currentWinner.status = 'address_received';
+      }
+
+      await ipcRenderer.invoke('giveaway:save-winner', giveawayState.currentWinner);
+      renderAddressReview(giveawayState.currentWinner);
+      loadGiveawayWinnersHistory();
+      showToast('Adresse erfolgreich gespeichert!', 'success');
+    });
+  }
+
+  // Send to Telegram Bot Button (Freigeben & an Marvin senden)
+  if (btnSendWinnerTelegram) {
+    btnSendWinnerTelegram.addEventListener('click', async () => {
+      if (!giveawayState.currentWinner) {
+        showToast('Kein aktiver Gewinner ausgewählt', 'error');
+        return;
+      }
+
+      const w = giveawayState.currentWinner;
+      w.address = {
+        fullName: inputWinnerFullname ? inputWinnerFullname.value.trim() : '',
+        street: inputWinnerStreet ? inputWinnerStreet.value.trim() : '',
+        zip: inputWinnerZip ? inputWinnerZip.value.trim() : '',
+        city: inputWinnerCity ? inputWinnerCity.value.trim() : '',
+        country: inputWinnerCountry ? inputWinnerCountry.value.trim() : 'Deutschland'
+      };
+
+      const text = getFormattedTelegramMessage(w);
+
+      showToast('Sende Datensatz an Marvins Telegram-Bot...', 'info');
+      try {
+        const res = await ipcRenderer.invoke('giveaway:send-telegram', { text });
+        if (res && res.success) {
+          w.status = 'sent_to_telegram';
+          await ipcRenderer.invoke('giveaway:save-winner', w);
+          renderAddressReview(w);
+          loadGiveawayWinnersHistory();
+          showToast('🚀 Gewinner & Adresse erfolgreich an Marvin (Telegram) übermittelt!', 'success');
+        } else {
+          showToast(`Telegram-Fehler: ${res && res.error ? res.error : 'Übertragung fehlgeschlagen'}`, 'error');
+          if (telegramConfigModal) telegramConfigModal.classList.remove('hidden');
+        }
+      } catch(e) {
+        showToast('Telegram-Fehler: ' + e.message, 'error');
+      }
+    });
+  }
+
+  // Copy Telegram Text Button
+  if (btnCopyWinnerTelegramText) {
+    btnCopyWinnerTelegramText.addEventListener('click', () => {
+      if (!giveawayState.currentWinner) {
+        showToast('Kein aktiver Gewinner ausgewählt', 'error');
+        return;
+      }
+      const text = getFormattedTelegramMessage(giveawayState.currentWinner);
+      navigator.clipboard.writeText(text);
+      showToast('Formatierter Telegram-Text kopiert!', 'success');
+    });
+  }
+
+  // Refresh History
+  if (btnRefreshWinnersHistory) {
+    btnRefreshWinnersHistory.addEventListener('click', async () => {
+      await loadGiveawayWinnersHistory();
+      showToast('Gewinner-Historie aktualisiert', 'info');
+    });
+  }
+
+  // Reset Giveaway Button (Silent reset, no chat spam)
+  if (btnResetGiveaway) {
+    btnResetGiveaway.addEventListener('click', async () => {
+      await stopGiveawayRegistration(false); // Silent stop, no chat message
+      giveawayState.participants.clear();
+      giveawayState.currentWinner = null;
+      renderParticipantsPool();
+      renderWinnerHero(null);
+      renderAddressReview(null);
+      updateGiveawayStatus('offline');
+      showToast('Giveaway zurückgesetzt.', 'info');
+    });
+  }
+
+  // Finish & Archive Giveaway Button
+  if (btnFinishGiveaway) {
+    btnFinishGiveaway.addEventListener('click', async () => {
+      if (giveawayState.currentWinner) {
+        // Save current winner data to history
+        await ipcRenderer.invoke('giveaway:save-winner', giveawayState.currentWinner);
+      }
+      await stopGiveawayRegistration(false); // Silent stop
+      giveawayState.participants.clear();
+      giveawayState.currentWinner = null;
+      renderParticipantsPool();
+      renderWinnerHero(null);
+      renderAddressReview(null);
+      updateGiveawayStatus('offline');
+      await loadGiveawayWinnersHistory();
+      showToast('✨ Giveaway erfolgreich archiviert! Bereit für die nächste Runde.', 'success');
+    });
+  }
+
+  // Telegram Config Modal
+  if (btnOpenTelegramConfig && telegramConfigModal) {
+    btnOpenTelegramConfig.addEventListener('click', async () => {
+      const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
+      if (cfg) {
+        if (inputTelegramBotToken) inputTelegramBotToken.value = cfg.botToken || '';
+        if (inputTelegramChatId) inputTelegramChatId.value = cfg.chatId || '';
+        if (inputGiveawayClaimUrl) inputGiveawayClaimUrl.value = cfg.claimUrl || '';
+      }
+      telegramConfigModal.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseTelegramConfigModal && telegramConfigModal) {
+    btnCloseTelegramConfigModal.addEventListener('click', () => telegramConfigModal.classList.add('hidden'));
+  }
+  if (btnCancelTelegramConfig && telegramConfigModal) {
+    btnCancelTelegramConfig.addEventListener('click', () => telegramConfigModal.classList.add('hidden'));
+  }
+
+  if (btnSaveTelegramConfig && telegramConfigModal) {
+    btnSaveTelegramConfig.addEventListener('click', async () => {
+      const botToken = inputTelegramBotToken ? inputTelegramBotToken.value.trim() : '';
+      const chatId = inputTelegramChatId ? inputTelegramChatId.value.trim() : '';
+      const claimUrl = inputGiveawayClaimUrl ? inputGiveawayClaimUrl.value.trim() : '';
+      await ipcRenderer.invoke('giveaway:save-telegram-config', { botToken, chatId, claimUrl });
+      telegramConfigModal.classList.add('hidden');
+      showToast('Einstellungen gespeichert & synchronisiert!', 'success');
+    });
+  }
+
+  if (btnTestTelegramBot) {
+    btnTestTelegramBot.addEventListener('click', async () => {
+      const botToken = inputTelegramBotToken ? inputTelegramBotToken.value.trim() : '';
+      const chatId = inputTelegramChatId ? inputTelegramChatId.value.trim() : '';
+      if (!botToken || !chatId) {
+        showToast('Bitte erst Token und Chat-ID eingeben', 'error');
+        return;
+      }
+      showToast('Sende Test-Nachricht an Telegram...', 'info');
+      const testText = `🔔 <b>ShishaWG Mod Tool - Test-Nachricht</b>\nTelegram-Bot erfolgreich verbunden! 🚀`;
+      const res = await ipcRenderer.invoke('giveaway:send-telegram', { text: testText, botToken, chatId });
+      if (res && res.success) {
+        showToast('✅ Test-Nachricht erfolgreich an Telegram gesendet!', 'success');
+      } else {
+        showToast(`❌ Fehler: ${res && res.error ? res.error : 'Ungültiger Token oder Chat-ID'}`, 'error');
+      }
+    });
+  }
+
+  // Filter changes update pool immediately
+  [chkGwExcludeBots, chkGwExcludeMods, chkGwExcludeWatchlist, chkGwExcludePrevWinners].forEach(chk => {
+    if (chk) {
+      chk.addEventListener('change', () => {
+        renderParticipantsPool();
+      });
+    }
+  });
+
+  // Incoming Participant from Twitch IRC Listener
+  ipcRenderer.on('giveaway:new-participant', (event, participant) => {
+    if (!giveawayState.isActive) return;
+    if (!participant || !participant.login) return;
+
+    giveawayState.participants.set(participant.login.toLowerCase(), participant);
+    renderParticipantsPool();
+  });
+}
+
+// =============================================================================
+// MODULE 5: Q&A & UMFRAGEN LOGIC & CONTROLLER
+// =============================================================================
+
+let qnaSyncInterval = null;
+let pollLiveCheckInterval = null;
+let unreadQnACount = 0;
+
+let qnaPersons = ['Marved', 'Hasty', 'Kai'];
+let qnaWheelEnabled = true;
+let bestrafungenList = [];
+
+let qnaState = {
+  questions: [],
+  activeQuestion: null,
+  currentFilter: 'pending',
+  searchQuery: '',
+  isListenerActive: true,
+  settings: {
+    cmdFrage: true,
+    cmdQ: true,
+    cmdQuestion: true,
+    cooldown: 60,
+    minLength: 5,
+    autoDupe: true,
+    soundAlert: true
+  }
+};
+
+let pollsState = {
+  activePoll: null,
+  templates: []
+};
+
+async function loadQnASettings() {
+  try {
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const res = await ipcRenderer.invoke('qna:get-settings', chan);
+    if (res && res.success && res.settings) {
+      qnaPersons = Array.isArray(res.settings.persons) && res.settings.persons.length > 0 ? res.settings.persons : ['Marved', 'Hasty', 'Kai'];
+      qnaWheelEnabled = res.settings.wheelEnabled !== false;
+      const chkWheel = document.getElementById('chk-qna-wheel-enabled');
+      if (chkWheel) chkWheel.checked = qnaWheelEnabled;
+      renderPersonsPills();
+    }
+  } catch(e) {}
+}
+
+function renderPersonsPills() {
+  const container = document.getElementById('qna-persons-pill-list');
+  if (!container) return;
+  container.innerHTML = qnaPersons.map((p, idx) => {
+    const pLower = p.toLowerCase();
+    const cls = (pLower === 'marved' || pLower === 'hasty' || pLower === 'kai') ? pLower : '';
+    return `
+      <span class="qna-person-pill ${cls}">
+        ${escapeHtml(p)}
+        <span class="btn-remove-pill" data-index="${idx}" title="${escapeHtml(p)} entfernen">✕</span>
+      </span>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.btn-remove-pill').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.currentTarget.getAttribute('data-index'), 10);
+      if (!isNaN(idx)) {
+        qnaPersons.splice(idx, 1);
+        if (qnaPersons.length === 0) qnaPersons = ['Marved'];
+        await saveQnASettings();
+        renderPersonsPills();
+      }
+    });
+  });
+}
+
+async function saveQnASettings() {
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  await ipcRenderer.invoke('qna:save-settings', chan, {
+    persons: qnaPersons,
+    wheelEnabled: qnaWheelEnabled
+  });
+}
+
+async function loadBestrafungen() {
+  try {
+    const res = await ipcRenderer.invoke('bestrafungen:get');
+    if (res && res.success && Array.isArray(res.bestrafungen)) {
+      bestrafungenList = res.bestrafungen;
+      renderBestrafungen();
+    }
+  } catch(e) {}
+}
+
+function renderBestrafungen() {
+  const container = document.getElementById('bestrafungen-list-container');
+  const countBadge = document.getElementById('badge-bestrafungen-count');
+  if (!container) return;
+
+  const openCount = bestrafungenList.filter(b => b.status === 'offen').length;
+  if (countBadge) countBadge.textContent = `${openCount} offen`;
+
+  if (bestrafungenList.length === 0) {
+    container.innerHTML = `<div class="bestrafungen-empty">Keine Bestrafungen angelegt.</div>`;
+    return;
+  }
+
+  container.innerHTML = bestrafungenList.map(b => {
+    const isErledigt = b.status === 'erledigt';
+    return `
+      <div class="bestrafung-item ${isErledigt ? 'erledigt' : ''}">
+        <span>${isErledigt ? '✔️ ' : '🔥 '} ${escapeHtml(b.name)}</span>
+        <div class="bestrafung-actions">
+          <button class="btn-toggle-bestrafung" data-id="${b.id}" data-status="${isErledigt ? 'offen' : 'erledigt'}" title="${isErledigt ? 'Als offen markieren' : 'Als erledigt abhaken'}">
+            ${isErledigt ? '↩️' : '✅'}
+          </button>
+          <button class="btn-delete-bestrafung" data-id="${b.id}" title="Löschen">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.btn-toggle-bestrafung').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      const status = e.currentTarget.getAttribute('data-status');
+      await ipcRenderer.invoke('bestrafungen:update-status', id, status);
+      await loadBestrafungen();
+    });
+  });
+
+  container.querySelectorAll('.btn-delete-bestrafung').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const id = e.currentTarget.getAttribute('data-id');
+      await ipcRenderer.invoke('bestrafungen:delete', id);
+      await loadBestrafungen();
+    });
+  });
+}
+
+// Play subtle synthesized notification chime for incoming questions
+function playQnANotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+}
+
+function setupQnAListeners() {
+  // Navigation & Action Buttons
+  const btnToggleListener = document.getElementById('btn-toggle-qna-listener');
+  const btnCopyObs = document.getElementById('btn-copy-qna-obs');
+  const btnCopyPrompter = document.getElementById('btn-copy-qna-prompter');
+  const btnOpenManual = document.getElementById('btn-open-manual-qna-modal');
+  const btnOpenSettings = document.getElementById('btn-open-qna-settings-modal');
+  const btnRefresh = document.getElementById('btn-refresh-qna');
+  const btnClearAnswered = document.getElementById('btn-clear-answered-qna');
+
+  // Search & Filter Tabs
+  const inputSearch = document.getElementById('input-qna-search');
+  const btnClearSearch = document.getElementById('btn-clear-qna-search');
+  const tabBtns = document.querySelectorAll('.qna-tab-btn');
+
+  // Manual Question Modal Elements
+  const manualModal = document.getElementById('manual-qna-modal');
+  const btnCloseManual = document.getElementById('btn-close-manual-qna-modal');
+  const btnCancelManual = document.getElementById('btn-cancel-manual-qna');
+  const btnSaveManual = document.getElementById('btn-save-manual-qna');
+  const inputManualUser = document.getElementById('input-manual-qna-user');
+  const inputManualText = document.getElementById('input-manual-qna-text');
+  const selectManualStatus = document.getElementById('select-manual-qna-status');
+
+  // Settings Modal Elements
+  const settingsModal = document.getElementById('qna-settings-modal');
+  const btnCloseSettings = document.getElementById('btn-close-qna-settings-modal');
+  const btnCancelSettings = document.getElementById('btn-cancel-qna-settings');
+  const btnSaveSettings = document.getElementById('btn-save-qna-settings');
+  const chkCmdFrage = document.getElementById('chk-qna-cmd-frage');
+  const chkCmdQ = document.getElementById('chk-qna-cmd-q');
+  const chkCmdQuestion = document.getElementById('chk-qna-cmd-question');
+  const inputCooldown = document.getElementById('input-qna-cooldown');
+  const inputMinLength = document.getElementById('input-qna-min-length');
+  const chkAutoDupe = document.getElementById('chk-qna-auto-dupe');
+  const chkSoundAlert = document.getElementById('chk-qna-sound-alert');
+
+  // Poll Creator Elements
+  const inputPollTitle = document.getElementById('input-poll-title');
+  const lblPollTitleCount = document.getElementById('lbl-poll-title-count');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+  const btnAddChoice = document.getElementById('btn-add-poll-choice');
+  const selectPollDuration = document.getElementById('select-poll-duration');
+  const selectPollChannelPoints = document.getElementById('select-poll-channel-points');
+  const btnStartPoll = document.getElementById('btn-start-twitch-poll');
+  const btnSaveTemplate = document.getElementById('btn-save-custom-poll-template');
+
+  // Auto-start Q&A listener on app launch
+  const targetChan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  ipcRenderer.invoke('qna:start-listener', targetChan).catch(() => {});
+
+  // Toggle Chat Listener Button
+  if (btnToggleListener) {
+    btnToggleListener.addEventListener('click', async () => {
+      qnaState.isListenerActive = !qnaState.isListenerActive;
+      if (qnaState.isListenerActive) {
+        const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+        await ipcRenderer.invoke('qna:start-listener', chan);
+        btnToggleListener.className = 'btn btn-sm btn-primary';
+        btnToggleListener.innerHTML = '<span class="status-dot green"></span> <span>Listener: Aktiv</span>';
+        showToast('Twitch Chat-Listener für !frage gestartet!', 'success');
+      } else {
+        await ipcRenderer.invoke('qna:stop-listener');
+        btnToggleListener.className = 'btn btn-sm btn-secondary';
+        btnToggleListener.innerHTML = '<span class="status-dot grey"></span> <span>Listener: Pausiert</span>';
+        showToast('Twitch Chat-Listener pausiert.', 'info');
+      }
+    });
+  }
+
+  // Copy OBS Overlay Link
+  if (btnCopyObs) {
+    btnCopyObs.addEventListener('click', () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const obsUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?channel=${encodeURIComponent(chan)}&mode=overlay`;
+      navigator.clipboard.writeText(obsUrl);
+      showToast('OBS-Overlay Link in die Zwischenablage kopiert! 📺', 'success');
+    });
+  }
+
+  // Copy Prompter Link (Marvin Screen)
+  if (btnCopyPrompter) {
+    btnCopyPrompter.addEventListener('click', () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const prompterUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?channel=${encodeURIComponent(chan)}&mode=screen`;
+      navigator.clipboard.writeText(prompterUrl);
+      showToast('Prompter-Link für Marvins Monitor kopiert! 🖥️', 'success');
+    });
+  }
+
+  // Refresh Sync Button
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', async () => {
+      showToast('Synchronisiere Q&A & Umfragen...', 'info');
+      await loadQnAState();
+      showToast('Q&A & Umfragen erfolgreich synchronisiert! 🔄', 'success');
+    });
+  }
+
+  // Clear Answered Questions
+  if (btnClearAnswered) {
+    btnClearAnswered.addEventListener('click', async () => {
+      const answeredCount = qnaState.questions.filter(q => q.status === 'answered').length;
+      if (answeredCount === 0) {
+        showToast('Keine beantworteten Fragen zum Löschen vorhanden.', 'info');
+        return;
+      }
+      qnaState.questions = qnaState.questions.filter(q => q.status !== 'answered');
+      await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+      renderQnAQuestionsList();
+      showToast(`${answeredCount} beantwortete Frage(n) gelöscht.`, 'success');
+    });
+  }
+
+  // Add Person / Guest
+  const btnAddPerson = document.getElementById('btn-add-qna-person');
+  if (btnAddPerson) {
+    btnAddPerson.addEventListener('click', async () => {
+      const name = prompt('Name der Person / des Gastes eingeben:');
+      if (name && name.trim()) {
+        const cleanName = name.trim();
+        if (!qnaPersons.includes(cleanName)) {
+          qnaPersons.push(cleanName);
+          await saveQnASettings();
+          renderPersonsPills();
+          showToast(`Person „${cleanName}“ hinzugefügt! 👥`, 'success');
+        }
+      }
+    });
+  }
+
+  // Wheel Toggle Checkbox
+  const chkWheel = document.getElementById('chk-qna-wheel-enabled');
+  if (chkWheel) {
+    chkWheel.addEventListener('change', async (e) => {
+      qnaWheelEnabled = !!e.target.checked;
+      await saveQnASettings();
+      showToast(`Bestrafungs-Glücksrad ${qnaWheelEnabled ? 'aktiviert 🎡' : 'deaktiviert ⏸️'}`, 'info');
+    });
+  }
+
+  // Delete Duplicates Button
+  const btnDeleteDuplicates = document.getElementById('btn-qna-delete-duplicates');
+  if (btnDeleteDuplicates) {
+    btnDeleteDuplicates.addEventListener('click', async () => {
+      const res = await ipcRenderer.invoke('qna:delete-duplicates');
+      if (res && res.success) {
+        await loadQnAState();
+        showToast(`${res.deletedCount || 0} doppelte Frage(n) bereinigt! 🧹`, 'success');
+      }
+    });
+  }
+
+  // Delete All Questions Button
+  const btnDeleteAll = document.getElementById('btn-qna-delete-all');
+  if (btnDeleteAll) {
+    btnDeleteAll.addEventListener('click', async () => {
+      if (confirm('Möchtest du wirklich ALLE Fragen in der Inbox unwiderruflich löschen?')) {
+        await ipcRenderer.invoke('qna:delete-all');
+        await loadQnAState();
+        showToast('Alle Fragen wurden gelöscht. 🗑️', 'info');
+      }
+    });
+  }
+
+  // Add Bestrafung Button & Enter Key
+  const inputNewBestrafung = document.getElementById('input-new-bestrafung');
+  const btnAddBestrafung = document.getElementById('btn-add-bestrafung');
+
+  async function handleAddBestrafung() {
+    if (!inputNewBestrafung) return;
+    const text = inputNewBestrafung.value.trim();
+    if (!text) return;
+    await ipcRenderer.invoke('bestrafungen:save', {
+      id: 'pen_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      name: text,
+      status: 'offen',
+      timestamp: Date.now()
+    });
+    inputNewBestrafung.value = '';
+    await loadBestrafungen();
+    showToast(`Bestrafung „${text}“ hinzugefügt! 🔥`, 'success');
+  }
+
+  if (btnAddBestrafung) {
+    btnAddBestrafung.addEventListener('click', handleAddBestrafung);
+  }
+  if (inputNewBestrafung) {
+    inputNewBestrafung.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleAddBestrafung();
+    });
+  }
+
+  // Search Input
+  if (inputSearch) {
+    inputSearch.addEventListener('input', (e) => {
+      qnaState.searchQuery = (e.target.value || '').trim().toLowerCase();
+      if (btnClearSearch) {
+        if (qnaState.searchQuery) {
+          btnClearSearch.classList.remove('hidden');
+        } else {
+          btnClearSearch.classList.add('hidden');
+        }
+      }
+      renderQnAQuestionsList();
+    });
+  }
+
+  if (btnClearSearch && inputSearch) {
+    btnClearSearch.addEventListener('click', () => {
+      inputSearch.value = '';
+      qnaState.searchQuery = '';
+      btnClearSearch.classList.add('hidden');
+      renderQnAQuestionsList();
+    });
+  }
+
+  // Filter Tabs
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      qnaState.currentFilter = btn.getAttribute('data-filter') || 'pending';
+      renderQnAQuestionsList();
+    });
+  });
+
+  // Manual Question Modal Open / Close / Save
+  if (btnOpenManual && manualModal) {
+    btnOpenManual.addEventListener('click', () => {
+      if (inputManualUser) inputManualUser.value = '';
+      if (inputManualText) inputManualText.value = '';
+      if (selectManualStatus) selectManualStatus.value = 'approved';
+      manualModal.classList.remove('hidden');
+      if (inputManualUser) inputManualUser.focus();
+    });
+  }
+
+  if (btnCloseManual && manualModal) {
+    btnCloseManual.addEventListener('click', () => manualModal.classList.add('hidden'));
+  }
+  if (btnCancelManual && manualModal) {
+    btnCancelManual.addEventListener('click', () => manualModal.classList.add('hidden'));
+  }
+
+  if (btnSaveManual && manualModal) {
+    btnSaveManual.addEventListener('click', async () => {
+      const uName = (inputManualUser ? inputManualUser.value.trim() : '') || 'Zuschauer';
+      const qText = inputManualText ? inputManualText.value.trim() : '';
+      const status = selectManualStatus ? selectManualStatus.value : 'approved';
+
+      if (!qText || qText.length < 3) {
+        showToast('Bitte gib einen Fragetext ein (mind. 3 Zeichen).', 'error');
+        return;
+      }
+
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const newQ = {
+        id: 'q_manual_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+        login: uName.toLowerCase().replace('@', ''),
+        displayName: uName,
+        userColor: '#00f0ff',
+        userId: '',
+        isMod: false,
+        isSub: false,
+        badges: '',
+        question: qText,
+        timestamp: Date.now(),
+        status: status === 'on_air' ? 'on_air' : status,
+        channel: chan,
+        isManual: true
+      };
+
+      if (status === 'on_air') {
+        qnaState.activeQuestion = newQ;
+        await ipcRenderer.invoke('qna:set-active', newQ);
+      }
+
+      qnaState.questions.unshift(newQ);
+      await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+      manualModal.classList.add('hidden');
+      renderQnASpotlight();
+      renderQnAQuestionsList();
+      showToast('Frage erfolgreich erfasst! ➕', 'success');
+    });
+  }
+
+  // Settings Modal Open / Close / Save
+  if (btnOpenSettings && settingsModal) {
+    btnOpenSettings.addEventListener('click', () => {
+      if (chkCmdFrage) chkCmdFrage.checked = qnaState.settings.cmdFrage;
+      if (chkCmdQ) chkCmdQ.checked = qnaState.settings.cmdQ;
+      if (chkCmdQuestion) chkCmdQuestion.checked = qnaState.settings.cmdQuestion;
+      if (inputCooldown) inputCooldown.value = qnaState.settings.cooldown;
+      if (inputMinLength) inputMinLength.value = qnaState.settings.minLength;
+      if (chkAutoDupe) chkAutoDupe.checked = qnaState.settings.autoDupe;
+      if (chkSoundAlert) chkSoundAlert.checked = qnaState.settings.soundAlert;
+      settingsModal.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseSettings && settingsModal) {
+    btnCloseSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  }
+  if (btnCancelSettings && settingsModal) {
+    btnCancelSettings.addEventListener('click', () => settingsModal.classList.add('hidden'));
+  }
+
+  if (btnSaveSettings && settingsModal) {
+    btnSaveSettings.addEventListener('click', () => {
+      qnaState.settings = {
+        cmdFrage: chkCmdFrage ? chkCmdFrage.checked : true,
+        cmdQ: chkCmdQ ? chkCmdQ.checked : true,
+        cmdQuestion: chkCmdQuestion ? chkCmdQuestion.checked : true,
+        cooldown: inputCooldown ? (parseInt(inputCooldown.value, 10) || 60) : 60,
+        minLength: inputMinLength ? (parseInt(inputMinLength.value, 10) || 5) : 5,
+        autoDupe: chkAutoDupe ? chkAutoDupe.checked : true,
+        soundAlert: chkSoundAlert ? chkSoundAlert.checked : true
+      };
+      settingsModal.classList.add('hidden');
+      showToast('Q&A Filter-Einstellungen gespeichert! 💾', 'success');
+    });
+  }
+
+  // Poll Title Character Counter
+  if (inputPollTitle && lblPollTitleCount) {
+    inputPollTitle.addEventListener('input', () => {
+      const len = (inputPollTitle.value || '').length;
+      lblPollTitleCount.textContent = `${len}/60`;
+    });
+  }
+
+  // Add Choice Button in Poll Creator
+  if (btnAddChoice && pollChoicesContainer) {
+    btnAddChoice.addEventListener('click', () => {
+      const currentChoices = pollChoicesContainer.querySelectorAll('.poll-choice-row');
+      if (currentChoices.length >= 5) {
+        showToast('Maximal 5 Antwortmöglichkeiten erlaubt.', 'info');
+        return;
+      }
+      const nextNum = currentChoices.length + 1;
+      const row = document.createElement('div');
+      row.className = 'poll-choice-row';
+      row.innerHTML = `
+        <span class="choice-num">${nextNum}</span>
+        <input type="text" class="input-poll-choice" placeholder="Option ${nextNum} (max. 25 Z.)" maxlength="25">
+        <button class="btn-remove-choice" title="Option entfernen">✕</button>
+      `;
+      row.querySelector('.btn-remove-choice').addEventListener('click', () => {
+        row.remove();
+        updatePollChoiceNumbers();
+      });
+      pollChoicesContainer.appendChild(row);
+      const input = row.querySelector('.input-poll-choice');
+      if (input) input.focus();
+    });
+  }
+
+  // Preset Buttons Click
+  const presetBtns = document.querySelectorAll('.poll-preset-btn');
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pKey = btn.getAttribute('data-preset');
+      applyPollPreset(pKey);
+    });
+  });
+
+  // Start Twitch Poll Button
+  if (btnStartPoll) {
+    btnStartPoll.addEventListener('click', async () => {
+      await startTwitchPollFromForm();
+    });
+  }
+
+  // Save Custom Poll Template Button
+  if (btnSaveTemplate) {
+    btnSaveTemplate.addEventListener('click', async () => {
+      await saveCustomPollTemplateFromForm();
+    });
+  }
+
+  // Incoming Q&A Question from Twitch IRC Listener
+  ipcRenderer.on('qna:new-question', (event, questionObj) => {
+    handleNewQnAQuestion(questionObj);
+  });
+}
+
+function updatePollChoiceNumbers() {
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+  if (!pollChoicesContainer) return;
+  const rows = pollChoicesContainer.querySelectorAll('.poll-choice-row');
+  rows.forEach((r, idx) => {
+    const numSpan = r.querySelector('.choice-num');
+    if (numSpan) numSpan.textContent = String(idx + 1);
+  });
+}
+
+function applyPollPreset(presetKey) {
+  const inputPollTitle = document.getElementById('input-poll-title');
+  const lblPollTitleCount = document.getElementById('lbl-poll-title-count');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+  const selectPollDuration = document.getElementById('select-poll-duration');
+
+  if (!inputPollTitle || !pollChoicesContainer) return;
+
+  let title = '';
+  let choices = [];
+
+  if (presetKey === 'preset_setup_rating') {
+    title = 'Wie bewertet ihr das aktuelle Setup?';
+    choices = ['10/10 Perfekt 🔥', '8/10 Sehr gut 👍', '5/10 Geht so 🤔', '0/10 Ausleeren 💀'];
+  } else if (presetKey === 'preset_next_bowl') {
+    title = 'Welcher Kopf soll als nächstes geraucht werden?';
+    choices = ['Oblako Phunnel', 'Hookain LiT LiP', 'Vandenberg V1', 'Kaloud Samsaris'];
+  } else if (presetKey === 'preset_tobacco_direction') {
+    title = 'Welche Geschmacksrichtung soll in den Kopf?';
+    choices = ['Fruchtig / Süß 🍇', 'Cremig / Teigig 🍦', 'Frisch / Ice ❄️', 'Doppelapfel / Anis 🍏'];
+  } else if (presetKey === 'preset_coal_check') {
+    title = 'Kohle nachlegen oder neuer Kopf?';
+    choices = ['Neue Kohlen drauf! 🪵', 'Neuer Kopf muss her! 💨', 'Passt noch so 👍'];
+  }
+
+  inputPollTitle.value = title;
+  if (lblPollTitleCount) lblPollTitleCount.textContent = `${title.length}/60`;
+  if (selectPollDuration) selectPollDuration.value = '60';
+
+  pollChoicesContainer.innerHTML = '';
+  choices.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'poll-choice-row';
+    const canRemove = idx >= 2;
+    row.innerHTML = `
+      <span class="choice-num">${idx + 1}</span>
+      <input type="text" class="input-poll-choice" placeholder="Option ${idx + 1} (max. 25 Z.)" maxlength="25" value="${c}">
+      ${canRemove ? '<button class="btn-remove-choice" title="Option entfernen">✕</button>' : ''}
+    `;
+    if (canRemove) {
+      row.querySelector('.btn-remove-choice').addEventListener('click', () => {
+        row.remove();
+        updatePollChoiceNumbers();
+      });
+    }
+    pollChoicesContainer.appendChild(row);
+  });
+
+  showToast(`Vorlage „${title}“ geladen!`, 'info');
+}
+
+async function loadQnAState() {
+  try {
+    const qRes = await ipcRenderer.invoke('qna:get-questions');
+    if (qRes && qRes.success && Array.isArray(qRes.questions)) {
+      qnaState.questions = qRes.questions;
+    }
+
+    const activeRes = await ipcRenderer.invoke('qna:get-active');
+    if (activeRes && activeRes.success) {
+      if (activeRes.active) {
+        const match = qnaState.questions.find(x => x.id === activeRes.active.id);
+        if (match && match.status !== 'on_air') {
+          qnaState.activeQuestion = null;
+        } else {
+          qnaState.activeQuestion = activeRes.active;
+        }
+      } else {
+        qnaState.activeQuestion = null;
+      }
+    }
+
+    const tmplRes = await ipcRenderer.invoke('polls:get-templates');
+    if (tmplRes && tmplRes.success && Array.isArray(tmplRes.templates)) {
+      pollsState.templates = tmplRes.templates;
+    }
+
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const pollRes = await ipcRenderer.invoke('polls:get-active', chan);
+    if (pollRes && pollRes.success) {
+      pollsState.activePoll = pollRes.poll;
+    }
+
+    await loadQnASettings();
+    await loadBestrafungen();
+
+    renderQnASpotlight();
+    renderQnAQuestionsList();
+    renderPollActiveSection(pollsState.activePoll);
+    renderSavedPollTemplates();
+  } catch(e) {
+    console.error('Error loading Q&A state:', e);
+  }
+}
+
+// Realtime listeners from main process
+ipcRenderer.on('supabase:bestrafungen-changed', () => {
+  loadBestrafungen();
+});
+
+ipcRenderer.on('supabase:settings-changed', () => {
+  loadQnASettings();
+});
+
+ipcRenderer.on('supabase:qna-changed', () => {
+  loadQnAState();
+});
+
+function handleNewQnAQuestion(q) {
+  if (!q || !q.question) return;
+
+  // Validate minimum length
+  if (q.question.length < qnaState.settings.minLength) return;
+
+  // Auto Duplicate Detection via Fuzzy Matching
+  let isDuplicate = false;
+  if (qnaState.settings.autoDupe && qnaState.questions.length > 0) {
+    for (const existing of qnaState.questions) {
+      if (existing.status === 'rejected' || existing.status === 'answered') continue;
+      const sim = similarityScore(q.question, existing.question);
+      if (sim >= 0.75) {
+        isDuplicate = true;
+        existing.duplicateCount = (existing.duplicateCount || 1) + 1;
+        existing.updatedAt = Date.now();
+        if (!existing.duplicateUsers) existing.duplicateUsers = [existing.displayName || existing.login];
+        if (!existing.duplicateUsers.includes(q.displayName || q.login)) {
+          existing.duplicateUsers.push(q.displayName || q.login);
+        }
+        break;
+      }
+    }
+  }
+
+  if (!isDuplicate) {
+    q.updatedAt = Date.now();
+    qnaState.questions.unshift(q);
+  }
+
+  // Play sound if enabled
+  if (qnaState.settings.soundAlert) {
+    playQnANotificationSound();
+  }
+
+  // Hub badge counter
+  if (currentActiveView !== 'view-qna') {
+    unreadQnACount++;
+    const badge = document.getElementById('hub-qna-unread');
+    if (badge) {
+      badge.classList.remove('hidden');
+      badge.textContent = String(unreadQnACount);
+    }
+  }
+
+  showToast(`🙋 Neue Frage von @${q.displayName || q.login}!`, 'info');
+
+  // Persist to local & Gist
+  ipcRenderer.invoke('qna:save-questions', qnaState.questions).catch(() => {});
+
+  renderQnAQuestionsList();
+}
+
+async function setQuestionStatus(questionId, newStatus) {
+  const q = qnaState.questions.find(item => item.id === questionId);
+  if (!q) return;
+
+  const oldStatus = q.status;
+  q.status = newStatus;
+  q.updatedAt = Date.now();
+
+  if (newStatus === 'on_air') {
+    // Reset any other question that was previously on_air
+    qnaState.questions.forEach(item => {
+      if (item.id !== questionId && item.status === 'on_air') {
+        item.status = 'approved';
+        item.updatedAt = Date.now();
+      }
+    });
+
+    qnaState.activeQuestion = q;
+    await ipcRenderer.invoke('qna:set-active', q);
+    showToast(`Frage von @${q.displayName || q.login} ist jetzt LIVE ON-AIR! 📺`, 'success');
+  } else if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
+    qnaState.activeQuestion = null;
+    await ipcRenderer.invoke('qna:set-active', null);
+  }
+
+  await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+  renderQnASpotlight();
+  renderQnAQuestionsList();
+}
+
+async function deleteQuestion(questionId) {
+  if (qnaState.activeQuestion && qnaState.activeQuestion.id === questionId) {
+    qnaState.activeQuestion = null;
+    await ipcRenderer.invoke('qna:set-active', null);
+  }
+  qnaState.questions = qnaState.questions.filter(q => q.id !== questionId);
+  await ipcRenderer.invoke('qna:save-questions', qnaState.questions);
+  renderQnASpotlight();
+  renderQnAQuestionsList();
+  showToast('Frage gelöscht.', 'info');
+}
+
+function renderQnASpotlight() {
+  const container = document.getElementById('qna-spotlight-content');
+  const badge = document.getElementById('qna-on-air-badge');
+  if (!container) return;
+
+  const active = qnaState.activeQuestion;
+  if (!active || active.status !== 'on_air') {
+    if (badge) {
+      badge.className = 'qna-status-badge offline';
+      badge.innerHTML = '<span class="status-dot"></span> <span class="status-text">Keine aktiv</span>';
+    }
+    container.innerHTML = `
+      <div class="qna-spotlight-empty">
+        <span class="empty-icon">📭</span>
+        <p>Aktuell wird <strong>keine Frage</strong> im Stream eingeblendet.</p>
+        <span class="empty-hint">Wähle unten eine Frage aus und klicke auf <strong>„📺 Live schalten“</strong>, um sie auf Marvins Monitor und in OBS anzuzeigen.</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (badge) {
+    badge.className = 'qna-status-badge on-air';
+    badge.innerHTML = '<span class="status-dot green pulse"></span> <span class="status-text">LIVE AUF SCREEN</span>';
+  }
+
+  const userColor = active.userColor || '#00f0ff';
+  const timeStr = active.timestamp ? new Date(active.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  container.innerHTML = `
+    <div class="qna-spotlight-active">
+      <div class="qna-spotlight-user-row">
+        <div class="qna-user-pill">
+          <span class="qna-user-dot" style="background:${userColor}; box-shadow: 0 0 8px ${userColor};"></span>
+          <span style="color:${userColor};">@${active.displayName || active.login}</span>
+          ${active.isSub ? '<span class="badge-sub" title="Subscriber" style="background:#a855f7; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">SUB</span>' : ''}
+          ${active.isMod ? '<span class="badge-mod" title="Moderator" style="background:#10b981; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">MOD</span>' : ''}
+        </div>
+        <span class="qna-spotlight-time">Gestellt um ${timeStr} Uhr</span>
+      </div>
+
+      <div class="qna-spotlight-question">
+        „${escapeHtml(active.question)}“
+      </div>
+
+      <div class="qna-spotlight-actions">
+        <button id="btn-qna-off-air" class="btn btn-secondary btn-sm" title="Frage vom Bildschirm nehmen">
+          ⏹️ Vom Stream nehmen
+        </button>
+        <button id="btn-qna-mark-answered" class="btn btn-primary btn-sm" title="Frage als beantwortet abhaken">
+          ✔️ Als beantwortet abhaken
+        </button>
+        <button id="btn-qna-chat-ping" class="btn btn-secondary btn-sm" title="Dem Fragesteller im Twitch-Chat antworten">
+          💬 Im Twitch-Chat bestätigen
+        </button>
+      </div>
+    </div>
+  `;
+
+  const btnOffAir = document.getElementById('btn-qna-off-air');
+  const btnMarkAnswered = document.getElementById('btn-qna-mark-answered');
+  const btnChatPing = document.getElementById('btn-qna-chat-ping');
+
+  if (btnOffAir) {
+    btnOffAir.addEventListener('click', async () => {
+      await setQuestionStatus(active.id, 'approved');
+      showToast('Frage vom Stream genommen.', 'info');
+    });
+  }
+
+  if (btnMarkAnswered) {
+    btnMarkAnswered.addEventListener('click', async () => {
+      await setQuestionStatus(active.id, 'answered');
+      showToast('Frage als beantwortet abgehakt! ✔️', 'success');
+    });
+  }
+
+  if (btnChatPing) {
+    btnChatPing.addEventListener('click', async () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      const pingMsg = `@${active.displayName || active.login} Deine Frage („${active.question}“) wurde live im Stream beantwortet! 💨`;
+      try {
+        await ipcRenderer.invoke('twitch:send-chat-message', { message: pingMsg, channel: chan });
+        showToast(`Antwort-Bestätigung an @${active.displayName || active.login} gesendet! 💬`, 'success');
+      } catch(e) {
+        showToast(`Chat-Ping Fehler: ${e.message}`, 'error');
+      }
+    });
+  }
+}
+
+function renderQnAQuestionsList() {
+  const container = document.getElementById('qna-questions-list');
+  if (!container) return;
+
+  // Update tab badge counters
+  const cPending = qnaState.questions.filter(q => q.status === 'pending').length;
+  const cApproved = qnaState.questions.filter(q => q.status === 'approved').length;
+  const cAnswered = qnaState.questions.filter(q => q.status === 'answered').length;
+  const cRejected = qnaState.questions.filter(q => q.status === 'rejected').length;
+  const cAll = qnaState.questions.length;
+
+  const elPending = document.getElementById('count-qna-pending');
+  const elApproved = document.getElementById('count-qna-approved');
+  const elAnswered = document.getElementById('count-qna-answered');
+  const elRejected = document.getElementById('count-qna-rejected');
+  const elAll = document.getElementById('count-qna-all');
+
+  if (elPending) elPending.textContent = String(cPending);
+  if (elApproved) elApproved.textContent = String(cApproved);
+  if (elAnswered) elAnswered.textContent = String(cAnswered);
+  if (elRejected) elRejected.textContent = String(cRejected);
+  if (elAll) elAll.textContent = String(cAll);
+
+  // Filter list
+  let filtered = qnaState.questions;
+  if (qnaState.currentFilter !== 'all') {
+    if (qnaState.currentFilter === 'approved') {
+      filtered = filtered.filter(q => q.status === 'approved' || q.status === 'on_air');
+    } else {
+      filtered = filtered.filter(q => q.status === qnaState.currentFilter);
+    }
+  }
+
+  // Search filter
+  if (qnaState.searchQuery) {
+    filtered = filtered.filter(q => {
+      const qText = (q.question || '').toLowerCase();
+      const uName = (q.displayName || q.login || '').toLowerCase();
+      return qText.includes(qnaState.searchQuery) || uName.includes(qnaState.searchQuery);
+    });
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="qna-list-empty">
+        <span class="empty-icon">💬</span>
+        <p>Keine Fragen in dieser Ansicht vorhanden.</p>
+        <span class="empty-hint">Zuschauer können im Chat <code>!frage Deine Frage hier</code> schreiben!</span>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  filtered.forEach(q => {
+    const card = document.createElement('div');
+    card.className = `qna-question-card status-${q.status}`;
+
+    const userColor = q.userColor || '#00f0ff';
+    const timeStr = q.timestamp ? formatTimeAgo(q.timestamp) : '';
+    const isDupe = (q.duplicateCount && q.duplicateCount > 1);
+    const dupeUsersStr = q.duplicateUsers ? q.duplicateUsers.join(', ') : '';
+
+    // Card top row
+    let topHtml = `
+      <div class="qna-card-top">
+        <div class="qna-user-pill">
+          <span class="qna-user-dot" style="background:${userColor};"></span>
+          <strong style="color:${userColor};">@${escapeHtml(q.displayName || q.login)}</strong>
+          ${q.isSub ? '<span style="background:#a855f7; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">SUB</span>' : ''}
+          ${q.isMod ? '<span style="background:#10b981; color:#fff; font-size:0.65rem; padding:1px 5px; border-radius:4px;">MOD</span>' : ''}
+          ${q.isManual ? '<span style="background:rgba(255,255,255,0.1); color:var(--text-secondary); font-size:0.65rem; padding:1px 5px; border-radius:4px;">MANUELL</span>' : ''}
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${isDupe ? `<span class="qna-dupe-tag" title="Auch gefragt von: ${escapeHtml(dupeUsersStr)}">🔥 ${q.duplicateCount}x gefragt</span>` : ''}
+          <span class="qna-spotlight-time">${timeStr}</span>
+        </div>
+      </div>
+    `;
+
+    // Question body
+    let bodyHtml = `<div class="qna-card-text">„${escapeHtml(q.question)}“</div>`;
+
+    // Action buttons based on status
+    let actionsHtml = `<div class="qna-card-bottom"><div class="qna-card-actions">`;
+    if (q.status === 'pending') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-primary btn-act-approve" data-id="${q.id}">✅ Freigeben</button>
+        <button class="btn btn-xs btn-secondary btn-act-onair" data-id="${q.id}">📺 Live schalten</button>
+        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
+      `;
+    } else if (q.status === 'approved') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-primary btn-act-onair" data-id="${q.id}">📺 Live schalten</button>
+        <button class="btn btn-xs btn-secondary btn-act-answered" data-id="${q.id}">✔️ Beantwortet</button>
+        <button class="btn btn-xs btn-secondary btn-act-reject" data-id="${q.id}">❌ Ablehnen</button>
+      `;
+    } else if (q.status === 'on_air') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-primary btn-act-answered" data-id="${q.id}">✔️ Als beantwortet abhaken</button>
+        <button class="btn btn-xs btn-secondary btn-act-offair" data-id="${q.id}">⏹️ Vom Stream nehmen</button>
+      `;
+    } else if (q.status === 'answered') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Reaktivieren</button>
+      `;
+    } else if (q.status === 'rejected') {
+      actionsHtml += `
+        <button class="btn btn-xs btn-secondary btn-act-approve" data-id="${q.id}">↩️ Wiederherstellen</button>
+      `;
+    }
+    actionsHtml += `
+      </div>
+      <button class="btn btn-xs btn-secondary btn-act-delete" data-id="${q.id}" title="Frage endgültig löschen">🗑️</button>
+    </div>`;
+
+    card.innerHTML = topHtml + bodyHtml + actionsHtml;
+
+    // Attach event listeners to card buttons
+    const btnApprove = card.querySelector('.btn-act-approve');
+    const btnOnAir = card.querySelector('.btn-act-onair');
+    const btnOffAir = card.querySelector('.btn-act-offair');
+    const btnAnswered = card.querySelector('.btn-act-answered');
+    const btnReject = card.querySelector('.btn-act-reject');
+    const btnDel = card.querySelector('.btn-act-delete');
+
+    if (btnApprove) btnApprove.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
+    if (btnOnAir) btnOnAir.addEventListener('click', () => setQuestionStatus(q.id, 'on_air'));
+    if (btnOffAir) btnOffAir.addEventListener('click', () => setQuestionStatus(q.id, 'approved'));
+    if (btnAnswered) btnAnswered.addEventListener('click', () => setQuestionStatus(q.id, 'answered'));
+    if (btnReject) btnReject.addEventListener('click', () => setQuestionStatus(q.id, 'rejected'));
+    if (btnDel) btnDel.addEventListener('click', () => deleteQuestion(q.id));
+
+    container.appendChild(card);
+  });
+}
+
+function formatTimeAgo(timestamp) {
+  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+  if (diffSec < 60) return 'gerade eben';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `vor ${diffMin} Min.`;
+  const diffHrs = Math.floor(diffMin / 60);
+  return `vor ${diffHrs} Std.`;
+}
+
+// Render Active Twitch Poll Monitor
+function renderPollActiveSection(poll) {
+  const container = document.getElementById('poll-live-content');
+  const indicator = document.getElementById('poll-live-indicator');
+  if (!container) return;
+
+  if (!poll || (poll.status !== 'ACTIVE' && poll.status !== 'active')) {
+    if (indicator) {
+      indicator.className = 'qna-status-badge offline';
+      indicator.innerHTML = '<span class="status-dot"></span> <span class="status-text">Keine aktiv</span>';
+    }
+    container.innerHTML = `
+      <div class="poll-empty-state">
+        <span class="empty-icon">🗳️</span>
+        <p>Aktuell läuft keine Umfrage im Twitch-Kanal.</p>
+        <span class="empty-hint">Wähle eine Schnell-Vorlage unten oder erstelle eine neue Abstimmung.</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (indicator) {
+    indicator.className = 'qna-status-badge live';
+    indicator.innerHTML = '<span class="status-dot red pulse"></span> <span class="status-text">LIVE AUF TWITCH</span>';
+  }
+
+  const choices = poll.choices || [];
+  let totalVotes = poll.total_votes || 0;
+  if (!totalVotes) {
+    totalVotes = choices.reduce((acc, c) => acc + (c.votes || 0), 0);
+  }
+
+  let choicesHtml = '<div class="poll-choice-bars">';
+  choices.forEach(c => {
+    const votes = c.votes || 0;
+    const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0;
+    choicesHtml += `
+      <div class="poll-choice-bar-item">
+        <div class="poll-choice-bar-label">
+          <strong>${escapeHtml(c.title)}</strong>
+          <span>${votes} Stimmen (${pct}%)</span>
+        </div>
+        <div class="poll-choice-bar-track">
+          <div class="poll-choice-bar-fill" style="width:${pct}%;"></div>
+        </div>
+      </div>
+    `;
+  });
+  choicesHtml += '</div>';
+
+  container.innerHTML = `
+    <div class="poll-active-box">
+      <div class="poll-active-header">
+        <div class="poll-active-title">„${escapeHtml(poll.title)}“</div>
+      </div>
+
+      ${choicesHtml}
+
+      <div class="poll-active-footer">
+        <span class="poll-total-votes">Gesamt: ${totalVotes} Stimmen</span>
+        <div style="display:flex; gap:6px;">
+          <button id="btn-end-active-poll" class="btn btn-xs btn-secondary" title="Poll vorzeitig beenden">
+            ⏹️ Beenden
+          </button>
+          <button id="btn-share-poll-result" class="btn btn-xs btn-primary" title="Ergebnis im Twitch-Chat teilen">
+            📢 Im Chat teilen
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const btnEndPoll = document.getElementById('btn-end-active-poll');
+  const btnShareResult = document.getElementById('btn-share-poll-result');
+
+  if (btnEndPoll) {
+    btnEndPoll.addEventListener('click', async () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      try {
+        await ipcRenderer.invoke('polls:end', { pollId: poll.id, status: 'TERMINATED', channel: chan });
+        showToast('Twitch Poll wurde vorzeitig beendet.', 'success');
+        pollsState.activePoll = null;
+        renderPollActiveSection(null);
+      } catch(e) {
+        showToast(`Fehler beim Beenden: ${e.message}`, 'error');
+      }
+    });
+  }
+
+  if (btnShareResult) {
+    btnShareResult.addEventListener('click', async () => {
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      let resultText = `📊 Umfrage-Ergebnis: „${poll.title}“ » `;
+      const parts = choices.map(c => {
+        const pct = totalVotes > 0 ? Math.round(((c.votes || 0) / totalVotes) * 100) : 0;
+        return `${c.title}: ${pct}% (${c.votes || 0})`;
+      });
+      resultText += parts.join(' | ');
+
+      try {
+        await ipcRenderer.invoke('twitch:send-chat-message', { message: resultText, channel: chan });
+        showToast('Umfrage-Ergebnis in den Chat gepostet! 📢', 'success');
+      } catch(e) {
+        showToast(`Fehler beim Senden: ${e.message}`, 'error');
+      }
+    });
+  }
+}
+
+async function startTwitchPollFromForm() {
+  const inputTitle = document.getElementById('input-poll-title');
+  const selectDuration = document.getElementById('select-poll-duration');
+  const selectPoints = document.getElementById('select-poll-channel-points');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+
+  if (!inputTitle || !pollChoicesContainer) return;
+
+  const title = (inputTitle.value || '').trim();
+  if (!title) {
+    showToast('Bitte gib einen Umfrage-Titel ein.', 'error');
+    return;
+  }
+
+  const choiceInputs = pollChoicesContainer.querySelectorAll('.input-poll-choice');
+  const choices = [];
+  choiceInputs.forEach(inp => {
+    const val = (inp.value || '').trim();
+    if (val) choices.push(val);
+  });
+
+  if (choices.length < 2) {
+    showToast('Eine Umfrage benötigt mindestens 2 Optionen.', 'error');
+    return;
+  }
+
+  const duration = selectDuration ? (parseInt(selectDuration.value, 10) || 60) : 60;
+  const channelPointsCost = selectPoints ? (parseInt(selectPoints.value, 10) || 0) : 0;
+  const channelPointsVoting = channelPointsCost > 0;
+
+  const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+
+  showToast('Starte Twitch-Poll...', 'info');
+
+  try {
+    const res = await ipcRenderer.invoke('polls:create', {
+      title,
+      choices,
+      duration,
+      channelPointsVoting,
+      channelPointsPerVote: channelPointsCost,
+      channel: chan
+    });
+
+    if (res && res.success) {
+      pollsState.activePoll = res.poll;
+      renderPollActiveSection(res.poll);
+      showToast('🚀 Twitch-Umfrage erfolgreich gestartet!', 'success');
+    } else {
+      showToast(`Fehler: ${res && res.error ? res.error : 'Poll konnte nicht gestartet werden'}`, 'error');
+    }
+  } catch(e) {
+    showToast(`Fehler beim Starten: ${e.message}`, 'error');
+  }
+}
+
+async function saveCustomPollTemplateFromForm() {
+  const inputTitle = document.getElementById('input-poll-title');
+  const selectDuration = document.getElementById('select-poll-duration');
+  const pollChoicesContainer = document.getElementById('poll-choices-container');
+
+  if (!inputTitle || !pollChoicesContainer) return;
+
+  const title = (inputTitle.value || '').trim();
+  if (!title) {
+    showToast('Bitte erst einen Titel eingeben.', 'error');
+    return;
+  }
+
+  const choiceInputs = pollChoicesContainer.querySelectorAll('.input-poll-choice');
+  const choices = [];
+  choiceInputs.forEach(inp => {
+    const val = (inp.value || '').trim();
+    if (val) choices.push(val);
+  });
+
+  if (choices.length < 2) {
+    showToast('Mindestens 2 Optionen für Vorlage erforderlich.', 'error');
+    return;
+  }
+
+  const duration = selectDuration ? (parseInt(selectDuration.value, 10) || 60) : 60;
+
+  const newTmpl = {
+    id: 'tmpl_' + Date.now(),
+    title,
+    choices,
+    duration,
+    isPreset: false
+  };
+
+  pollsState.templates.push(newTmpl);
+  await ipcRenderer.invoke('polls:save-templates', pollsState.templates);
+  renderSavedPollTemplates();
+  showToast(`Vorlage „${title}“ gespeichert! 💾`, 'success');
+}
+
+function renderSavedPollTemplates() {
+  const container = document.getElementById('poll-saved-templates-list');
+  if (!container) return;
+
+  const customTemplates = pollsState.templates.filter(t => !t.isPreset);
+  if (customTemplates.length === 0) {
+    container.innerHTML = `
+      <div style="color:var(--text-muted); font-size:0.8rem; text-align:center; padding:10px;">
+        Noch keine eigenen Vorlagen gespeichert.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = '';
+  customTemplates.forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'poll-saved-item';
+    item.innerHTML = `
+      <div style="flex:1; min-width:0; padding-right:8px;">
+        <strong style="display:block; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(t.title)}</strong>
+        <span style="color:var(--text-muted); font-size:0.72rem;">${t.choices.length} Optionen • ${t.duration}s</span>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="btn btn-xs btn-primary btn-load-tmpl" title="Vorlage in Ersteller laden">Laden ➔</button>
+        <button class="btn btn-xs btn-secondary btn-del-tmpl" title="Vorlage löschen">🗑️</button>
+      </div>
+    `;
+
+    item.querySelector('.btn-load-tmpl').addEventListener('click', () => {
+      const inputTitle = document.getElementById('input-poll-title');
+      const lblPollTitleCount = document.getElementById('lbl-poll-title-count');
+      const selectDuration = document.getElementById('select-poll-duration');
+      const pollChoicesContainer = document.getElementById('poll-choices-container');
+
+      if (inputTitle) inputTitle.value = t.title;
+      if (lblPollTitleCount) lblPollTitleCount.textContent = `${t.title.length}/60`;
+      if (selectDuration) selectDuration.value = String(t.duration || 60);
+
+      if (pollChoicesContainer) {
+        pollChoicesContainer.innerHTML = '';
+        t.choices.forEach((c, idx) => {
+          const row = document.createElement('div');
+          row.className = 'poll-choice-row';
+          const canRemove = idx >= 2;
+          row.innerHTML = `
+            <span class="choice-num">${idx + 1}</span>
+            <input type="text" class="input-poll-choice" placeholder="Option ${idx + 1}" maxlength="25" value="${escapeHtml(c)}">
+            ${canRemove ? '<button class="btn-remove-choice" title="Option entfernen">✕</button>' : ''}
+          `;
+          if (canRemove) {
+            row.querySelector('.btn-remove-choice').addEventListener('click', () => {
+              row.remove();
+              updatePollChoiceNumbers();
+            });
+          }
+          pollChoicesContainer.appendChild(row);
+        });
+      }
+      showToast(`Vorlage „${t.title}“ geladen!`, 'info');
+    });
+
+    item.querySelector('.btn-del-tmpl').addEventListener('click', async () => {
+      pollsState.templates = pollsState.templates.filter(x => x.id !== t.id);
+      await ipcRenderer.invoke('polls:save-templates', pollsState.templates);
+      renderSavedPollTemplates();
+      showToast('Vorlage gelöscht.', 'info');
+    });
+
+    container.appendChild(item);
+  });
+}
+

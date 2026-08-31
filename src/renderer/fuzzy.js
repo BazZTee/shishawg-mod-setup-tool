@@ -45,12 +45,18 @@ function similarityScore(s1, s2) {
   if (a === b) return 1.0;
   if (a.length === 0 || b.length === 0) return 0;
 
-  // Direct substring bonus
+  // Prefix match (e.g. 'vosku' vs 'voskurimsya')
+  if (a.startsWith(b) || b.startsWith(a)) {
+    const minLen = Math.min(a.length, b.length);
+    const maxLen = Math.max(a.length, b.length);
+    return minLen / maxLen;
+  }
+
+  // Substring inclusion (scaled proportionally)
   if (a.includes(b) || b.includes(a)) {
     const minLen = Math.min(a.length, b.length);
     const maxLen = Math.max(a.length, b.length);
-    const subRatio = minLen / maxLen;
-    return Math.max(0.8, subRatio);
+    return (minLen / maxLen) * 0.9;
   }
 
   const dist = levenshteinDistance(a, b);
@@ -81,7 +87,7 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
   let bestMatch = null;
   let highestScore = 0;
 
-  const qTokens = qClean.split(/[\s,./\\-]+/).filter(t => t.length > 1);
+  const qTokens = qClean.split(/[\s,./\\-]+/).filter(t => t.length > 0);
 
   for (const entry of list) {
     const name = getItemName(entry);
@@ -96,35 +102,41 @@ function findBestFuzzyMatch(query, list, minScore = 0.65) {
     // 2. Full-string similarity
     let score = similarityScore(qClean, nLower);
 
-    // 3. Substring inclusion
+    // 3. Substring inclusion (scaled by length ratio)
     if (nLower.includes(qClean)) {
-      score = Math.max(score, 0.85 + (qClean.length / nLower.length) * 0.15);
+      const ratio = qClean.length / nLower.length;
+      score = Math.max(score, 0.55 + ratio * 0.45);
     } else if (qClean.includes(nLower)) {
-      score = Math.max(score, 0.85 + (nLower.length / qClean.length) * 0.15);
+      const ratio = nLower.length / qClean.length;
+      score = Math.max(score, 0.55 + ratio * 0.45);
     }
 
     // 4. Token-based matching
-    const nTokens = nLower.split(/[\s,./\\-]+/).filter(t => t.length > 1);
+    const nTokens = nLower.split(/[\s,./\\-]+/).filter(t => t.length > 0);
     let matchedTokenCount = 0;
 
     for (const qt of qTokens) {
+      let bestTokSim = 0;
       for (const nt of nTokens) {
         if (qt === nt) {
-          matchedTokenCount++;
+          bestTokSim = 1.0;
           break;
         } else {
           const tSim = similarityScore(qt, nt);
-          if (tSim >= 0.8) {
-            matchedTokenCount += tSim;
-            break;
+          if (tSim > bestTokSim && tSim >= 0.80) {
+            bestTokSim = tSim;
           }
         }
       }
+      matchedTokenCount += bestTokSim;
     }
 
-    if (nTokens.length > 0) {
-      const tokenScore = (matchedTokenCount / nTokens.length);
-      score = Math.max(score, tokenScore * 0.95);
+    if (qTokens.length > 0) {
+      const qCoverage = matchedTokenCount / qTokens.length;
+      const nCoverage = matchedTokenCount / (nTokens.length || 1);
+      // Weighted token score: favors matching all query tokens while rewarding specific item matches
+      const tokenScore = qCoverage * 0.85 + nCoverage * 0.15;
+      score = Math.max(score, tokenScore);
     }
 
     if (score > highestScore && score >= minScore) {
@@ -153,11 +165,24 @@ function fuzzyFilterList(query, list, minScore = 0.45) {
     const nLower = name.toLowerCase();
 
     let score = 0;
-    if (nLower === q) score = 1.0;
-    else if (nLower.startsWith(q)) score = 0.9 + (q.length / nLower.length) * 0.09;
-    else if (nLower.includes(q)) score = 0.8 + (q.length / nLower.length) * 0.09;
-    else {
-      score = similarityScore(q, nLower);
+
+    // Check metadata tags (custom / gist / hookahtools)
+    if (typeof entry === 'object') {
+      const src = (entry.source || '').toLowerCase();
+      if ((q === 'custom' || q === 'gist' || q === 'eigen' || q === 'eigene' || q === 'community') && (src === 'gist' || entry.isCustom)) {
+        score = 1.0;
+      } else if ((q === 'hookahtools' || q === 'hookah' || q === 'ht' || q === 'superbase' || q === 'supabase') && src === 'hookahtools') {
+        score = 1.0;
+      }
+    }
+
+    if (score < 1.0) {
+      if (nLower === q) score = Math.max(score, 1.0);
+      else if (nLower.startsWith(q)) score = Math.max(score, 0.9 + (q.length / nLower.length) * 0.09);
+      else if (nLower.includes(q)) score = Math.max(score, 0.8 + (q.length / nLower.length) * 0.09);
+      else {
+        score = Math.max(score, similarityScore(q, nLower));
+      }
     }
 
     if (score >= minScore) {
@@ -205,25 +230,62 @@ const SHISHA_SYNONYMS = {
   'futer': 'Amotion Futr',
   'emotion': 'Amotion Futr',
   'flashbang': 'Amotion Flash Bang',
+  'flash bang': 'Amotion Flash Bang',
+  'pedal': 'Amotion Pedal',
+  'aeon edition 6': 'Aeon Edition 6',
+  'aeon edition 4': 'Aeon Edition 4',
+  'aeon 6': 'Aeon Edition 6',
+  'aeon 4': 'Aeon Edition 4',
+  'edition 6': 'Aeon Edition 6',
+  'edition 4': 'Aeon Edition 4',
+  'edition6': 'Aeon Edition 6',
+  'edition4': 'Aeon Edition 4',
+  'darkside intro': 'Darkside Intro',
+  'intro': 'Darkside Intro',
+  'darkside shot': 'Darkside Shot',
+  'shot': 'Darkside Shot',
   'breeze': 'Moze Breeze Two',
+  'breeze 2': 'Moze Breeze Two',
   'breeze2': 'Moze Breeze Two',
+  'breeze two': 'Moze Breeze Two',
+  'breeze pro': 'Moze Breeze Pro',
+  'moze breeze': 'Moze Breeze Two',
+  'moze breeze 2': 'Moze Breeze Two',
+  'moze breeze pro': 'Moze Breeze Pro',
   'varity': 'Moze Varity',
   'specter': 'Vyro Specter',
   'cosmo': 'Cosmo Bowl',
-  'vosku': 'Voskurymsia Mumia',
-  'mumia': 'Voskurymsia Mumia',
+  'cosmo bowl': 'Cosmo Bowl',
+  'cosmo ball': 'Cosmo Bowl',
+  'cosmobowl': 'Cosmo Bowl',
+  'cosmoball': 'Cosmo Bowl',
+  'cosmo shot': 'Cosmo Bowl Shot',
+  'cosmo bowl shot': 'Cosmo Bowl Shot',
+  'cosmo ball shot': 'Cosmo Bowl Shot',
+  'cosmo shot bowl': 'Cosmo Bowl Shot',
+  'cosmobowl shot': 'Cosmo Bowl Shot',
+  'vosku': 'Voskurimsya Mumiya Bowl',
+  'voskuri': 'Voskurimsya Mumiya Bowl',
+  'voskurimsya': 'Voskurimsya Mumiya Bowl',
+  'voskorymsea': 'Voskurimsya Mumiya Bowl',
+  'mumiya': 'Voskurimsya Mumiya Bowl',
+  'mumia': 'Voskurimsya Mumiya Bowl',
   'litbowl': 'Hookain LitBowl',
   'lit bowl': 'Hookain LitBowl',
-  'onmo': 'ONMO HMD',
+  'onmo': 'ONMO Edelstahl HMD',
+  'onmoi': 'ONMO Edelstahl HMD',
+  'onmoe': 'ONMO Edelstahl HMD',
   'nagrani': 'Na Grani',
   'na grani': 'Na Grani',
   'kaloud': 'Kaloud Lotus I+ 2.0',
   'lotus': 'Kaloud Lotus I+ 2.0',
-  'zauber': 'Magic Cubes (Zauberwürfel) !kohle',
-  'zauberwürfel': 'Magic Cubes (Zauberwürfel) !kohle',
-  'zauberwuerfel': 'Magic Cubes (Zauberwürfel) !kohle',
-  'magic': 'Magic Cubes (Zauberwürfel) !kohle',
-  'cubes': 'Magic Cubes (Zauberwürfel) !kohle',
+  'pinkman': 'MustH - Pynkman',
+  'pynkman': 'MustH - Pynkman',
+  'zauber': 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)',
+  'zauberwürfel': 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)',
+  'zauberwuerfel': 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)',
+  'magic': 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)',
+  'cubes': 'Magic Charcoal (4x 26er - ehem. Zauberwürfel)',
   'blackcoco': 'Black Coco 26mm',
   'black coco': 'Black Coco 26mm',
   'shaman': 'Shaman 26mm',

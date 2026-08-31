@@ -3,8 +3,10 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const TwitchService = require('./twitchService');
 const DatabaseService = require('./dbService');
+const supabaseService = require('./supabaseService');
 
 // State for Live OBS Overlay
 let latestLiveSetup = {
@@ -82,9 +84,16 @@ function createWindow() {
     autoHideMenuBar: true
   });
 
+  supabaseService.setMainWindow(mainWindow);
+  supabaseService.initRealtimeListeners();
+
   twitchService = new TwitchService(mainWindow, store);
 
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+
+  mainWindow.on('focus', () => {
+    if (mainWindow) mainWindow.flashFrame(false);
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -122,8 +131,14 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
+    const errMsg = err ? (err.message || String(err)) : '';
+    // Silently ignore missing app-update.yml in portable/test/dev builds
+    if (errMsg.includes('app-update.yml') || errMsg.includes('ENOENT') || errMsg.includes('dev-app-update.yml')) {
+      console.warn('AutoUpdater: update config not found (portable/test build mode).');
+      return;
+    }
     if (mainWindow) {
-      mainWindow.webContents.send('updater:error', err ? err.message : 'Fehler beim Update-Prüfen');
+      mainWindow.webContents.send('updater:error', errMsg || 'Fehler beim Update-Prüfen');
     }
   });
 }
@@ -193,12 +208,34 @@ ipcMain.handle('twitch:set-channel', async (event, channel) => {
   return { success: true, channel: twitchService.targetChannel };
 });
 
-ipcMain.handle('twitch:send-chat', async (event, { message, channel }) => {
+ipcMain.handle('twitch:send-chat', async (event, payload) => {
   try {
+    const message = typeof payload === 'string' ? payload : (payload && payload.message);
+    const channel = typeof payload === 'object' ? payload.channel : undefined;
     const res = await twitchService.sendChatMessage(message, channel);
     return { success: true, res };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:send-chat-message', async (event, payload) => {
+  try {
+    const message = typeof payload === 'string' ? payload : (payload && payload.message);
+    const channel = typeof payload === 'object' ? payload.channel : undefined;
+    const res = await twitchService.sendChatMessage(message, channel);
+    return { success: true, res };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:get-user-info', async (event, login) => {
+  try {
+    const user = await twitchService.getUserInfo(login);
+    return { success: !!user, user };
+  } catch(e) {
+    return { success: false, error: e.message };
   }
 });
 
@@ -208,6 +245,496 @@ ipcMain.handle('twitch:fetch-setup', async (event, channel) => {
     return { success: true, res };
   } catch (err) {
     return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:get-color', async () => {
+  return await twitchService.fetchUserChatColor();
+});
+
+ipcMain.handle('twitch:set-color', async (event, color) => {
+  if (color && twitchService.user) {
+    twitchService.user.color = color;
+    store.set('twitch_user', twitchService.user);
+    store.set('twitch_user_color', color);
+  }
+  return true;
+});
+
+ipcMain.handle('twitch:check-stream-status', async (event, channel) => {
+  return await twitchService.checkStreamStatus(channel);
+});
+
+ipcMain.handle('twitch:get-channel-info', async (event, channel) => {
+  return await twitchService.getChannelInformation(channel);
+});
+
+ipcMain.handle('twitch:search-categories', async (event, query) => {
+  return await twitchService.searchCategories(query);
+});
+
+ipcMain.handle('twitch:search-channels', async (event, query) => {
+  return await twitchService.searchChannels(query);
+});
+
+ipcMain.handle('twitch:set-title', async (event, { title, channel }) => {
+  try {
+    return await twitchService.setStreamTitle(title, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:set-game', async (event, { game, channel }) => {
+  try {
+    return await twitchService.setStreamGame(game, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:create-clip', async (event, channel) => {
+  try {
+    return await twitchService.createClip(channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:start-raid', async (event, { target, channel }) => {
+  try {
+    return await twitchService.startRaid(target, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:cancel-raid', async (event, channel) => {
+  try {
+    return await twitchService.cancelRaid(channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:create-stream-marker', async (event, { description, channel }) => {
+  try {
+    return await twitchService.createStreamMarker(description, channel);
+  } catch(err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('twitch:get-chatters', async (event, channel) => {
+  return await twitchService.getChatters(channel);
+});
+
+// YouTube Live Search IPC Handler for ShishaWG Channel & Topics
+ipcMain.handle('youtube:search', async (event, query) => {
+  if (!query || typeof query !== 'string' || query.trim().length < 2) return [];
+  const cleanQuery = query.trim();
+  const searchTerm = cleanQuery.toLowerCase().includes('shishawg') ? cleanQuery : `shishawg ${cleanQuery}`;
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchTerm)}`;
+
+  return new Promise((resolve) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const match = data.match(/var ytInitialData = ({.*?});<\/script>/s) || data.match(/ytInitialData\s*=\s*({.*?});/s);
+          if (!match) return resolve([]);
+          const json = JSON.parse(match[1]);
+          const contents = json.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents;
+          const items = [];
+          if (contents) {
+            for (const section of contents) {
+              const itemSection = section.itemSectionRenderer?.contents;
+              if (itemSection) {
+                for (const item of itemSection) {
+                  if (item.videoRenderer) {
+                    const vr = item.videoRenderer;
+                    const videoId = vr.videoId;
+                    const title = vr.title?.runs?.[0]?.text || '';
+                    const desc = vr.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map(r => r.text).join('') || vr.descriptionSnippet?.runs?.map(r => r.text).join('') || '';
+                    const channelName = vr.ownerText?.runs?.[0]?.text || '';
+                    const lengthText = vr.lengthText?.simpleText || '';
+                    const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
+                    items.push({
+                      id: videoId,
+                      videoId: videoId,
+                      title: title,
+                      url: `https://youtu.be/${videoId}`,
+                      desc: desc,
+                      channel: channelName,
+                      duration: lengthText,
+                      thumb: thumb,
+                      category: channelName.toLowerCase().includes('shishawg') ? 'ShishaWG' : 'YouTube',
+                      isLiveResult: true
+                    });
+                    if (items.length >= 10) break;
+                  }
+                }
+              }
+              if (items.length >= 10) break;
+            }
+          }
+          resolve(items);
+        } catch(err) {
+          resolve([]);
+        }
+      });
+    });
+
+    req.on('error', () => resolve([]));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve([]);
+    });
+  });
+});
+
+// Mod-Chat IPC Handlers
+ipcMain.handle('modchat:get-messages', async () => {
+  try {
+    const msgs = await dbService.getModChatMessages();
+    return { success: true, messages: msgs };
+  } catch(e) {
+    return { success: false, messages: [], error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:send-message', async (event, messageObj) => {
+  try {
+    const msgs = await dbService.sendModChatMessage(messageObj);
+    return { success: true, messages: msgs };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:clear-messages', async () => {
+  try {
+    await dbService.clearModChatMessages();
+    return { success: true, messages: [] };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('app:notify-background', async () => {
+  if (mainWindow && !mainWindow.isFocused()) {
+    mainWindow.flashFrame(true);
+  }
+  return true;
+});
+
+// Watchlist IPC Handlers
+ipcMain.handle('watchlist:get', async () => {
+  try {
+    const list = await dbService.getWatchlist();
+    return { success: true, list };
+  } catch(e) {
+    return { success: false, list: [] };
+  }
+});
+
+ipcMain.handle('watchlist:save', async (event, list) => {
+  try {
+    await dbService.saveWatchlist(list);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Stream Markers (Session Cache)
+ipcMain.handle('markers:get', async () => {
+  return { success: true, markers: dbService.getStreamMarkers() };
+});
+
+ipcMain.handle('markers:save', async (event, markers) => {
+  dbService.saveStreamMarkers(markers);
+  return { success: true };
+});
+
+// Giveaway IPC Handlers
+ipcMain.handle('giveaway:start-listener', async (event, { keyword, channel }) => {
+  return twitchService.startGiveawayListener(keyword, channel);
+});
+
+ipcMain.handle('giveaway:stop-listener', async () => {
+  return twitchService.stopGiveawayListener();
+});
+
+ipcMain.handle('giveaway:get-winners', async () => {
+  try {
+    const winners = await dbService.getGiveawayWinners();
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, winners: [], error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
+  try {
+    const winners = await dbService.saveGiveawayWinner(winnerObj);
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
+  try {
+    const winners = await dbService.updateGiveawayWinner(id, updates);
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:delete-winner', async (event, id) => {
+  try {
+    const winners = await dbService.deleteGiveawayWinner(id);
+    return { success: true, winners };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId }) => {
+  try {
+    const cfg = await dbService.getTelegramConfig();
+    const token = botToken || cfg.botToken || store.get('telegram_bot_token', '');
+    const chat = chatId || cfg.chatId || store.get('telegram_chat_id', '');
+    if (!token || !chat) {
+      return { success: false, error: 'Telegram Bot Token oder Chat-ID nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
+    }
+    return await dbService.sendTelegramMessage(text, token, chat);
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('giveaway:save-telegram-config', async (event, { botToken, chatId, claimUrl }) => {
+  const cleanToken = (botToken || '').trim();
+  const cleanChat = (chatId || '').trim();
+  const cleanClaimUrl = (claimUrl || '').trim();
+  store.set('telegram_bot_token', cleanToken);
+  store.set('telegram_chat_id', cleanChat);
+  store.set('giveaway_claim_url', cleanClaimUrl);
+  await dbService.saveTelegramConfig({ botToken: cleanToken, chatId: cleanChat, claimUrl: cleanClaimUrl });
+  return { success: true };
+});
+
+ipcMain.handle('giveaway:get-telegram-config', async () => {
+  const cfg = await dbService.getTelegramConfig();
+  const botToken = cfg.botToken || store.get('telegram_bot_token', '');
+  const chatId = cfg.chatId || store.get('telegram_chat_id', '');
+  const claimUrl = cfg.claimUrl || store.get('giveaway_claim_url', '');
+  return { botToken, chatId, claimUrl };
+});
+
+// Q&A Fragensammler IPC Handlers
+ipcMain.handle('qna:start-listener', async (event, channel) => {
+  return twitchService.startQnAListener(channel);
+});
+
+ipcMain.handle('qna:stop-listener', async () => {
+  return twitchService.stopQnAListener();
+});
+
+ipcMain.handle('qna:get-questions', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    let questions = await supabaseService.getQnAQuestions(chan);
+    if (!questions || questions.length === 0) {
+      questions = await dbService.getQnAQuestions();
+    }
+    return { success: true, questions };
+  } catch(e) {
+    return { success: false, error: e.message, questions: [] };
+  }
+});
+
+ipcMain.handle('qna:save-questions', async (event, questions) => {
+  try {
+    supabaseService.saveAllQnAQuestions(questions).catch(() => {});
+    const saved = await dbService.saveQnAQuestions(questions);
+    return { success: true, questions: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:get-active', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    let active = await supabaseService.getActiveQnAQuestion(chan);
+    if (!active) {
+      active = await dbService.getActiveQnAQuestion();
+    }
+    return { success: true, active };
+  } catch(e) {
+    return { success: false, error: e.message, active: null };
+  }
+});
+
+ipcMain.handle('qna:set-active', async (event, activeObj, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    await supabaseService.setActiveQnAQuestion(chan, activeObj);
+    const active = await dbService.setActiveQnAQuestion(activeObj);
+    return { success: true, active };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Q&A Settings (Persons list, Wheel toggle)
+ipcMain.handle('qna:get-settings', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const settings = await supabaseService.getQnASettings(chan);
+    return { success: true, settings };
+  } catch(e) {
+    return { success: false, error: e.message, settings: null };
+  }
+});
+
+ipcMain.handle('qna:save-settings', async (event, channel, settings) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const saved = await supabaseService.saveQnASettings(chan, settings);
+    return { success: true, settings: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Bestrafungen (Punishments / Challenges)
+ipcMain.handle('bestrafungen:get', async () => {
+  try {
+    const list = await supabaseService.getBestrafungen();
+    return { success: true, bestrafungen: list };
+  } catch(e) {
+    return { success: false, error: e.message, bestrafungen: [] };
+  }
+});
+
+ipcMain.handle('bestrafungen:save', async (event, bestrafung) => {
+  try {
+    const saved = await supabaseService.saveBestrafung(bestrafung);
+    return { success: true, bestrafung: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('bestrafungen:update-status', async (event, id, status) => {
+  try {
+    const updated = await supabaseService.updateBestrafungStatus(id, status);
+    return { success: true, updated };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('bestrafungen:delete', async (event, id) => {
+  try {
+    const deleted = await supabaseService.deleteBestrafung(id);
+    return { success: true, deleted };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:delete-all', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const questions = await supabaseService.getQnAQuestions(chan);
+    for (const q of questions) {
+      await supabaseService.deleteQnAQuestion(q.id);
+    }
+    await dbService.saveQnAQuestions([]);
+    await dbService.setActiveQnAQuestion(null);
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('qna:delete-duplicates', async (event, channel) => {
+  try {
+    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const questions = await supabaseService.getQnAQuestions(chan);
+    const seen = new Set();
+    let deletedCount = 0;
+    for (const q of questions) {
+      const key = `${(q.login || '').toLowerCase()}:${(q.question || '').trim().toLowerCase()}`;
+      if (seen.has(key)) {
+        await supabaseService.deleteQnAQuestion(q.id);
+        deletedCount++;
+      } else {
+        seen.add(key);
+      }
+    }
+    return { success: true, deletedCount };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Twitch Polls & Vorlagen IPC Handlers
+ipcMain.handle('polls:create', async (event, { title, choices, duration, channelPointsVoting, channelPointsPerVote, channel }) => {
+  try {
+    const res = await twitchService.createPoll(title, choices, duration, channelPointsVoting, channelPointsPerVote, channel);
+    return { success: true, poll: res.poll };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('polls:get-active', async (event, channel) => {
+  try {
+    const poll = await twitchService.getActivePoll(channel);
+    return { success: true, poll };
+  } catch(e) {
+    return { success: false, error: e.message, poll: null };
+  }
+});
+
+ipcMain.handle('polls:end', async (event, { pollId, status, channel }) => {
+  try {
+    const res = await twitchService.endPoll(pollId, status, channel);
+    return { success: true, poll: res.poll };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('polls:get-templates', async () => {
+  try {
+    const templates = await dbService.getPollTemplates();
+    return { success: true, templates };
+  } catch(e) {
+    return { success: false, error: e.message, templates: [] };
+  }
+});
+
+ipcMain.handle('polls:save-templates', async (event, templates) => {
+  try {
+    const saved = await dbService.savePollTemplates(templates);
+    return { success: true, templates: saved };
+  } catch(e) {
+    return { success: false, error: e.message };
   }
 });
 
@@ -247,7 +774,11 @@ ipcMain.handle('updater:check', async () => {
     const result = await autoUpdater.checkForUpdates();
     return { success: true, result };
   } catch (err) {
-    return { success: false, error: err.message };
+    const errMsg = err ? (err.message || String(err)) : '';
+    if (errMsg.includes('app-update.yml') || errMsg.includes('ENOENT')) {
+      return { success: false, error: 'Keine Update-Konfiguration im Test/Portable-Modus' };
+    }
+    return { success: false, error: errMsg };
   }
 });
 
@@ -300,6 +831,42 @@ function startObsServer() {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end(latestLiveSetup.commandText || '');
       return;
+    }
+
+    if (url === '/api/qna/active') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      const localFile = path.join(app.getPath('userData'), 'qna_active.json');
+      let active = null;
+      try {
+        if (fs.existsSync(localFile)) {
+          const raw = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+          active = (raw && typeof raw === 'object' && 'active' in raw) ? raw.active : raw;
+        }
+      } catch(e) {}
+      res.end(JSON.stringify({ active, updatedAt: Date.now() }));
+      return;
+    }
+
+    if (url === '/api/qna/questions') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
+      let questions = [];
+      try {
+        if (fs.existsSync(localFile)) {
+          questions = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
+        }
+      } catch(e) {}
+      res.end(JSON.stringify(questions));
+      return;
+    }
+
+    if (url === '/qna' || url === '/qna.html' || url === '/prompter') {
+      const qnaPath = path.join(__dirname, '../../docs/qna.html');
+      if (fs.existsSync(qnaPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(fs.readFileSync(qnaPath, 'utf-8'));
+        return;
+      }
     }
 
     // Default: Return the HUD Overlay HTML
@@ -437,8 +1004,9 @@ ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
     fs.writeFileSync(textFilePath, setupPayload.commandText || '', 'utf-8');
   } catch(e) {}
 
-  // Publish to GitHub Gist for cloud access
-  dbService.publishLiveSetupToGist(setupPayload).catch(() => {});
+  // Publish to GitHub Gist for cloud access (channel-separated)
+  const channel = setupPayload.channel || (twitchService ? twitchService.targetChannel : 'marved');
+  dbService.publishLiveSetupToGist(setupPayload, channel).catch(() => {});
 
   return {
     success: true,

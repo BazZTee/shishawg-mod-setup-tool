@@ -5,537 +5,1159 @@
   <title>ShishaWG Live Q&A Stream Overlay & Prompter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap');
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
     body {
       font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       margin: 0;
-      padding: 18px;
       color: #ffffff;
+      user-select: none;
     }
 
-    /* Mode: OBS Overlay (Transparent HUD) */
+    /* MODE 1: OBS OVERLAY */
     body.mode-overlay {
       background: transparent;
       overflow: hidden;
-    }
-
-    /* Mode: Streamer Prompter Screen (Marvin 2nd Monitor) */
-    body.mode-screen {
-      background: #080c16;
-      min-height: 100vh;
+      width: 100vw;
+      height: 100vh;
       display: flex;
-      flex-direction: column;
-      gap: 20px;
-      padding: 24px;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 32px;
     }
 
-    /* HUD Card for OBS Overlay */
-    .qna-hud-card {
-      display: inline-flex;
-      flex-direction: column;
-      background: rgba(10, 15, 29, 0.95);
-      backdrop-filter: blur(18px);
-      -webkit-backdrop-filter: blur(18px);
-      border: 1px solid rgba(0, 240, 255, 0.45);
-      border-left: 5px solid #00f0ff;
-      border-radius: 16px;
-      padding: 16px 24px;
-      color: #ffffff;
-      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 240, 255, 0.25);
+    .obs-hud-card {
+      width: 100%;
       max-width: 860px;
+      margin: 0 24px;
+      border-radius: 24px;
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      background: linear-gradient(135deg, rgba(35, 12, 77, 0.96) 0%, rgba(15, 20, 70, 0.96) 50%, rgba(10, 15, 45, 0.96) 100%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 24px 32px 20px 32px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(168, 85, 247, 0.25);
+      position: relative;
+      overflow: hidden;
       opacity: 0;
-      transform: translateY(-20px);
+      transform: translateY(40px);
       transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
       pointer-events: none;
     }
 
-    .qna-hud-card.visible {
+    .obs-hud-card.visible {
       opacity: 1;
       transform: translateY(0);
       pointer-events: auto;
     }
 
-    .qna-hud-header {
+    .obs-person-badge-wrapper {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 10px;
+      justify-content: center;
+      margin-bottom: 12px;
     }
 
-    .qna-badge {
-      background: linear-gradient(135deg, #00f0ff, #7928ca);
-      color: #ffffff;
-      font-size: 11px;
-      font-weight: 800;
-      padding: 4px 10px;
-      border-radius: 6px;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
-      box-shadow: 0 2px 10px rgba(0, 240, 255, 0.35);
+    .obs-person-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-    }
-
-    .qna-user-pill {
-      display: flex;
-      align-items: center;
       gap: 8px;
-      font-size: 15px;
-      font-weight: 700;
-    }
-
-    .qna-user-name {
-      color: #00f0ff;
-    }
-
-    .qna-badge-sub {
-      background: #a855f7;
-      color: #fff;
-      font-size: 10px;
+      padding: 4px 16px;
+      border-radius: 20px;
+      font-size: 13px;
       font-weight: 800;
-      padding: 2px 6px;
-      border-radius: 4px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      background: rgba(168, 85, 247, 0.2);
+      border: 1px solid rgba(168, 85, 247, 0.5);
+      color: #d8b4fe;
+      box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
     }
 
-    .qna-badge-mod {
-      background: #10b981;
-      color: #fff;
-      font-size: 10px;
+    .obs-person-badge .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #c084fc;
+      box-shadow: 0 0 8px #c084fc;
+      animation: pulse 1.5s infinite;
+    }
+
+    .obs-question-text {
+      font-size: 26px;
       font-weight: 800;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-
-    .qna-question-content {
-      font-size: 20px;
-      font-weight: 600;
-      line-height: 1.4;
-      color: #f8fafc;
+      line-height: 1.35;
+      text-align: center;
+      color: #ffffff;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
       word-break: break-word;
     }
 
-    .qna-time {
-      font-size: 11px;
-      color: #64748b;
-      margin-top: 8px;
-      text-align: right;
+    .obs-author-row {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 16px;
     }
 
-    /* Screen Mode Specific Styles */
-    .prompter-header {
+    .obs-author-name {
+      color: #00f0ff;
+      font-weight: 700;
+    }
+
+    .obs-timer-track {
+      width: 100%;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .obs-timer-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #00f0ff, #a855f7);
+      border-radius: 3px;
+      width: 100%;
+      transition: width 1s linear;
+    }
+
+    /* MODE 2: STREAMER PROMPTER */
+    body.mode-screen {
+      background: #080c16;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 32px;
+      overflow-y: auto;
+    }
+
+    .screen-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      padding-bottom: 14px;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
     }
 
-    .prompter-title {
-      font-size: 22px;
-      font-weight: 800;
-      color: #00f0ff;
+    .screen-title-group {
       display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .prompter-live-badge {
-      background: rgba(16, 185, 129, 0.2);
-      border: 1px solid #10b981;
-      color: #34d399;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 20px;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .prompter-live-badge .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-      box-shadow: 0 0 8px #10b981;
-    }
-
-    .prompter-spotlight-box {
-      background: rgba(15, 23, 42, 0.85);
-      border: 2px solid #00f0ff;
-      border-radius: 16px;
-      padding: 28px;
-      box-shadow: 0 10px 40px rgba(0, 240, 255, 0.15);
-    }
-
-    .prompter-spotlight-title {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #94a3b8;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .prompter-big-question {
-      font-size: 32px;
-      font-weight: 700;
-      line-height: 1.35;
-      color: #ffffff;
-      margin: 14px 0;
-    }
-
-    .prompter-upcoming-section {
-      background: rgba(15, 23, 42, 0.5);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
-      padding: 20px;
-    }
-
-    .prompter-upcoming-title {
-      font-size: 16px;
-      font-weight: 700;
-      color: #94a3b8;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .prompter-upcoming-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .prompter-upcoming-item {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 8px;
-      padding: 12px 16px;
-      display: flex;
-      justify-content: space-between;
       align-items: center;
       gap: 12px;
     }
 
-    .prompter-upcoming-item .user {
+    .screen-logo-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .screen-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+    }
+
+    .screen-header-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .wheel-switch-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+
+    .persons-selector-bar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .person-btn {
+      padding: 10px 22px;
+      border-radius: 30px;
+      font-size: 15px;
+      font-weight: 800;
+      border: 2px solid transparent;
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .person-btn:hover {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .person-btn.active {
+      transform: scale(1.08);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .person-btn.marved.active {
+      border-color: #3b82f6;
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.2));
+      color: #93c5fd;
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
+    }
+
+    .person-btn.hasty.active {
+      border-color: #22c55e;
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.3), rgba(22, 163, 74, 0.2));
+      color: #86efac;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.35);
+    }
+
+    .person-btn.kai.active {
+      border-color: #f97316;
+      background: linear-gradient(135deg, rgba(249, 115, 22, 0.3), rgba(234, 88, 12, 0.2));
+      color: #fdba74;
+      box-shadow: 0 0 20px rgba(249, 115, 22, 0.35);
+    }
+
+    .person-btn.custom.active {
+      border-color: #a855f7;
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.2));
+      color: #d8b4fe;
+      box-shadow: 0 0 20px rgba(168, 85, 247, 0.35);
+    }
+
+    .draw-action-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .btn-draw-random {
+      height: 64px;
+      padding: 0 42px;
+      border-radius: 20px;
+      font-size: 19px;
+      font-weight: 900;
+      color: #ffffff;
+      background: linear-gradient(135deg, #00f0ff 0%, #0070f3 50%, #7928ca 100%);
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 10px 30px rgba(0, 240, 255, 0.3);
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .btn-draw-random:hover:not(:disabled) {
+      transform: scale(1.05);
+      box-shadow: 0 14px 40px rgba(0, 240, 255, 0.45);
+    }
+
+    .btn-draw-random:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .open-questions-counter {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-top: 10px;
+      font-weight: 600;
+    }
+
+    .drawn-question-card {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%);
+      border: 2px solid rgba(0, 240, 255, 0.4);
+      border-radius: 24px;
+      padding: 36px 40px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(0, 240, 255, 0.15);
+      margin-bottom: 36px;
+      position: relative;
+    }
+
+    .drawn-person-badge-btn {
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+      color: #00f0ff;
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s;
+    }
+
+    .drawn-question-body {
+      text-align: center;
+      margin: 20px 0;
+    }
+
+    .drawn-question-text {
+      font-size: 32px;
+      font-weight: 800;
+      line-height: 1.4;
+      color: #ffffff;
+      word-break: break-word;
+    }
+
+    .drawn-question-author {
+      font-size: 16px;
+      color: #94a3b8;
+      margin-top: 12px;
+      font-weight: 600;
+    }
+
+    .question-decision-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .btn-decision {
+      padding: 12px 28px;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .btn-decision.answered {
+      background: rgba(34, 197, 94, 0.2);
+      border-color: rgba(34, 197, 94, 0.5);
+      color: #4ade80;
+    }
+
+    .btn-decision.answered:hover {
+      background: rgba(34, 197, 94, 0.35);
+      transform: scale(1.04);
+    }
+
+    .btn-decision.unanswered {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: rgba(239, 68, 68, 0.5);
+      color: #f87171;
+    }
+
+    .btn-decision.unanswered:hover {
+      background: rgba(239, 68, 68, 0.35);
+      transform: scale(1.04);
+    }
+
+    .prompter-queue-section {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      padding: 20px 24px;
+    }
+
+    .prompter-queue-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
+    }
+
+    .prompter-queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .prompter-queue-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    .prompter-queue-item .author {
       color: #00f0ff;
       font-weight: 700;
-      font-size: 14px;
+      margin-right: 12px;
+      white-space: nowrap;
     }
 
-    .prompter-upcoming-item .text {
-      font-size: 16px;
-      color: #e2e8f0;
-      flex: 1;
+    /* SPINNING WHEEL MODAL */
+    .wheel-modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(8, 12, 22, 0.94);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
     }
 
-    .prompter-empty {
-      color: #64748b;
+    .wheel-modal-backdrop.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .wheel-container {
+      position: relative;
+      width: 420px;
+      height: 420px;
+      margin-bottom: 24px;
+    }
+
+    #wheel-canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      box-shadow: 0 0 50px rgba(168, 85, 247, 0.4), 0 0 100px rgba(0, 240, 255, 0.2);
+    }
+
+    .wheel-pointer {
+      position: absolute;
+      top: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 18px solid transparent;
+      border-right: 18px solid transparent;
+      border-top: 36px solid #ff0055;
+      filter: drop-shadow(0 4px 10px rgba(255, 0, 85, 0.8));
+      z-index: 10;
+    }
+
+    .wheel-center-hub {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: #0f172a;
+      border: 4px solid #00f0ff;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 5;
+    }
+
+    .wheel-winner-card {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.95));
+      border: 2px solid #a855f7;
+      border-radius: 20px;
+      padding: 24px 36px;
       text-align: center;
-      padding: 30px;
-      font-size: 18px;
+      box-shadow: 0 20px 50px rgba(168, 85, 247, 0.4);
+      max-width: 500px;
+      width: 90%;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .wheel-winner-card.show {
+      display: block;
+      animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .wheel-winner-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #c084fc;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+
+    .wheel-winner-text {
+      font-size: 24px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 18px;
+    }
+
+    .wheel-winner-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.6; }
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.85); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
     }
   </style>
 </head>
 <body class="mode-overlay">
 
-  <!-- OVERLAY MODE VIEW -->
-  <div id="view-overlay-container">
-    <div class="qna-hud-card" id="qna-hud-card">
-      <div class="qna-hud-header">
-        <span class="qna-badge">🙋 ZUSCHAUERFRAGE</span>
-        <div class="qna-user-pill" id="hud-user-pill">
-          <span class="qna-user-name" id="hud-user-name">@Viewer</span>
-          <span id="hud-user-sub" class="qna-badge-sub" style="display:none;">SUB</span>
-          <span id="hud-user-mod" class="qna-badge-mod" style="display:none;">MOD</span>
-        </div>
+  <!-- VIEW: OBS STREAM OVERLAY -->
+  <div id="view-overlay-container" style="display:none; width:100%; height:100%; display:flex; align-items:flex-end; justify-content:center;">
+    <div class="obs-hud-card" id="obs-hud-card">
+      <div class="obs-person-badge-wrapper" id="obs-badge-wrapper">
+        <span class="obs-person-badge" id="obs-person-badge">
+          <span class="pulse-dot"></span>
+          <span id="obs-person-name">Marved ist dran</span>
+        </span>
       </div>
-      <div class="qna-question-content" id="hud-question-text">
+
+      <div class="obs-question-text" id="obs-question-text">
         Lade Frage...
       </div>
-      <div class="qna-time" id="hud-time">
-        Live Stream Q&amp;A
+
+      <div class="obs-author-row">
+        <span>gestellt von</span>
+        <span class="obs-author-name" id="obs-author-name">@Viewer</span>
+      </div>
+
+      <div class="obs-timer-track">
+        <div class="obs-timer-fill" id="obs-timer-fill"></div>
       </div>
     </div>
   </div>
 
-  <!-- SCREEN / PROMPTER MODE VIEW -->
+  <!-- VIEW: STREAMER PROMPTER -->
   <div id="view-screen-container" style="display:none;">
-    <div class="prompter-header">
-      <div class="prompter-title">
-        <span>💨 ShishaWG Streamer Prompter</span>
-        <span id="prompter-channel-tag" style="font-size:14px; color:#94a3b8;">#marved</span>
+    <div class="screen-header">
+      <div class="screen-title-group">
+        <div class="screen-logo-badge">💨</div>
+        <h1 class="screen-title">ShishaWG Fragenrunde</h1>
       </div>
-      <div class="prompter-live-badge">
-        <span class="dot"></span>
-        <span>Live-Sync aktiv</span>
+
+      <div class="screen-header-controls">
+        <label class="wheel-switch-label" title="Bestrafungsrad aktivieren/deaktivieren">
+          <input type="checkbox" id="prompter-wheel-toggle" checked>
+          <span>🎡 Bestrafungsrad</span>
+        </label>
+        <span id="prompter-live-indicator" style="font-size:12px; color:#4ade80; font-weight:700;">🟢 Live-Sync</span>
       </div>
     </div>
 
-    <!-- On Air Spotlight -->
-    <div class="prompter-spotlight-box">
-      <div class="prompter-spotlight-title">
-        <span>📺 AKTUELL LIVE IM STREAM:</span>
+    <!-- Persons Selector Bar -->
+    <div class="persons-selector-bar" id="prompter-persons-bar"></div>
+
+    <!-- Draw Action -->
+    <div class="draw-action-container">
+      <button id="btn-prompter-draw" class="btn-draw-random">
+        <span>🔀</span> Random Frage ziehen
+      </button>
+      <span class="open-questions-counter" id="prompter-open-counter">0 offene Fragen</span>
+    </div>
+
+    <!-- Active Drawn Question Box -->
+    <div id="prompter-spotlight-box" class="drawn-question-card" style="display:none;">
+      <div style="display:flex; justify-content:center;">
+        <button id="btn-prompter-cycle-person" class="drawn-person-badge-btn" title="Klicken zum Wechseln der Person">
+          <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor;"></span>
+          <span id="prompter-active-person-label">Marved ist dran</span>
+          <span style="opacity:0.6; font-size:11px;">↻</span>
+        </button>
       </div>
-      <div id="prompter-spotlight-content">
-        <div class="prompter-empty">Aktuell ist keine Frage live geschaltet. Moderatoren schalten Fragen frei...</div>
+
+      <div class="drawn-question-body">
+        <div class="drawn-question-text" id="prompter-active-question-text">
+          „Fragetext...“
+        </div>
+        <div class="drawn-question-author" id="prompter-active-author">
+          von @Viewer
+        </div>
+      </div>
+
+      <div class="question-decision-buttons">
+        <button id="btn-prompter-answered" class="btn-decision answered">
+          <span>✅</span> Beantwortet
+        </button>
+        <button id="btn-prompter-unanswered" class="btn-decision unanswered">
+          <span id="unanswered-btn-icon">❌</span> <span id="unanswered-btn-label">Nicht beantwortet</span>
+        </button>
       </div>
     </div>
 
-    <!-- Upcoming Approved Questions -->
-    <div class="prompter-upcoming-section">
-      <div class="prompter-upcoming-title">
-        <span>📋 NÄCHSTE FREIGEGEBENE FRAGEN:</span>
-      </div>
-      <div id="prompter-upcoming-list" class="prompter-upcoming-list">
-        <div class="prompter-empty" style="padding:15px; font-size:14px;">Keine weiteren Fragen in der Warteschlange.</div>
+    <!-- Empty State -->
+    <div id="prompter-no-active-box" style="text-align:center; padding:40px; color:#64748b;">
+      <p style="font-size:18px; font-weight:700;">Keine Frage aktiv.</p>
+      <p style="font-size:14px; margin-top:6px;">Klicke oben auf <strong>„Random Frage ziehen 🔀“</strong> oder schalte Fragen im Mod-Tool frei.</p>
+    </div>
+
+    <!-- Upcoming Queue -->
+    <div class="prompter-queue-section">
+      <div class="prompter-queue-title">📋 Nächste Fragen in der Warteschlange:</div>
+      <div class="prompter-queue-list" id="prompter-queue-list">
+        <div style="color:#64748b; font-size:13px; text-align:center; padding:10px;">Keine weiteren Fragen vorhanden.</div>
       </div>
     </div>
   </div>
 
-  <!-- Supabase JS Client for Instant Realtime Push -->
+  <!-- SPINNING WHEEL MODAL -->
+  <div id="wheel-modal" class="wheel-modal-backdrop">
+    <div class="wheel-container">
+      <div class="wheel-pointer"></div>
+      <canvas id="wheel-canvas" width="500" height="500"></canvas>
+      <div class="wheel-center-hub" id="wheel-center-hub" title="Klicken zum Drehen">
+        🎡
+      </div>
+    </div>
+
+    <button id="btn-spin-wheel" class="btn-draw-random" style="height:54px; font-size:17px;">
+      🎲 JETZT DREHEN!
+    </button>
+
+    <div class="wheel-winner-card" id="wheel-winner-card">
+      <div class="wheel-winner-title">🔥 Bestrafung gezogen:</div>
+      <div class="wheel-winner-text" id="wheel-winner-text">10 Liegestütze</div>
+      <div class="wheel-winner-actions">
+        <button id="btn-wheel-done" class="btn-decision answered" style="font-size:14px; padding:10px 20px;">
+          ✅ Erledigt &amp; Weiter
+        </button>
+        <button id="btn-wheel-spin-again" class="btn-decision unanswered" style="font-size:14px; padding:10px 20px;">
+          🔄 Nochmal drehen
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supabase JS Client for Realtime -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <script>
     const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkYXByY2x5Y291b3h0ZmZjdXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNzYxNjMsImV4cCI6MjEwMzc1MjE2M30.4F1ub67JbrXlIFH4tceMQuE7lZ9Yx7sfNogZ6cIfIFE';
-    const GIST_ID = '111d0abf0b0e66e2ca635c3aa8d05eb7';
 
-    let supabaseClient = null;
+    let supabase = null;
     try {
       if (window.supabase) {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       }
-    } catch(e) {
-      console.warn('Supabase client init error:', e);
-    }
-
-    let lastActiveId = null;
-    let lastUpdatedAt = null;
-    let hideTimer = null;
+    } catch(e) {}
 
     const urlParams = new URLSearchParams(window.location.search);
     const mode = (urlParams.get('mode') || 'overlay').toLowerCase();
     const targetChannel = (urlParams.get('channel') || 'marved').toLowerCase().replace('#', '').trim();
     const isPersistent = urlParams.get('persistent') === '1';
 
-    // Set body mode
+    let currentQuestions = [];
+    let activeQuestion = null;
+    let bestrafungen = [];
+    let qnaSettings = {
+      persons: ['Marved', 'Hasty', 'Kai'],
+      activePerson: 'Marved',
+      wheelEnabled: true,
+      displayDuration: 10
+    };
+
+    let obsTimerInterval = null;
+    let obsTimeLeft = 10;
+    let lastActiveId = null;
+    let isSpinning = false;
+    let wheelAngle = 0;
+    let selectedBestrafung = null;
+
+    // Set initial view mode
     if (mode === 'screen') {
       document.body.className = 'mode-screen';
       document.getElementById('view-overlay-container').style.display = 'none';
-      document.getElementById('view-screen-container').style.display = 'block';
-      const chanTag = document.getElementById('prompter-channel-tag');
-      if (chanTag) chanTag.textContent = `#${targetChannel}`;
+      document.getElementById('view-screen-container').style.display = 'flex';
     } else {
       document.body.className = 'mode-overlay';
-      document.getElementById('view-overlay-container').style.display = 'block';
+      document.getElementById('view-overlay-container').style.display = 'flex';
       document.getElementById('view-screen-container').style.display = 'none';
     }
 
-    async function syncQnA() {
-      // 1. Primary: Direct Supabase Query (Real-time Database)
-      if (supabaseClient) {
-        try {
-          const { data, error } = await supabaseClient
-            .from('qna_questions')
-            .select('*')
-            .eq('channel', targetChannel)
-            .order('created_at', { ascending: false });
+    // --- DATA SYNC ---
+    async function syncAllData() {
+      if (!supabase) return;
 
-          if (!error && Array.isArray(data)) {
-            const mapped = data.map(r => ({
-              id: r.id,
-              channel: r.channel,
-              login: r.login,
-              displayName: r.display_name,
-              userColor: r.user_color,
-              userId: r.user_id,
-              isSub: r.is_sub,
-              isMod: r.is_mod,
-              question: r.question,
-              status: r.status,
-              duplicateCount: r.duplicate_count || 1,
-              duplicateUsers: r.duplicate_users || [],
-              timestamp: new Date(r.created_at).getTime(),
-              updatedAt: new Date(r.updated_at).getTime()
-            }));
-
-            const activeQ = mapped.find(q => q.status === 'on_air') || null;
-            renderQnAData(activeQ, mapped);
-            return;
-          }
-        } catch(e) {
-          console.warn('Supabase fetch error, fallback to local/gist:', e);
-        }
-      }
-
-      // 2. Fallback: Local Server (0ms latency if local)
+      // 1. Fetch Questions
       try {
-        const localActiveRes = await fetch(`http://127.0.0.1:18942/api/qna/active?t=${Date.now()}`);
-        if (localActiveRes.ok) {
-          const localActiveData = await localActiveRes.json();
-          let allQuestions = [];
-          if (mode === 'screen') {
-            try {
-              const localQRes = await fetch(`http://127.0.0.1:18942/api/qna/questions?t=${Date.now()}`);
-              if (localQRes.ok) {
-                allQuestions = await localQRes.json();
-              }
-            } catch(e) {}
-          }
-          renderQnAData(localActiveData.active, allQuestions);
-          return;
-        }
-      } catch(localErr) {}
+        const { data: qData } = await supabase
+          .from('qna_questions')
+          .select('*')
+          .eq('channel', targetChannel)
+          .order('created_at', { ascending: false });
 
-      // 3. Fallback: Raw Gist
+        if (qData) {
+          currentQuestions = qData.map(r => ({
+            id: r.id,
+            channel: r.channel,
+            login: r.login,
+            displayName: r.display_name,
+            userColor: r.user_color,
+            question: r.question,
+            status: r.status,
+            person: r.person || '',
+            timestamp: new Date(r.created_at).getTime()
+          }));
+          activeQuestion = currentQuestions.find(q => q.status === 'on_air') || null;
+        }
+      } catch(e) {}
+
+      // 2. Fetch Settings
       try {
-        const activeRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_active.json?t=${Date.now()}`);
-        let activeQ = null;
-        if (activeRes.ok) {
-          const rawActive = await activeRes.json();
-          activeQ = (rawActive && typeof rawActive === 'object' && 'active' in rawActive) ? rawActive.active : rawActive;
+        const { data: sData } = await supabase
+          .from('qna_settings')
+          .select('*')
+          .eq('channel', targetChannel)
+          .maybeSingle();
+
+        if (sData) {
+          qnaSettings.persons = Array.isArray(sData.persons) ? sData.persons : ['Marved', 'Hasty', 'Kai'];
+          qnaSettings.activePerson = sData.active_person || qnaSettings.persons[0] || 'Marved';
+          qnaSettings.wheelEnabled = sData.wheel_enabled !== false;
+          qnaSettings.displayDuration = sData.display_duration || 10;
         }
-        let allQuestions = [];
-        if (mode === 'screen') {
-          try {
-            const qRes = await fetch(`https://gist.githubusercontent.com/BazZTee/${GIST_ID}/raw/qna_questions.json?t=${Date.now()}`);
-            if (qRes.ok) allQuestions = await qRes.json();
-          } catch(e) {}
+      } catch(e) {}
+
+      // 3. Fetch Bestrafungen
+      try {
+        const { data: bData } = await supabase
+          .from('bestrafungen')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (bData) {
+          bestrafungen = bData;
         }
-        renderQnAData(activeQ, allQuestions);
-      } catch(err) {}
+      } catch(e) {}
+
+      renderCurrentView();
     }
 
-    // Initialize Realtime WebSocket Push Subscription (<30ms instant updates)
-    if (supabaseClient) {
-      try {
-        supabaseClient
-          .channel('realtime:qna_questions')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_questions' }, (payload) => {
-            console.log('⚡ Supabase Realtime Push received:', payload);
-            syncQnA();
-          })
-          .subscribe();
-      } catch(e) {
-        console.warn('Realtime subscription error:', e);
-      }
-    }
-
-    syncQnA();
-    setInterval(syncQnA, 5000);
-
-    function renderQnAData(activeQ, allQuestions) {
+    function renderCurrentView() {
       if (mode === 'screen') {
-        renderScreenMode(activeQ, allQuestions);
+        renderScreenPrompter();
       } else {
-        renderOverlayMode(activeQ);
+        renderOBSOverlay();
       }
     }
 
-    function renderOverlayMode(activeQ) {
-      const card = document.getElementById('qna-hud-card');
+    // --- SCREEN PROMPTER RENDERING ---
+    function renderScreenPrompter() {
+      // 1. Persons Bar
+      const personsBar = document.getElementById('prompter-persons-bar');
+      if (personsBar) {
+        personsBar.innerHTML = qnaSettings.persons.map(p => {
+          const isActive = p === qnaSettings.activePerson;
+          const pLower = p.toLowerCase();
+          const cls = (pLower === 'marved' || pLower === 'hasty' || pLower === 'kai') ? pLower : 'custom';
+          return `
+            <button class="person-btn ${cls} ${isActive ? 'active' : ''}" data-person="${escapeHtml(p)}">
+              ${escapeHtml(p)}
+            </button>
+          `;
+        }).join('');
+
+        personsBar.querySelectorAll('.person-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const p = e.currentTarget.getAttribute('data-person');
+            qnaSettings.activePerson = p;
+            await supabase.from('qna_settings').upsert({
+              channel: targetChannel,
+              persons: qnaSettings.persons,
+              active_person: p,
+              wheel_enabled: qnaSettings.wheelEnabled,
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'channel' });
+            renderScreenPrompter();
+          });
+        });
+      }
+
+      // 2. Wheel Toggle in Header
+      const wheelToggle = document.getElementById('prompter-wheel-toggle');
+      if (wheelToggle) {
+        wheelToggle.checked = qnaSettings.wheelEnabled;
+      }
+      const unBtnIcon = document.getElementById('unanswered-btn-icon');
+      const unBtnLabel = document.getElementById('unanswered-btn-label');
+      if (unBtnIcon && unBtnLabel) {
+        unBtnIcon.textContent = qnaSettings.wheelEnabled ? '🎡' : '⏭️';
+        unBtnLabel.textContent = qnaSettings.wheelEnabled ? 'Nicht beantwortet (Rad)' : 'Überspringen';
+      }
+
+      // 3. Open Questions Counter
+      const openCount = currentQuestions.filter(q => q.status === 'approved' || q.status === 'pending').length;
+      const counterEl = document.getElementById('prompter-open-counter');
+      if (counterEl) counterEl.textContent = `${openCount} offene Frage(n)`;
+
+      const btnDraw = document.getElementById('btn-prompter-draw');
+      if (btnDraw) btnDraw.disabled = (openCount === 0);
+
+      // 4. Spotlight Card
+      const spotBox = document.getElementById('prompter-spotlight-box');
+      const noActiveBox = document.getElementById('prompter-no-active-box');
+
+      if (activeQuestion) {
+        if (spotBox) spotBox.style.display = 'block';
+        if (noActiveBox) noActiveBox.style.display = 'none';
+
+        const personLabel = document.getElementById('prompter-active-person-label');
+        if (personLabel) personLabel.textContent = `${activeQuestion.person || qnaSettings.activePerson} ist dran`;
+
+        const qText = document.getElementById('prompter-active-question-text');
+        if (qText) qText.textContent = `„${activeQuestion.question}“`;
+
+        const qAuthor = document.getElementById('prompter-active-author');
+        if (qAuthor) qAuthor.textContent = `von @${activeQuestion.displayName || activeQuestion.login}`;
+      } else {
+        if (spotBox) spotBox.style.display = 'none';
+        if (noActiveBox) noActiveBox.style.display = 'block';
+      }
+
+      // 5. Upcoming Queue
+      const queueList = document.getElementById('prompter-queue-list');
+      if (queueList) {
+        const upcoming = currentQuestions.filter(q => (q.status === 'approved' || q.status === 'pending') && (!activeQuestion || q.id !== activeQuestion.id));
+        if (upcoming.length === 0) {
+          queueList.innerHTML = '<div style="color:#64748b; font-size:13px; text-align:center; padding:10px;">Keine weiteren Fragen in der Warteschlange.</div>';
+        } else {
+          queueList.innerHTML = upcoming.slice(0, 5).map(q => `
+            <div class="prompter-queue-item">
+              <span class="author">@${escapeHtml(q.displayName || q.login)}:</span>
+              <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(q.question)}</span>
+            </div>
+          `).join('');
+        }
+      }
+    }
+
+    // --- PROMPTER USER ACTIONS ---
+    const btnDraw = document.getElementById('btn-prompter-draw');
+    if (btnDraw) {
+      btnDraw.addEventListener('click', async () => {
+        const pool = currentQuestions.filter(q => q.status === 'approved' || q.status === 'pending');
+        if (pool.length === 0) return;
+        const randomQ = pool[Math.floor(Math.random() * pool.length)];
+
+        // Reset all on_air to approved
+        await supabase.from('qna_questions').update({ status: 'approved' }).eq('channel', targetChannel).eq('status', 'on_air');
+
+        // Set selected to on_air with assigned person
+        await supabase.from('qna_questions').update({
+          status: 'on_air',
+          person: qnaSettings.activePerson,
+          updated_at: new Date().toISOString()
+        }).eq('id', randomQ.id);
+
+        syncAllData();
+      });
+    }
+
+    // Cycle Person on badge click
+    const btnCycle = document.getElementById('btn-prompter-cycle-person');
+    if (btnCycle) {
+      btnCycle.addEventListener('click', async () => {
+        const idx = qnaSettings.persons.indexOf(qnaSettings.activePerson);
+        const next = qnaSettings.persons[(idx + 1) % qnaSettings.persons.length];
+        qnaSettings.activePerson = next;
+        if (activeQuestion) {
+          await supabase.from('qna_questions').update({ person: next }).eq('id', activeQuestion.id);
+        }
+        await supabase.from('qna_settings').upsert({
+          channel: targetChannel,
+          persons: qnaSettings.persons,
+          active_person: next,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'channel' });
+        syncAllData();
+      });
+    }
+
+    // Answered Action
+    const btnAnswered = document.getElementById('btn-prompter-answered');
+    if (btnAnswered) {
+      btnAnswered.addEventListener('click', async () => {
+        if (!activeQuestion) return;
+        await supabase.from('qna_questions').update({ status: 'answered', updated_at: new Date().toISOString() }).eq('id', activeQuestion.id);
+        cycleToNextPerson();
+      });
+    }
+
+    // Unanswered / Skip Action
+    const btnUnanswered = document.getElementById('btn-prompter-unanswered');
+    if (btnUnanswered) {
+      btnUnanswered.addEventListener('click', async () => {
+        if (!activeQuestion) return;
+        if (qnaSettings.wheelEnabled) {
+          openSpinningWheel();
+        } else {
+          await supabase.from('qna_questions').update({ status: 'answered', updated_at: new Date().toISOString() }).eq('id', activeQuestion.id);
+          cycleToNextPerson();
+        }
+      });
+    }
+
+    // Wheel Toggle Switch Event
+    const prompterWheelToggle = document.getElementById('prompter-wheel-toggle');
+    if (prompterWheelToggle) {
+      prompterWheelToggle.addEventListener('change', async (e) => {
+        qnaSettings.wheelEnabled = !!e.target.checked;
+        await supabase.from('qna_settings').upsert({
+          channel: targetChannel,
+          persons: qnaSettings.persons,
+          active_person: qnaSettings.activePerson,
+          wheel_enabled: qnaSettings.wheelEnabled,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'channel' });
+        renderScreenPrompter();
+      });
+    }
+
+    async function cycleToNextPerson() {
+      const idx = qnaSettings.persons.indexOf(qnaSettings.activePerson);
+      const next = qnaSettings.persons[(idx + 1) % qnaSettings.persons.length];
+      qnaSettings.activePerson = next;
+      await supabase.from('qna_settings').upsert({
+        channel: targetChannel,
+        persons: qnaSettings.persons,
+        active_person: next,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'channel' });
+      syncAllData();
+    }
+
+    // --- OBS OVERLAY RENDERING ---
+    function renderOBSOverlay() {
+      const card = document.getElementById('obs-hud-card');
       if (!card) return;
 
-      if (!activeQ || !activeQ.question) {
+      if (!activeQuestion) {
         card.classList.remove('visible');
         lastActiveId = null;
+        if (obsTimerInterval) clearInterval(obsTimerInterval);
         return;
       }
 
-      if (activeQ.id !== lastActiveId || (activeQ.updatedAt && activeQ.updatedAt !== lastUpdatedAt)) {
-        lastActiveId = activeQ.id;
-        lastUpdatedAt = activeQ.updatedAt;
+      if (activeQuestion.id !== lastActiveId) {
+        lastActiveId = activeQuestion.id;
 
-        const userNameEl = document.getElementById('hud-user-name');
-        const userSubEl = document.getElementById('hud-user-sub');
-        const userModEl = document.getElementById('hud-user-mod');
-        const textEl = document.getElementById('hud-question-text');
-        const timeEl = document.getElementById('hud-time');
+        const personEl = document.getElementById('obs-person-name');
+        const pName = activeQuestion.person || qnaSettings.activePerson || 'Marved';
+        if (personEl) personEl.textContent = `${pName} ist dran`;
 
-        if (userNameEl) {
-          userNameEl.textContent = `@${activeQ.displayName || activeQ.login}`;
-          if (activeQ.userColor) userNameEl.style.color = activeQ.userColor;
-        }
+        const qTextEl = document.getElementById('obs-question-text');
+        if (qTextEl) qTextEl.textContent = `„${activeQuestion.question}“`;
 
-        if (userSubEl) userSubEl.style.display = activeQ.isSub ? 'inline-block' : 'none';
-        if (userModEl) userModEl.style.display = activeQ.isMod ? 'inline-block' : 'none';
-
-        if (textEl) {
-          const isLong = (activeQ.question || '').length > 100;
-          textEl.style.fontSize = isLong ? '16px' : '20px';
-          textEl.textContent = `„${activeQ.question}“`;
-        }
-
-        if (timeEl && activeQ.timestamp) {
-          const d = new Date(activeQ.timestamp);
-          const timeStr = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-          timeEl.textContent = `Gestellt um ${timeStr} Uhr`;
-        }
+        const authorEl = document.getElementById('obs-author-name');
+        if (authorEl) authorEl.textContent = `@${activeQuestion.displayName || activeQuestion.login}`;
 
         card.classList.add('visible');
 
+        // Start Countdown Timer Bar
+        const fillEl = document.getElementById('obs-timer-fill');
+        if (fillEl) fillEl.style.width = '100%';
+
         if (!isPersistent) {
-          if (hideTimer) clearTimeout(hideTimer);
-          // Stay visible for 45s, then fade out smoothly
-          hideTimer = setTimeout(() => {
-            card.classList.remove('visible');
-          }, 45000);
+          if (obsTimerInterval) clearInterval(obsTimerInterval);
+          const duration = qnaSettings.displayDuration || 10;
+          obsTimeLeft = duration;
+
+          obsTimerInterval = setInterval(() => {
+            obsTimeLeft -= 1;
+            if (fillEl) {
+              const pct = Math.max(0, (obsTimeLeft / duration) * 100);
+              fillEl.style.width = `${pct}%`;
+            }
+            if (obsTimeLeft <= 0) {
+              clearInterval(obsTimerInterval);
+              card.classList.remove('visible');
+            }
+          }, 1000);
         }
       }
     }
 
-    function renderScreenMode(activeQ, allQuestions) {
-      const spotContainer = document.getElementById('prompter-spotlight-content');
-      const upcomingContainer = document.getElementById('prompter-upcoming-list');
+    // --- GLÜCKSRAD (SPINNING WHEEL) ENGINE ---
+    const wheelColors = ['#f43f5e', '#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4', '#84cc16'];
 
-      if (spotContainer) {
-        if (!activeQ || !activeQ.question) {
-          spotContainer.innerHTML = '<div class="prompter-empty">Aktuell ist keine Frage live geschaltet. Moderatoren schalten Fragen frei...</div>';
+    function openSpinningWheel() {
+      const openBestrafungen = bestrafungen.filter(b => b.status === 'offen');
+      if (openBestrafungen.length === 0) {
+        alert('Keine offenen Bestrafungen vorhanden! Lege zuerst im Mod-Tool Bestrafungen an.');
+        return;
+      }
+
+      const modal = document.getElementById('wheel-modal');
+      const winnerCard = document.getElementById('wheel-winner-card');
+      if (winnerCard) winnerCard.classList.remove('show');
+      if (modal) modal.classList.add('active');
+
+      drawWheelCanvas(openBestrafungen);
+    }
+
+    function drawWheelCanvas(items) {
+      const canvas = document.getElementById('wheel-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const numSegments = items.length;
+      const arcSize = (2 * Math.PI) / numSegments;
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = canvas.width / 2 - 10;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let i = 0; i < numSegments; i++) {
+        const angle = wheelAngle + i * arcSize;
+        ctx.beginPath();
+        ctx.fillStyle = wheelColors[i % wheelColors.length];
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, angle, angle + arcSize);
+        ctx.lineTo(centerX, centerY);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw text
+        ctx.save();
+        ctx.translate(centerX, centerY);
+        ctx.rotate(angle + arcSize / 2);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Outfit, sans-serif';
+        ctx.shadowColor = 'rgba(0,0,0,0.8)';
+        ctx.shadowBlur = 6;
+        
+        let label = items[i].name;
+        if (label.length > 20) label = label.substr(0, 18) + '...';
+        ctx.fillText(label, radius - 24, 6);
+        ctx.restore();
+      }
+    }
+
+    function spinWheel() {
+      if (isSpinning) return;
+      const openBestrafungen = bestrafungen.filter(b => b.status === 'offen');
+      if (openBestrafungen.length === 0) return;
+
+      isSpinning = true;
+      const btnSpin = document.getElementById('btn-spin-wheel');
+      if (btnSpin) btnSpin.disabled = true;
+
+      const numSegments = openBestrafungen.length;
+      const arcSize = (2 * Math.PI) / numSegments;
+
+      // Random winning index
+      const winningIndex = Math.floor(Math.random() * numSegments);
+      selectedBestrafung = openBestrafungen[winningIndex];
+
+      // Target angle calculations (stopping top at 3 * PI / 2)
+      const targetSegmentAngle = winningIndex * arcSize + arcSize / 2;
+      const totalSpins = 5 + Math.random() * 3;
+      const totalRotation = totalSpins * 2 * Math.PI + (1.5 * Math.PI - targetSegmentAngle);
+
+      const startTime = performance.now();
+      const duration = 4000;
+      const startAngle = wheelAngle;
+
+      function animateSpin(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease-out cubic deceleration
+        const easeOut = 1 - Math.pow(1 - progress, 3);
+
+        wheelAngle = startAngle + totalRotation * easeOut;
+        drawWheelCanvas(openBestrafungen);
+
+        if (progress < 1) {
+          requestAnimationFrame(animateSpin);
         } else {
-          const userColor = activeQ.userColor || '#00f0ff';
-          const qText = activeQ.question || '';
-          const isLong = qText.length > 100;
-          const isVeryLong = qText.length > 200;
-          const fontSize = isVeryLong ? '22px' : (isLong ? '26px' : '32px');
-
-          spotContainer.innerHTML = `
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">
-              <span style="font-size:20px; font-weight:800; color:${userColor};">@${escapeHtml(activeQ.displayName || activeQ.login)}</span>
-              ${activeQ.isSub ? '<span class="qna-badge-sub">SUB</span>' : ''}
-              ${activeQ.isMod ? '<span class="qna-badge-mod">MOD</span>' : ''}
-            </div>
-            <div class="prompter-big-question" style="font-size:${fontSize}; word-break:break-word; overflow-wrap:break-word; line-height:1.4;">„${escapeHtml(qText)}“</div>
-          `;
+          isSpinning = false;
+          if (btnSpin) btnSpin.disabled = false;
+          showWheelWinner(selectedBestrafung);
         }
       }
 
-      if (upcomingContainer && Array.isArray(allQuestions)) {
-        const approved = allQuestions.filter(q => q.status === 'approved' && (!activeQ || q.id !== activeQ.id));
-        if (approved.length === 0) {
-          upcomingContainer.innerHTML = '<div class="prompter-empty" style="padding:15px; font-size:14px;">Keine weiteren Fragen in der Warteschlange.</div>';
-        } else {
-          upcomingContainer.innerHTML = '';
-          approved.slice(0, 6).forEach(q => {
-            const item = document.createElement('div');
-            item.className = 'prompter-upcoming-item';
-            item.innerHTML = `
-              <span class="user">@${escapeHtml(q.displayName || q.login)}</span>
-              <span class="text" style="word-break:break-word; overflow-wrap:break-word;">„${escapeHtml(q.question)}“</span>
-            `;
-            upcomingContainer.appendChild(item);
-          });
+      requestAnimationFrame(animateSpin);
+    }
+
+    function showWheelWinner(item) {
+      const winnerCard = document.getElementById('wheel-winner-card');
+      const winnerText = document.getElementById('wheel-winner-text');
+      if (winnerText) winnerText.textContent = item.name;
+      if (winnerCard) winnerCard.classList.add('show');
+    }
+
+    // Wheel Modal Action Buttons
+    const btnSpin = document.getElementById('btn-spin-wheel');
+    const hubSpin = document.getElementById('wheel-center-hub');
+    if (btnSpin) btnSpin.addEventListener('click', spinWheel);
+    if (hubSpin) hubSpin.addEventListener('click', spinWheel);
+
+    const btnWheelDone = document.getElementById('btn-wheel-done');
+    if (btnWheelDone) {
+      btnWheelDone.addEventListener('click', async () => {
+        if (selectedBestrafung) {
+          await supabase.from('bestrafungen').update({ status: 'erledigt' }).eq('id', selectedBestrafung.id);
         }
-      }
+        if (activeQuestion) {
+          await supabase.from('qna_questions').update({ status: 'answered' }).eq('id', activeQuestion.id);
+        }
+        document.getElementById('wheel-modal').classList.remove('active');
+        cycleToNextPerson();
+      });
+    }
+
+    const btnWheelSpinAgain = document.getElementById('btn-wheel-spin-again');
+    if (btnWheelSpinAgain) {
+      btnWheelSpinAgain.addEventListener('click', async () => {
+        if (selectedBestrafung) {
+          await supabase.from('bestrafungen').update({ status: 'erledigt' }).eq('id', selectedBestrafung.id);
+        }
+        document.getElementById('wheel-winner-card').classList.remove('show');
+        await syncAllData();
+        openSpinningWheel();
+      });
     }
 
     function escapeHtml(str) {
@@ -548,8 +1170,18 @@
         .replace(/'/g, '&#039;');
     }
 
-    syncQnA();
-    setInterval(syncQnA, 2500);
+    // --- REALTIME SUBSCRIPTIONS ---
+    if (supabase) {
+      supabase
+        .channel('public:all-qna')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_questions' }, () => syncAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_settings' }, () => syncAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bestrafungen' }, () => syncAllData())
+        .subscribe();
+    }
+
+    syncAllData();
+    setInterval(syncAllData, 4000);
   </script>
 </body>
 </html>

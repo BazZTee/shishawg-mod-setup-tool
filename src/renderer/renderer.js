@@ -5655,23 +5655,11 @@ function applyPollPreset(presetKey) {
 
 async function loadQnAState() {
   try {
-    const qRes = await ipcRenderer.invoke('qna:get-questions');
+    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const qRes = await ipcRenderer.invoke('qna:get-questions', chan);
     if (qRes && qRes.success && Array.isArray(qRes.questions)) {
       qnaState.questions = qRes.questions;
-    }
-
-    const activeRes = await ipcRenderer.invoke('qna:get-active');
-    if (activeRes && activeRes.success) {
-      if (activeRes.active) {
-        const match = qnaState.questions.find(x => x.id === activeRes.active.id);
-        if (match && match.status !== 'on_air') {
-          qnaState.activeQuestion = null;
-        } else {
-          qnaState.activeQuestion = activeRes.active;
-        }
-      } else {
-        qnaState.activeQuestion = null;
-      }
+      qnaState.activeQuestion = qRes.questions.find(q => q.status === 'on_air') || null;
     }
 
     const tmplRes = await ipcRenderer.invoke('polls:get-templates');
@@ -5679,7 +5667,6 @@ async function loadQnAState() {
       pollsState.templates = tmplRes.templates;
     }
 
-    const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
     const pollRes = await ipcRenderer.invoke('polls:get-active', chan);
     if (pollRes && pollRes.success) {
       pollsState.activePoll = pollRes.poll;
@@ -5757,8 +5744,8 @@ function handleNewQnAQuestion(q) {
 
   showToast(`🙋 Neue Frage von @${q.displayName || q.login}!`, 'info');
 
-  // Persist to local & Gist
-  ipcRenderer.invoke('qna:save-questions', qnaState.questions).catch(() => {});
+  // Persist new question to Supabase
+  ipcRenderer.invoke('qna:upsert-question', q).catch(() => {});
 
   renderQnAQuestionsList();
 }

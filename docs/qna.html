@@ -904,7 +904,6 @@
             headers: reqHeaders,
             body: JSON.stringify({
               status: 'on_air',
-              person: qnaSettings.activePerson,
               updated_at: new Date().toISOString()
             })
           });
@@ -925,13 +924,6 @@
         if (activeQuestion) {
           activeQuestion.person = next;
           renderScreenPrompter();
-          try {
-            await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
-              method: 'PATCH',
-              headers: reqHeaders,
-              body: JSON.stringify({ person: next, updated_at: new Date().toISOString() })
-            });
-          } catch(e) {}
         }
         await saveSettingsRemote();
         syncAllData();

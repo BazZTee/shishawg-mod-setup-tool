@@ -124,7 +124,6 @@ class SupabaseService {
         is_mod: !!q.isMod,
         question: q.question || '',
         status: q.status || 'pending',
-        person: q.person || null,
         duplicate_count: q.duplicateCount || 1,
         duplicate_users: q.duplicateUsers || [],
         updated_at: new Date(q.updatedAt || Date.now()).toISOString()
@@ -160,7 +159,6 @@ class SupabaseService {
         is_mod: !!q.isMod,
         question: q.question || '',
         status: q.status || 'pending',
-        person: q.person || null,
         duplicate_count: q.duplicateCount || 1,
         duplicate_users: q.duplicateUsers || [],
         created_at: new Date(q.timestamp || Date.now()).toISOString(),

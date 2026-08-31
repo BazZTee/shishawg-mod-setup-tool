@@ -5114,6 +5114,7 @@ async function saveQnASettings() {
   const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
   await ipcRenderer.invoke('qna:save-settings', chan, {
     persons: qnaPersons,
+    activePerson: qnaPersons[0] || 'Marved',
     wheelEnabled: qnaWheelEnabled
   });
 }

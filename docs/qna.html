@@ -417,6 +417,28 @@
       transform: scale(1.04);
     }
 
+    /* Status Bar Footer */
+    .streamer-status-footer {
+      padding: 12px 24px;
+      font-size: 12px;
+      color: #64748b;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      background: #0a0c13;
+    }
+
+    .status-badge-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 6px #10b981;
+    }
+
     /* =========================================================
        SPINNING WHEEL MODAL (GLÜCKSRAD)
        ========================================================= */
@@ -570,7 +592,7 @@
   </div>
 
   <!-- STREAMER FRONTEND / PROMPTER (Base44 Exact) -->
-  <div id="view-screen-container" style="display:flex;">
+  <div id="view-screen-container" style="display:flex; flex-direction:column; min-height:100vh;">
     <!-- Navbar -->
     <header class="streamer-navbar">
       <div class="streamer-brand">
@@ -601,7 +623,7 @@
       </div>
 
       <div class="questions-count-label" id="prompter-open-counter">
-        0 offene Fragen übrig
+        Lade Fragen...
       </div>
 
       <!-- Empty State Card -->
@@ -636,6 +658,15 @@
         </div>
       </div>
     </main>
+
+    <!-- Footer Status -->
+    <footer class="streamer-status-footer">
+      <span><span class="status-badge-dot"></span> <span id="status-conn-label">Supabase Live</span></span>
+      <span>•</span>
+      <span id="status-questions-label">0 Fragen</span>
+      <span>•</span>
+      <span id="status-sync-time">Sync: Läuft...</span>
+    </footer>
   </div>
 
   <!-- SPINNING WHEEL MODAL -->
@@ -710,17 +741,18 @@
       document.getElementById('view-screen-container').style.display = 'flex';
     }
 
-    // Direct REST API Sync (100% reliable, zero ad-blocker conflicts)
     async function syncAllData() {
       try {
         // 1. Fetch Questions
-        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&channel=eq.${encodeURIComponent(targetChannel)}&order=created_at.desc&t=${Date.now()}`, {
+        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&order=created_at.desc&t=${Date.now()}`, {
           headers: reqHeaders
         });
         if (qRes.ok) {
           const qData = await qRes.json();
           if (Array.isArray(qData)) {
-            currentQuestions = qData.map(r => ({
+            // Filter for targetChannel or fallback if channel matches
+            const filtered = qData.filter(r => !r.channel || r.channel.toLowerCase() === targetChannel);
+            currentQuestions = filtered.map(r => ({
               id: r.id,
               channel: r.channel,
               login: r.login,
@@ -747,8 +779,12 @@
           const sData = await sRes.json();
           if (Array.isArray(sData) && sData.length > 0) {
             const s = sData[0];
-            qnaSettings.persons = (Array.isArray(s.persons) && s.persons.length > 0) ? s.persons : ['Marved', 'Hasty', 'Kai'];
-            qnaSettings.activePerson = s.active_person || qnaSettings.persons[0] || 'Marved';
+            if (Array.isArray(s.persons) && s.persons.length > 0) {
+              qnaSettings.persons = s.persons;
+            }
+            if (s.active_person) {
+              qnaSettings.activePerson = s.active_person;
+            }
             qnaSettings.wheelEnabled = s.wheel_enabled !== false;
             qnaSettings.displayDuration = s.display_duration || 10;
           }
@@ -770,6 +806,16 @@
         }
       } catch(e) {
         console.warn('Bestrafungen fetch error:', e);
+      }
+
+      const syncTimeEl = document.getElementById('status-sync-time');
+      if (syncTimeEl) {
+        syncTimeEl.textContent = 'Sync: ' + new Date().toLocaleTimeString('de-DE');
+      }
+      const questionsLabelEl = document.getElementById('status-questions-label');
+      if (questionsLabelEl) {
+        const onAirCount = activeQuestion ? 1 : 0;
+        questionsLabelEl.textContent = `${currentQuestions.length} Fragen (${onAirCount} Live)`;
       }
 
       renderCurrentView();
@@ -1170,7 +1216,7 @@
     }
 
     syncAllData();
-    setInterval(syncAllData, 2000);
+    setInterval(syncAllData, 1500);
   </script>
 </body>
 </html>

@@ -787,9 +787,9 @@ ipcMain.handle('channelpoints:stop-listener', async () => {
   return twitchService.stopChannelPointsListener();
 });
 
-ipcMain.handle('channelpoints:create-manual-link', async (event, { user, prize, channel, postToChat }) => {
+ipcMain.handle('channelpoints:create-manual-link', async (event, { user, prize, type, channel, postToChat }) => {
   const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
-  return twitchService.createManualClaimLink(user, prize, chan, postToChat);
+  return twitchService.createManualClaimLink(user, prize, chan, postToChat, type);
 });
 
 // Q&A Fragensammler IPC Handlers

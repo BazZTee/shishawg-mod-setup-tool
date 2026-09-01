@@ -591,6 +591,12 @@ class SupabaseService {
           }
         }
 
+        const addressObj = decryptedAddr && typeof decryptedAddr === 'object' ? decryptedAddr : null;
+        const prizeLower = (r.prize || '').toLowerCase();
+        const inferredType = prizeLower.includes('kohle') || prizeLower.includes('zauber') || prizeLower.includes('punkte') || prizeLower.includes('würfel') || prizeLower.includes('wuerfel') || prizeLower.includes('cube')
+          ? 'channel_points'
+          : 'giveaway';
+
         return {
           id: r.id,
           channel: r.channel || cleanChan,
@@ -599,6 +605,8 @@ class SupabaseService {
           prize: r.prize,
           status: r.status,
           address: decryptedAddr,
+          coalSize: addressObj ? (addressObj.coalSize || addressObj.coal_size || '') : '',
+          type: addressObj?.rewardType || inferredType,
           timestamp: new Date(r.created_at).getTime()
         };
       });
@@ -614,7 +622,11 @@ class SupabaseService {
       let addressToSave = null;
       if (winner.address) {
         if (typeof winner.address === 'object') {
-          addressToSave = encryptAddress(winner.address);
+          const addressObject = { ...winner.address };
+          if ((winner.type === 'channel_points' || winner.type === 'giveaway') && !addressObject.rewardType) {
+            addressObject.rewardType = winner.type;
+          }
+          addressToSave = encryptAddress(addressObject);
         } else if (typeof winner.address === 'string') {
           if (isEncrypted(winner.address)) {
             addressToSave = winner.address;
@@ -627,10 +639,14 @@ class SupabaseService {
             }
           }
         }
+      } else if (winner.type === 'channel_points' || winner.type === 'giveaway') {
+        // Persist explicit type without requiring non-existent type/coal_size columns.
+        addressToSave = encryptAddress({ rewardType: winner.type });
       }
 
       const row = {
         id: winner.id || ('win_' + Date.now()),
+        channel: cleanChan,
         username: winner.username || winner.user_login || winner.user_name || '',
         display_name: winner.displayName || winner.user_name || winner.username || '',
         prize: winner.prize || '',
@@ -639,11 +655,14 @@ class SupabaseService {
         created_at: new Date(winner.timestamp || winner.created_at || Date.now()).toISOString()
       };
 
-      await this.client
+      const { error } = await this.client
         .from('giveaway_winners')
         .upsert(row, { onConflict: 'id' });
+      if (error) throw error;
+      return true;
     } catch(err) {
       console.error('Supabase saveGiveawayWinner error:', err.message);
+      throw err;
     }
   }
 

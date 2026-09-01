@@ -1052,28 +1052,31 @@ class TwitchService {
     return { success: true };
   }
 
-  async createManualClaimLink(userLogin, prizeTitle = '1KG Zauberwürfel FREE!', channel = this.targetChannel, postToChat = false) {
+  async createManualClaimLink(userLogin, prizeTitle = '1KG Zauberwürfel FREE!', channel = this.targetChannel, postToChat = false, rewardType = '') {
     const cleanUser = (userLogin || '').replace(/^@/, '').toLowerCase().trim();
     if (!cleanUser) throw new Error('Twitch-Username ist erforderlich.');
 
     const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
     const prize = (prizeTitle || '1KG Zauberwürfel FREE!').trim();
     const uniqueId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    const isChannelPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte');
+    const isChannelPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte') || prize.toLowerCase().includes('würfel') || prize.toLowerCase().includes('wuerfel') || prize.toLowerCase().includes('cube');
+    const normalizedType = rewardType === 'channel_points' || rewardType === 'giveaway'
+      ? rewardType
+      : (isChannelPoints ? 'channel_points' : 'giveaway');
 
     const item = {
       id: uniqueId,
       user_login: cleanUser,
       user_name: cleanUser,
       prize,
-      type: isChannelPoints ? 'channel_points' : 'giveaway',
+      type: normalizedType,
       status: 'pending',
       created_at: new Date().toISOString(),
       channel: chan
     };
 
     await supabaseService.saveGiveawayWinner(item, chan);
-    const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(cleanUser)}&prize=${encodeURIComponent(prize)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
+    const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(cleanUser)}&prize=${encodeURIComponent(prize)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}&type=${encodeURIComponent(normalizedType)}`;
 
     if (postToChat) {
       const msg = `@${cleanUser} 📦 Hier ist dein gesicherter Adresslink für "${prize}" 👉 ${claimUrl}`;

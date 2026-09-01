@@ -5627,11 +5627,26 @@ function setupGiveawaysListeners() {
   const btnCloseManual = document.getElementById('btn-close-manual-reward-modal');
   const btnCancelManual = document.getElementById('btn-cancel-manual-reward');
   const btnSubmitManual = document.getElementById('btn-create-manual-reward-submit');
+  const manualRewardTypeInputs = document.querySelectorAll('input[name="manual_reward_type"]');
+  const syncManualRewardPrize = () => {
+    const rewardType = document.querySelector('input[name="manual_reward_type"]:checked')?.value || 'giveaway';
+    const prizeInput = document.getElementById('input-manual-reward-prize');
+    if (prizeInput) {
+      prizeInput.value = rewardType === 'channel_points' ? '1KG Zauberwürfel FREE!' : 'Giveaway Gewinn';
+    }
+  };
+
+  manualRewardTypeInputs.forEach(input => input.addEventListener('change', syncManualRewardPrize));
 
   if (btnOpenManual && modalManual) {
     btnOpenManual.addEventListener('click', () => {
       modalManual.classList.remove('hidden');
       const inputUser = document.getElementById('input-manual-reward-user');
+      const giveawayType = document.querySelector('input[name="manual_reward_type"][value="giveaway"]');
+      const postChatToggle = document.getElementById('chk-manual-reward-post-chat');
+      if (giveawayType) giveawayType.checked = true;
+      if (postChatToggle) postChatToggle.checked = false;
+      syncManualRewardPrize();
       if (inputUser) { inputUser.value = ''; inputUser.focus(); }
     });
   }
@@ -5646,7 +5661,8 @@ function setupGiveawaysListeners() {
   if (btnSubmitManual && modalManual) {
     btnSubmitManual.addEventListener('click', async () => {
       const user = document.getElementById('input-manual-reward-user')?.value.trim();
-      const prize = document.getElementById('input-manual-reward-prize')?.value.trim() || 'Shisha-Kohle (Kohle Stücke)';
+      const rewardType = document.querySelector('input[name="manual_reward_type"]:checked')?.value || 'giveaway';
+      const prize = document.getElementById('input-manual-reward-prize')?.value.trim() || (rewardType === 'channel_points' ? '1KG Zauberwürfel FREE!' : 'Giveaway Gewinn');
       const postChat = document.getElementById('chk-manual-reward-post-chat')?.checked;
 
       if (!user) {
@@ -5662,17 +5678,26 @@ function setupGiveawaysListeners() {
         const res = await ipcRenderer.invoke('channelpoints:create-manual-link', {
           user,
           prize,
+          type: rewardType,
           channel: chan,
           postToChat: postChat
         });
 
         if (res && res.success) {
           modalManual.classList.add('hidden');
-          // Copy link to clipboard
-          navigator.clipboard.writeText(res.claimUrl);
-          showToast(`✨ Adresslink für @${user} erstellt & kopiert! ${postChat ? '(Im Chat gepostet)' : ''}`, 'success');
+          // Always copy via Electron's native clipboard; chat posting is optional.
+          const copyResult = await ipcRenderer.invoke('app:copy-clipboard', res.claimUrl);
+          if (!copyResult || !copyResult.success) {
+            throw new Error('Der Link wurde erstellt, konnte aber nicht kopiert werden.');
+          }
+          showToast(
+            postChat
+              ? `✨ Adresslink für @${user} kopiert und im Chat gepostet!`
+              : `📋 Adresslink für @${user} kopiert – du kannst ihn jetzt manuell schicken!`,
+            'success'
+          );
           // Refresh list
-          await pollWinnersUpdates();
+          await loadGiveawayWinnersHistory();
         } else {
           showToast(res?.error || 'Fehler beim Erstellen des Links', 'error');
         }
@@ -5680,7 +5705,7 @@ function setupGiveawaysListeners() {
         showToast(err.message || 'Fehler', 'error');
       } finally {
         btnSubmitManual.disabled = false;
-        btnSubmitManual.textContent = '✨ Link generieren';
+        btnSubmitManual.textContent = '✨ Link erstellen & kopieren';
       }
     });
   }

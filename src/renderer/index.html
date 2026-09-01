@@ -14,7 +14,7 @@
       <div class="brand">
         <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
         <div class="brand-text">
-          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Klicken, um auf Updates von GitHub zu prüfen"><span id="app-version-tag">v7.0.7</span> 🔄</button></h1>
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Klicken, um auf Updates von GitHub zu prüfen"><span id="app-version-tag">v7.0.8</span> 🔄</button></h1>
           <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
         </div>
       </div>
@@ -2409,6 +2409,8 @@
           </div>
         </div>
       </div>
+    </div>
+
     <!-- ============================================== -->
     <!-- MODAL: MANUELLE BELOHNUNG / ADRESSLINK -->
     <!-- ============================================== -->
@@ -2434,8 +2436,22 @@
           </div>
 
           <div class="form-group">
+            <label class="form-label">🎯 Art der Prämie:</label>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <label style="display:flex; align-items:flex-start; gap:8px; padding:10px; border:1px solid rgba(16,185,129,0.35); border-radius:8px; background:rgba(16,185,129,0.08); cursor:pointer;">
+                <input type="radio" name="manual_reward_type" value="giveaway" checked style="width:auto; margin-top:2px;">
+                <span><strong>🎁 Giveaway</strong><br><small style="color:var(--text-muted);">Normaler Gewinn</small></span>
+              </label>
+              <label style="display:flex; align-items:flex-start; gap:8px; padding:10px; border:1px solid rgba(124,58,237,0.4); border-radius:8px; background:rgba(124,58,237,0.1); cursor:pointer;">
+                <input type="radio" name="manual_reward_type" value="channel_points" style="width:auto; margin-top:2px;">
+                <span><strong>⬛ Freekohle</strong><br><small style="color:var(--text-muted);">Kanalpunkte / Kohlegröße</small></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
             <label class="form-label">Prämie / Grund:</label>
-            <input type="text" id="input-manual-reward-prize" list="list-reward-suggestions" value="1KG Zauberwürfel FREE!">
+            <input type="text" id="input-manual-reward-prize" list="list-reward-suggestions" value="Giveaway Gewinn">
             <datalist id="list-reward-suggestions">
               <option value="1KG Zauberwürfel FREE!">
               <option value="1KG Zauberwürfel (Shisha-Kohle)">
@@ -2445,20 +2461,28 @@
             </datalist>
           </div>
 
-          <div class="gw-chat-toggle-card" style="margin-top:4px;">
+          <div class="gw-chat-toggle-card" style="margin-top:4px; border-color:rgba(16,185,129,0.35); background:rgba(16,185,129,0.08);">
             <div class="gw-chat-toggle-info">
-              <span class="gw-chat-toggle-title">💬 Direkt im Twitch-Chat posten</span>
-              <span class="gw-chat-toggle-desc">Bot schreibt den Link mit Erwähnung an den User</span>
+              <span class="gw-chat-toggle-title">📋 Link automatisch kopieren</span>
+              <span class="gw-chat-toggle-desc">Nach dem Erstellen liegt der Link direkt in deiner Zwischenablage</span>
+            </div>
+            <span style="color:#34d399; font-size:1.2rem;">✓</span>
+          </div>
+
+          <div class="gw-chat-toggle-card">
+            <div class="gw-chat-toggle-info">
+              <span class="gw-chat-toggle-title">💬 Zusätzlich im Twitch-Chat posten</span>
+              <span class="gw-chat-toggle-desc">Optional: Bot schreibt den Link mit Erwähnung an den User</span>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="chk-manual-reward-post-chat" checked>
+              <input type="checkbox" id="chk-manual-reward-post-chat">
               <span class="toggle-slider"></span>
             </label>
           </div>
         </div>
         <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px; padding:12px 16px;">
           <button type="button" id="btn-cancel-manual-reward" class="btn btn-secondary">Abbrechen</button>
-          <button type="button" id="btn-create-manual-reward-submit" class="btn btn-primary font-bold">✨ Link generieren</button>
+          <button type="button" id="btn-create-manual-reward-submit" class="btn btn-primary font-bold">✨ Link erstellen &amp; kopieren</button>
         </div>
       </div>
     </div>

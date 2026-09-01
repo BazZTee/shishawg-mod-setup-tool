@@ -349,6 +349,8 @@
     let winId = params.get('id') || '';
     let targetUser = (params.get('user') || '').replace(/^@/, '').toLowerCase().trim();
     let prize = params.get('prize') || 'Shisha Paket';
+    let channel = (params.get('channel') || 'marved').replace(/^#/, '').toLowerCase().trim();
+    let rewardType = params.get('type') || '';
 
     // Check OAuth hash redirect
     const hash = window.location.hash.substring(1);
@@ -358,16 +360,20 @@
 
     if (stateParam) {
       try {
-        const stateObj = JSON.parse(decodeURIComponent(stateParam));
+        const stateObj = JSON.parse(stateParam);
         if (stateObj.id) winId = stateObj.id;
         if (stateObj.user) targetUser = stateObj.user.toLowerCase().trim();
         if (stateObj.prize) prize = stateObj.prize;
+        if (stateObj.channel) channel = stateObj.channel.toLowerCase().replace(/^#/, '').trim();
+        if (stateObj.type) rewardType = stateObj.type;
       } catch(e) {}
     }
 
     if (!winId) winId = 'gw-' + Date.now();
 
-    const isPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte') || prize.toLowerCase().includes('würfel') || prize.toLowerCase().includes('wuerfel') || prize.toLowerCase().includes('cube');
+    const inferredPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte') || prize.toLowerCase().includes('würfel') || prize.toLowerCase().includes('wuerfel') || prize.toLowerCase().includes('cube');
+    const isPoints = rewardType ? rewardType === 'channel_points' : inferredPoints;
+    rewardType = isPoints ? 'channel_points' : 'giveaway';
     const prizeLabelEl = document.querySelector('.prize-label');
     if (prizeLabelEl) {
       prizeLabelEl.textContent = isPoints ? '⬛ Deine Kanalpunkte-Prämie:' : '🎁 Dein Gewinn:';
@@ -396,7 +402,7 @@
     // Login button click
     document.getElementById('btn-login-twitch').addEventListener('click', () => {
       const redirectUri = window.location.origin + window.location.pathname;
-      const stateObj = { id: winId, user: targetUser, prize: prize };
+      const stateObj = { id: winId, user: targetUser, prize: prize, channel: channel, type: rewardType };
       const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=&state=${encodeURIComponent(JSON.stringify(stateObj))}`;
       window.location.href = authUrl;
     });
@@ -470,6 +476,7 @@
         city: document.getElementById('in-city').value.trim(),
         country: document.getElementById('in-country').value,
         coalSize: coalSize,
+        rewardType: rewardType,
         verifiedTwitchLogin: verifiedUser ? verifiedUser.login : targetUser,
         verifiedTwitchId: verifiedUser ? verifiedUser.id : '',
         submittedAt: Date.now()
@@ -477,21 +484,27 @@
 
       // Submit directly to Supabase Database
       try {
-        if (window.supabase) {
-          const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-          await sbClient.from('giveaway_winners').upsert({
-            id: winId || ('win_' + Date.now()),
-            username: targetUser || (verifiedUser ? verifiedUser.login : 'gewinner'),
-            display_name: (verifiedUser ? verifiedUser.display_name : targetUser) || 'Gewinner',
-            avatar_url: (verifiedUser ? verifiedUser.profile_image_url : '') || '',
-            prize: prize,
-            status: 'address_received',
-            address: addressData,
-            created_at: new Date().toISOString()
-          }, { onConflict: 'id' });
-        }
+        if (!window.supabase) throw new Error('Supabase-Client konnte nicht geladen werden.');
+        const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        const verifiedLogin = (verifiedUser ? verifiedUser.login : targetUser).toLowerCase().replace(/^@/, '').trim();
+        const { data: updatedRow, error: upsertError } = await sbClient.from('giveaway_winners').update({
+          channel: channel,
+          status: 'address_received',
+          address: addressData
+        })
+          .eq('id', winId)
+          .eq('username', verifiedLogin)
+          .select('id')
+          .maybeSingle();
+        if (upsertError) throw upsertError;
+        if (!updatedRow) throw new Error('Der Gewinn konnte für diesen Twitch-Account nicht gefunden werden.');
       } catch(sbErr) {
         console.warn('Supabase claim error:', sbErr);
+        errorBox.classList.remove('hidden');
+        errorBox.textContent = 'Die Adresse konnte nicht übermittelt werden. Bitte versuche es erneut. (' + (sbErr.message || 'Unbekannter Fehler') + ')';
+        btn.disabled = false;
+        btn.textContent = '📦 Adresse sicher übermitteln';
+        return;
       }
 
       formSection.classList.add('hidden');

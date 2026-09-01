@@ -918,26 +918,48 @@ class TwitchService {
     this.connectIRC(chan);
 
     this.addMessageHandler('channelpoints', async (parsedMsg, raw) => {
-      if (raw.includes('custom-reward-id') || (raw.includes('USERNOTICE') && raw.includes('reward-gift'))) {
-        const tags = parsedMsg.tags || {};
-        const msgId = tags['id'] || `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      const text = (parsedMsg.text || '').trim();
+      if (!text) return;
 
-        if (this.channelPointsProcessed.has(msgId)) return;
-        this.channelPointsProcessed.add(msgId);
+      // Detect Bot redemption announcements (e.g. "marvedbot: BazZTeeDJ hat 1KG Zauberwürfel FREE! für 70000 eingelöst! ...")
+      // Pattern: "[User] hat [Prize] für [Points] eingelöst!"
+      const redemptionRegex = /^@?([a-zA-Z0-9_]+)\s+hat\s+(.+?)\s+für\s+(\d+)(?:\s+Punkte|\s+Channel\s+Points)?\s+eingelöst/i;
+      const match = text.match(redemptionRegex);
+
+      if (match) {
+        const redeemedUser = match[1].replace(/^@/, '').trim();
+        const prizeTitle = match[2].trim();
+        const points = match[3].trim();
+
+        // Only process physical / giveaway-relevant rewards (e.g. Zauberwürfel, Kohle, Shisha, Paket)
+        const prizeLower = prizeTitle.toLowerCase();
+        const isPhysicalReward = prizeLower.includes('zauber') ||
+                                 prizeLower.includes('kohle') ||
+                                 prizeLower.includes('free') ||
+                                 prizeLower.includes('würfel') ||
+                                 prizeLower.includes('wuerfel') ||
+                                 prizeLower.includes('shisha') ||
+                                 prizeLower.includes('paket') ||
+                                 prizeLower.includes('tabak') ||
+                                 prizeLower.includes('kopf') ||
+                                 prizeLower.includes('pfeife');
+
+        if (!isPhysicalReward) return;
+
+        const dedupeKey = `${redeemedUser.toLowerCase()}_${prizeLower}_${Math.floor(Date.now() / 60000)}`;
+        if (this.channelPointsProcessed.has(dedupeKey)) return;
+        this.channelPointsProcessed.add(dedupeKey);
         if (this.channelPointsProcessed.size > 200) {
           const first = this.channelPointsProcessed.values().next().value;
           this.channelPointsProcessed.delete(first);
         }
 
-        const login = (tags['display-name'] || parsedMsg.login || '').toLowerCase().trim();
-        const displayName = tags['display-name'] || login || 'Zuschauer';
         const uniqueId = `kp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-        const prizeTitle = '1KG Zauberwürfel FREE!';
 
         const redemptionItem = {
           id: uniqueId,
-          user_login: login,
-          user_name: displayName,
+          user_login: redeemedUser.toLowerCase(),
+          user_name: redeemedUser,
           prize: prizeTitle,
           type: 'channel_points',
           status: 'pending',
@@ -952,11 +974,22 @@ class TwitchService {
           console.error('Failed to save channel points redemption to Supabase:', e);
         }
 
-        // Post automated chat reply if configured
-        const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(login)}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
+        // Fetch custom claim url from config if available
+        let claimBaseUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
+        try {
+          const cfg = await supabaseService.getTelegramConfig(chan);
+          if (cfg && cfg.claimUrl && cfg.claimUrl.trim()) {
+            claimBaseUrl = cfg.claimUrl.trim();
+          }
+        } catch(e) {}
+
+        const sep = claimBaseUrl.includes('?') ? '&' : '?';
+        const claimUrl = `${claimBaseUrl}${sep}user=${encodeURIComponent(redeemedUser.toLowerCase())}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
+
+        // Post automated chat reply with claim link
         if (autoChat) {
           try {
-            const chatMsg = `@${displayName} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
+            const chatMsg = `@${redeemedUser} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
             await this.sendMessage(chatMsg, chan);
           } catch(e) {
             console.error('Failed to send channel points chat message:', e);

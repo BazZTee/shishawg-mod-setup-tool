@@ -5332,24 +5332,48 @@ function renderWinnerHero(winner) {
     return;
   }
 
-  const timeStr = new Date(winner.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const rawTime = winner.timestamp || winner.created_at || Date.now();
+  const timeStr = new Date(rawTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const uname = winner.displayName || winner.display_name || winner.username || winner.user_name || winner.user_login || 'Gewinner';
+  const cleanLogin = (winner.username || winner.user_login || winner.user_name || uname).toLowerCase().replace(/^@/, '').trim();
+  
+  const fallbackSvg = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="50" fill="%237c3aed"/><text x="50" y="65" font-size="42" font-weight="bold" fill="%23ffffff" text-anchor="middle" font-family="sans-serif">${cleanLogin.substring(0, 2).toUpperCase()}</text></svg>`;
+  
+  let avatarSrc = winner.avatar || winner.avatar_url;
+  if (!avatarSrc || avatarSrc.includes('undefined') || avatarSrc.includes('user-default-pictures')) {
+    avatarSrc = `https://unavatar.io/twitch/${cleanLogin}`;
+  }
 
   winnerDisplayContainer.className = 'winner-hero-box celebrate';
   winnerDisplayContainer.innerHTML = `
     <div class="winner-card-inner">
-      <img src="${escapeHtml(winner.avatar)}" alt="${escapeHtml(winner.displayName)}" class="winner-avatar-lg" onerror="this.src='https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png'">
+      <img id="img-winner-avatar-hero" src="${escapeHtml(avatarSrc)}" alt="${escapeHtml(uname)}" class="winner-avatar-lg" onerror="this.onerror=null; this.src='${escapeHtml(fallbackSvg)}';">
       <div class="winner-details-col">
-        <span class="winner-username-hero">${escapeHtml(winner.displayName)}</span>
+        <span class="winner-username-hero">${escapeHtml(uname)}</span>
         <span class="winner-time-badge">🏆 Gewonnen um ${escapeHtml(timeStr)} Uhr</span>
       </div>
     </div>
   `;
 
   if (winnerQuickActions) winnerQuickActions.classList.remove('hidden');
+
+  // Asynchronously fetch high-res avatar from Twitch Helix if not available
+  if (cleanLogin && (!winner.avatar || winner.avatar.includes('unavatar') || winner.avatar.includes('user-default'))) {
+    ipcRenderer.invoke('twitch:get-user-info', cleanLogin).then(uRes => {
+      if (uRes && uRes.user && uRes.user.profile_image_url) {
+        winner.avatar = uRes.user.profile_image_url;
+        const imgEl = document.getElementById('img-winner-avatar-hero');
+        if (imgEl) imgEl.src = uRes.user.profile_image_url;
+      }
+    }).catch(() => {});
+  }
 }
 
 function renderAddressReview(winner) {
   if (!displayWinnerPrize) return;
+
+  const groupCoalSize = document.getElementById('group-winner-coal-size');
+  const selectCoalSize = document.getElementById('select-winner-coal-size');
 
   if (!winner) {
     displayWinnerPrize.textContent = '—';
@@ -5362,10 +5386,12 @@ function renderAddressReview(winner) {
     if (inputWinnerZip) inputWinnerZip.value = '';
     if (inputWinnerCity) inputWinnerCity.value = '';
     if (inputWinnerCountry) inputWinnerCountry.value = 'Deutschland';
+    if (groupCoalSize) groupCoalSize.classList.add('hidden');
     return;
   }
 
-  displayWinnerPrize.textContent = `🎁 ${winner.prize || 'Shisha-Paket'}`;
+  const isChannelPoints = winner.type === 'channel_points' || winner.prize?.toLowerCase().includes('kohle') || winner.prize?.toLowerCase().includes('zauber') || winner.prize?.toLowerCase().includes('würfel');
+  displayWinnerPrize.textContent = isChannelPoints ? `⬛ ${winner.prize || '1KG Zauberwürfel FREE!'}` : `🎁 ${winner.prize || 'Shisha-Paket'}`;
 
   // Update Status Pill
   if (winnerAddressStatusPill) {
@@ -5391,6 +5417,18 @@ function renderAddressReview(winner) {
   if (inputWinnerZip) inputWinnerZip.value = addr.zip || '';
   if (inputWinnerCity) inputWinnerCity.value = addr.city || '';
   if (inputWinnerCountry) inputWinnerCountry.value = addr.country || 'Deutschland';
+
+  if (groupCoalSize) {
+    if (isChannelPoints) {
+      groupCoalSize.classList.remove('hidden');
+      const coalVal = addr.coalSize || addr.coal_size || '26er';
+      if (selectCoalSize) {
+        selectCoalSize.value = coalVal.includes('27') ? '27er' : '26er';
+      }
+    } else {
+      groupCoalSize.classList.add('hidden');
+    }
+  }
 }
 
 async function loadGiveawayWinnersHistory() {
@@ -5471,6 +5509,10 @@ function renderWinnersHistory(winners) {
       ? '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(124,58,237,0.25); color:#c4b5fd; border:1px solid rgba(124,58,237,0.4); margin-right:4px;">⬛ 1KG KOHLE</span>'
       : '<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:4px; background:rgba(16,185,129,0.25); color:#6ee7b7; border:1px solid rgba(16,185,129,0.4); margin-right:4px;">🎁 GIVEAWAY</span>';
 
+    const coalTag = (isChannelPoints && (addr.coalSize || addr.coal_size))
+      ? `<span style="display:inline-block; font-size:0.65rem; font-weight:800; padding:1px 5px; border-radius:4px; background:#7c3aed; color:#fff; margin-left:4px;">${escapeHtml(addr.coalSize || addr.coal_size)}</span>`
+      : '';
+
     html += `
       <tr data-id="${w.id}">
         <td><span style="color:var(--text-secondary); font-size:0.75rem;">${dateStr} ${timeStr}</span></td>
@@ -5479,6 +5521,7 @@ function renderWinnersHistory(winners) {
           <div style="display:flex; align-items:center; flex-wrap:wrap; gap:2px;">
             ${typeBadge}
             <span style="font-size:0.78rem; font-weight:600;">${escapeHtml(w.prize || '1KG Zauberwürfel FREE!')}</span>
+            ${coalTag}
           </div>
         </td>
         <td>${escapeHtml(recipient)}</td>
@@ -5534,10 +5577,17 @@ function getFormattedTelegramMessage(winner) {
   const activeProf = getActiveStreamerProfile();
   const streamerName = activeProf ? activeProf.name : 'Marvin';
 
+  const coalSize = addr.coalSize || addr.coal_size || '';
+
   if (isChannelPoints) {
+    let coalLine = '';
+    if (coalSize) {
+      coalLine = `🪵 <b>Gewählte Kohle-Größe:</b> ${coalSize.includes('27') ? '27er Kohle (27mm Big Cubes)' : '26er Kohle (26mm Standard)'}\n`;
+    }
     return `⬛ <b>KANALPUNKTE-PRÄMIE (1KG ZAUBERWÜRFEL)</b>\n` +
            `👤 <b>Twitch-User:</b> @${winner.username || winner.user_name || winner.user_login}\n` +
            `🎁 <b>Prämie:</b> ${winner.prize || '1KG Zauberwürfel FREE!'}\n` +
+           coalLine +
            `📦 <b>Empfänger:</b> ${addr.fullName || '—'}\n` +
            `🏠 <b>Adresse:</b> ${addr.street || '—'}, ${addr.zip || ''} ${addr.city || ''} (${addr.country || 'Deutschland'})\n` +
            `📅 <b>Datum:</b> ${dateStr}\n` +
@@ -5696,12 +5746,14 @@ function setupGiveawaysListeners() {
         return;
       }
 
+      const selectCoalSize = document.getElementById('select-winner-coal-size');
       const addr = {
         fullName: inputWinnerFullname ? inputWinnerFullname.value.trim() : '',
         street: inputWinnerStreet ? inputWinnerStreet.value.trim() : '',
         zip: inputWinnerZip ? inputWinnerZip.value.trim() : '',
         city: inputWinnerCity ? inputWinnerCity.value.trim() : '',
-        country: inputWinnerCountry ? inputWinnerCountry.value.trim() : 'Deutschland'
+        country: inputWinnerCountry ? inputWinnerCountry.value.trim() : 'Deutschland',
+        coalSize: selectCoalSize ? selectCoalSize.value : (giveawayState.currentWinner.address?.coalSize || '')
       };
 
       giveawayState.currentWinner.address = addr;
@@ -5724,13 +5776,15 @@ function setupGiveawaysListeners() {
         return;
       }
 
+      const selectCoalSize = document.getElementById('select-winner-coal-size');
       const w = giveawayState.currentWinner;
       w.address = {
         fullName: inputWinnerFullname ? inputWinnerFullname.value.trim() : '',
         street: inputWinnerStreet ? inputWinnerStreet.value.trim() : '',
         zip: inputWinnerZip ? inputWinnerZip.value.trim() : '',
         city: inputWinnerCity ? inputWinnerCity.value.trim() : '',
-        country: inputWinnerCountry ? inputWinnerCountry.value.trim() : 'Deutschland'
+        country: inputWinnerCountry ? inputWinnerCountry.value.trim() : 'Deutschland',
+        coalSize: selectCoalSize ? selectCoalSize.value : (w.address?.coalSize || '')
       };
 
       const text = getFormattedTelegramMessage(w);

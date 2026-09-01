@@ -1,4 +1,4 @@
-# 💨 ShishaWG Mod Setup Tool (v7.0.6)
+# 💨 ShishaWG Mod Setup Tool (v7.0.7)
 
 Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team des Twitch-Kanals **ShishaWG**. Entwickelt für schnelles Erstellen, Importieren, Verwalten und Live-Senden von Shisha-Setups, Giveaways, Q&A-Sessions, Stream-Aktionen und Cloud-Synchronisation in Echtzeit.
 
@@ -6,7 +6,7 @@ Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team d
 
 ## 📑 Inhaltsverzeichnis
 
-- [✨ Highlights & Neuerungen in v7.0.6](#-highlights--neuerungen-in-v706)
+- [✨ Highlights & Neuerungen in v7.0.7](#-highlights--neuerungen-in-v707)
 - [🎛️ Die Module im Überblick](#️-die-module-im-überblick)
   - [1. 💬 Setup Generator & Chat-Befehl](#1--setup-generator--chat-befehl)
   - [2. ⚡ Quick-Actions & Stream-Manager](#2--quick-actions--stream-manager)
@@ -22,15 +22,14 @@ Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team d
 
 ---
 
-## ✨ Highlights & Neuerungen in v7.0.6
+## ✨ Highlights & Neuerungen in v7.0.7
 
-- ⚡ **All-In-One eShisha-Unterstützung (z.B. `XKAH Shii`)**: Wird ein All-In-One Gerät als `⚡ E-Gerät` ausgewählt, wird es in den Statistiken und Analytics automatisch voll als Pfeife und Kopf gewertet. Im Twitch-Chat-Befehl wird es intelligent dedupliziert und nur einmal sauber ausgegeben (keine doppelten Nennungen).
-- 🎥 **YouTube-Finder Kanal-Zuordnung Fix**: Videos werden nun exakt dem tatsächlichen Uploader-Kanal zugeordnet (`SHISHAWG` in Rot vs. `MARVOCADO` in Blau). Keine falschen Tags mehr bei paralleler Kanalsuche.
+- 🪵 **Kohle-Größen-Auswahl bei Einlösungen (26er vs. 27er Kohle)**: Zuschauer können auf der Gewinner-Seite bei Kohle-Prämien nun direkt ihre Wunschgröße auswählen (**26er Kohle (26mm)** oder **27er Kohle (27mm)**). Die Auswahl wird in der Adressmaske, in der Historie und in der Telegram-Nachricht an Marvin lückenlos angezeigt (nur bei Kohle-Einlösungen, nicht bei normalen Giveaways).
+- 👤 **Gewinner-Avatar Anzeige Fix**: Twitch-Profilbilder von Gewinnern und Kanalpunkte-Einlösern werden nun immer zuverlässig geladen (inklusive dynamischem Unavatar/Helix-Fallback).
+- ⚡ **All-In-One eShisha-Unterstützung (z.B. `XKAH Shii`)**: Wird ein All-In-One Gerät als `⚡ E-Gerät` ausgewählt, wird es in den Statistiken und Analytics automatisch voll als Pfeife und Kopf gewertet. Im Twitch-Chat-Befehl wird es intelligent dedupliziert.
+- 🎥 **YouTube-Finder Kanal-Zuordnung Fix**: Videos werden nun exakt dem tatsächlichen Uploader-Kanal zugeordnet (`SHISHAWG` in Rot vs. `MARVOCADO` in Blau).
 - 📊 **Stats & Session-Historie Fix**: Tabaksorten, Pfeifen, Köpfe und HMDs werden beim Beenden eines Kopfes nun immer vollständig und exakt aus dem aktiven Setup übernommen (kein „Unbekannter Tabak“ mehr).
-- 👑 **Mod-Prioritäts-Kaskade & Anti-Doppelpost-Schutz**: Automatische Chat-Antworten (Kanalpunkte-Claim-Links & Giveaway-Hinweise) folgen einer festen Kaskade: **`BazZTeeDJ` (Sofort)** ➔ **`flashmobnbg` (2,5s Backup)** ➔ **Restlicher Mod-Pool (5s)**. Ein Live-Chat-Sniffer verhindert jegliche Doppelposts.
-- ⬛ **Präzise Kanalpunkte-Erkennung**: Lauscht gezielt auf echte Bot-Einlösungen (`marvedbot`, etc.) und verhindert Fehlalarme bei normalen hervorgehobenen Chat-Nachrichten.
-- 🎨 **Dauerhafte Wunschfarben-Speicherung**: Deine ausgewählte Chat-Farbe (z.B. Orange) bleibt dauerhaft gespeichert und wird nicht mehr durch Twitch-Standardfarben überschrieben.
-- 💬 **Farb-Synchronisation im Mod-Chat**: Die gewählte Farbe wird automatisch an Supabase übermittelt und für alle Moderatoren im Team-Chat konsistent angezeigt.
+- 👑 **Mod-Prioritäts-Kaskade & Anti-Doppelpost-Schutz**: Automatische Chat-Antworten folgen einer festen Kaskade: **`BazZTeeDJ` (Sofort)** ➔ **`flashmobnbg` (2,5s Backup)** ➔ **Restlicher Mod-Pool (5s)**.
 
 - 🔗 **Persistente IRC-Architektur**: Eine einzige, extrem stabile WebSocket-Verbindung zu Twitch mit automatischem Reconnect nach 5 Sekunden – kein Verbindungsabriss mehr bei langen Streams.
 - 🏆 **Tagesbasierter Giveaway-Ausschluss**: Gewinner werden jetzt tagesbasiert geprüft. Wer heute bereits gewonnen hat, wird freundlich per Bot im Chat benachrichtigt; an Folgetagen darf jeder wieder mitmachen.
@@ -124,7 +123,7 @@ Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team d
 | `#btn-stop-giveaway` | ⏹️ **Registrierung Stoppen** | Schließt den Lostopf für neue Teilnehmer. |
 | `#btn-draw-winner` | 🎲 **GEWINNER AUSLOSEN** | Startet die Roulette-Animation und den Chat-Countdown zur Gewinnerziehung. |
 | `#btn-send-winner-telegram` | ✈️ **An Telegram Senden** | Übermittelt die geprüfte Lieferadresse an das Logistik-Team. |
-| `#btn-check-updates` | 🔄 **v7.0.6** | Prüft manuell auf neue Releases auf GitHub. |
+| `#btn-check-updates` | 🔄 **v7.0.7** | Prüft manuell auf neue Releases auf GitHub. |
 
 ---
 
@@ -154,11 +153,11 @@ Beim Profilwechsel passen sich alle Chat-Befehle, Q&A-Listener und Giveaway-Eins
 ## 🚀 Installation & Updates
 
 ### Portable Version (ohne Installation)
-1. Die Datei `ShishaWG-Mod-Setup-Tool-Portable-7.0.6.exe` aus dem [Release-Bereich](https://github.com/BazZTee/shishawg-mod-setup-tool/releases) herunterladen.
+1. Die Datei `ShishaWG-Mod-Setup-Tool-Portable-7.0.7.exe` aus dem [Release-Bereich](https://github.com/BazZTee/shishawg-mod-setup-tool/releases) herunterladen.
 2. An einem beliebigen Ort ausführen – keine Administratorrechte erforderlich.
 
 ### Setup Installer
-1. Die Datei `ShishaWG-Mod-Setup-Tool-Setup-7.0.6.exe` herunterladen und ausführen.
+1. Die Datei `ShishaWG-Mod-Setup-Tool-Setup-7.0.7.exe` herunterladen und ausführen.
 2. Installiert die App im Benutzerverzeichnis und erstellt eine Desktop-Verknüpfung.
 
 ### Automatisches Update

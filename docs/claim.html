@@ -269,6 +269,23 @@
       </div>
 
       <form id="address-form">
+        <!-- COAL SIZE OPTION (Nur bei Kohle-Prämien / Channel Points) -->
+        <div id="coal-size-group" class="form-group hidden" style="background: rgba(124, 58, 237, 0.15); border: 1px solid rgba(124, 58, 237, 0.4); padding: 12px 14px; border-radius: 12px; margin-bottom: 16px;">
+          <label style="color:#c4b5fd; font-weight:700; font-size:0.85rem; margin-bottom:8px; display:block;">
+            🪵 Wähle deine gewünschte Kohle-Größe:
+          </label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <label style="display:flex; align-items:center; gap:8px; background:rgba(10,15,29,0.7); padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); cursor:pointer; color:#fff; font-size:0.9rem; font-weight:600;">
+              <input type="radio" name="coal_size_radio" value="26er" checked style="width:auto; cursor:pointer;">
+              <span>26er (26mm)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; background:rgba(10,15,29,0.7); padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.15); cursor:pointer; color:#fff; font-size:0.9rem; font-weight:600;">
+              <input type="radio" name="coal_size_radio" value="27er" style="width:auto; cursor:pointer;">
+              <span>27er (27mm)</span>
+            </label>
+          </div>
+        </div>
+
         <div class="form-group">
           <label>Vor- &amp; Nachname:</label>
           <input type="text" id="in-fullname" placeholder="Max Mustermann" required>
@@ -350,10 +367,15 @@
 
     if (!winId) winId = 'gw-' + Date.now();
 
-    const isPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte');
+    const isPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte') || prize.toLowerCase().includes('würfel') || prize.toLowerCase().includes('wuerfel') || prize.toLowerCase().includes('cube');
     const prizeLabelEl = document.querySelector('.prize-label');
     if (prizeLabelEl) {
       prizeLabelEl.textContent = isPoints ? '⬛ Deine Kanalpunkte-Prämie:' : '🎁 Dein Gewinn:';
+    }
+
+    const coalSizeGroup = document.getElementById('coal-size-group');
+    if (coalSizeGroup && isPoints) {
+      coalSizeGroup.classList.remove('hidden');
     }
 
     const winnerTargetEl = document.querySelector('.winner-target');
@@ -438,12 +460,16 @@
       btn.disabled = true;
       btn.textContent = 'Übermittle Daten...';
 
+      const selectedRadio = document.querySelector('input[name="coal_size_radio"]:checked');
+      const coalSize = (isPoints && selectedRadio) ? selectedRadio.value : '';
+
       const addressData = {
         fullName: document.getElementById('in-fullname').value.trim(),
         street: document.getElementById('in-street').value.trim(),
         zip: document.getElementById('in-zip').value.trim(),
         city: document.getElementById('in-city').value.trim(),
         country: document.getElementById('in-country').value,
+        coalSize: coalSize,
         verifiedTwitchLogin: verifiedUser ? verifiedUser.login : targetUser,
         verifiedTwitchId: verifiedUser ? verifiedUser.id : '',
         submittedAt: Date.now()
@@ -457,6 +483,7 @@
             id: winId || ('win_' + Date.now()),
             username: targetUser || (verifiedUser ? verifiedUser.login : 'gewinner'),
             display_name: (verifiedUser ? verifiedUser.display_name : targetUser) || 'Gewinner',
+            avatar_url: (verifiedUser ? verifiedUser.profile_image_url : '') || '',
             prize: prize,
             status: 'address_received',
             address: addressData,

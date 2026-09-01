@@ -487,6 +487,20 @@
         if (!window.supabase) throw new Error('Supabase-Client konnte nicht geladen werden.');
         const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
         const verifiedLogin = (verifiedUser ? verifiedUser.login : targetUser).toLowerCase().replace(/^@/, '').trim();
+
+        const { data: existingWinner, error: lookupError } = await sbClient.from('giveaway_winners')
+          .select('id,status')
+          .eq('id', winId)
+          .eq('username', verifiedLogin)
+          .maybeSingle();
+        if (lookupError) throw lookupError;
+        if (!existingWinner) throw new Error('Der Gewinn konnte für diesen Twitch-Account nicht gefunden werden.');
+        if (existingWinner.status === 'sent_to_telegram') {
+          const alreadySubmittedError = new Error('Du hast deine Daten bereits abgesendet.');
+          alreadySubmittedError.code = 'ALREADY_SUBMITTED';
+          throw alreadySubmittedError;
+        }
+
         const { data: updatedRow, error: upsertError } = await sbClient.from('giveaway_winners').update({
           channel: channel,
           status: 'address_received',
@@ -494,14 +508,21 @@
         })
           .eq('id', winId)
           .eq('username', verifiedLogin)
+          .neq('status', 'sent_to_telegram')
           .select('id')
           .maybeSingle();
         if (upsertError) throw upsertError;
-        if (!updatedRow) throw new Error('Der Gewinn konnte für diesen Twitch-Account nicht gefunden werden.');
+        if (!updatedRow) {
+          const alreadySubmittedError = new Error('Du hast deine Daten bereits abgesendet.');
+          alreadySubmittedError.code = 'ALREADY_SUBMITTED';
+          throw alreadySubmittedError;
+        }
       } catch(sbErr) {
         console.warn('Supabase claim error:', sbErr);
         errorBox.classList.remove('hidden');
-        errorBox.textContent = 'Die Adresse konnte nicht übermittelt werden. Bitte versuche es erneut. (' + (sbErr.message || 'Unbekannter Fehler') + ')';
+        errorBox.textContent = sbErr.code === 'ALREADY_SUBMITTED'
+          ? 'Du hast deine Daten bereits abgesendet.'
+          : 'Die Adresse konnte nicht übermittelt werden. Bitte versuche es erneut. (' + (sbErr.message || 'Unbekannter Fehler') + ')';
         btn.disabled = false;
         btn.textContent = '📦 Adresse sicher übermitteln';
         return;

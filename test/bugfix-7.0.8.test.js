@@ -27,6 +27,15 @@ test('claim portal preserves channel and reward type through OAuth and submits b
   assert.deepEqual(JSON.parse(stateParam), originalState);
 });
 
+test('claim portal rejects a second submission after Telegram delivery', () => {
+  const claim = read('docs/claim.html');
+
+  assert.match(claim, /select\(['"]id,status['"]\)/);
+  assert.match(claim, /existingWinner\.status === ['"]sent_to_telegram['"]/);
+  assert.match(claim, /Du hast deine Daten bereits abgesendet\./);
+  assert.match(claim, /\.neq\(['"]status['"], ['"]sent_to_telegram['"]\)/);
+});
+
 test('manual reward modal exposes an explicit Giveaway/Freekohle selection and forwards it', () => {
   const index = read('src/renderer/index.html');
   const renderer = read('src/renderer/renderer.js');

@@ -856,7 +856,7 @@ function updateChannelBotTooltips() {
 function updateTwitchUI() {
   const previewModName = document.getElementById('preview-mod-name');
   const userColorPicker = document.getElementById('user-color-picker');
-  const savedColor = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#FF7F00');
+  const savedColor = localStorage.getItem('swg_user_color') || state.twitchUser?.color || '#FF7F00';
   const hubTiles = document.querySelectorAll('.hub-tile-card');
   const landingSubtitle = document.querySelector('.landing-subtitle');
   const landingTwitchBanner = document.getElementById('landing-twitch-banner');
@@ -2443,28 +2443,41 @@ function setupEventListeners() {
       userColorPicker.click();
     });
 
-    userColorPicker.addEventListener('input', (e) => {
-      const newColor = e.target.value;
-      previewModName.style.color = newColor;
+    const onColorSelected = (newColor) => {
+      if (!newColor) return;
+      if (previewModName) previewModName.style.color = newColor;
       localStorage.setItem('swg_user_color', newColor);
+      localStorage.setItem('swg_user_color_custom', 'true');
+      if (state.twitchUser) state.twitchUser.color = newColor;
       ipcRenderer.invoke('twitch:set-color', newColor).catch(() => {});
-    });
+      updateTwitchUI();
+      updateModHQUserInfo();
+    };
+
+    userColorPicker.addEventListener('input', (e) => onColorSelected(e.target.value));
+    userColorPicker.addEventListener('change', (e) => onColorSelected(e.target.value));
   }
 
   ipcRenderer.on('twitch:color-updated', (event, { color }) => {
-    if (color) {
+    const hasCustomColor = localStorage.getItem('swg_user_color_custom') === 'true' || localStorage.getItem('swg_user_color');
+    if (color && !hasCustomColor) {
       localStorage.setItem('swg_user_color', color);
+      if (state.twitchUser) state.twitchUser.color = color;
       if (previewModName) previewModName.style.color = color;
       if (userColorPicker) userColorPicker.value = color;
+      updateModHQUserInfo();
     }
   });
 
-  // Query color from Twitch on startup
+  // Query color from Twitch on startup (only fallback if user hasn't chosen one)
   ipcRenderer.invoke('twitch:get-color').then(c => {
-    if (c) {
+    const hasCustomColor = localStorage.getItem('swg_user_color_custom') === 'true' || localStorage.getItem('swg_user_color');
+    if (c && !hasCustomColor) {
       localStorage.setItem('swg_user_color', c);
+      if (state.twitchUser) state.twitchUser.color = c;
       if (previewModName) previewModName.style.color = c;
       if (userColorPicker) userColorPicker.value = c;
+      updateModHQUserInfo();
     }
   }).catch(() => {});
 
@@ -4209,7 +4222,7 @@ function getInitialsAvatarSvg(name, color = '#7c3aed') {
 }
 
 function getActiveModInfo() {
-  const customColor = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#00f0ff');
+  const customColor = localStorage.getItem('swg_user_color') || state.twitchUser?.color || '#FF7F00';
   const customModName = localStorage.getItem('swg_custom_mod_name');
   const senderName = customModName || (state.twitchUser?.display_name || state.twitchUser?.login || 'Mod');
   const senderAvatar = state.twitchUser?.profile_image_url
@@ -4252,20 +4265,57 @@ function playNotificationSound() {
     osc1.start(now);
     osc1.stop(now + 0.35);
 
-    // Tone 2: B5 (987.77 Hz - Harmonic sparkle)
+    // Tone 2: G#5 (830.61 Hz)
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(987.77, now + 0.08);
-    gain2.gain.setValueAtTime(0.22, now + 0.08);
-    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.6);
+    osc2.frequency.setValueAtTime(830.61, now + 0.12);
+    gain2.gain.setValueAtTime(0.22, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
     osc2.connect(gain2);
     gain2.connect(ctx.destination);
-    osc2.start(now + 0.08);
-    osc2.stop(now + 0.6);
-  } catch(e) {
-    console.warn('Could not play notification sound:', e);
-  }
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.55);
+  } catch (e) {}
+}
+
+let lastModChatCount = 0;
+let lastKnownMessagesMap = new Map();
+
+async function checkModChatNotifications() {
+  if (!state.twitchUser) return;
+  try {
+    const res = await ipcRenderer.invoke('modchat:get-messages');
+    if (res && res.success && Array.isArray(res.messages)) {
+      const messages = res.messages;
+      const count = messages.length;
+      
+      if (lastModChatCount === 0) {
+        lastModChatCount = count;
+        messages.forEach(m => lastKnownMessagesMap.set(m.id, true));
+        return;
+      }
+
+      if (count > lastModChatCount) {
+        const newMsgs = messages.filter(m => !lastKnownMessagesMap.has(m.id));
+        newMsgs.forEach(m => lastKnownMessagesMap.set(m.id, true));
+        lastModChatCount = count;
+
+        const currentMod = getActiveModInfo();
+        const otherMsgs = newMsgs.filter(m => m.senderName && m.senderName.toLowerCase() !== currentMod.name.toLowerCase());
+        
+        if (otherMsgs.length > 0) {
+          playNotificationSound();
+          if (currentActiveView !== 'view-modchat') {
+            const latest = otherMsgs[otherMsgs.length - 1];
+            showToast(`💬 Neue Mod-Nachricht von @${latest.senderName}: "${latest.text.substring(0, 40)}${latest.text.length > 40 ? '...' : ''}"`, 'info');
+          }
+        }
+      } else if (currentActiveView === 'view-modchat') {
+        renderModChatMessages(res.messages);
+      }
+    }
+  } catch(e) {}
 }
 
 async function startGlobalModChatWatcher() {
@@ -4405,7 +4455,7 @@ function renderModChatMessages(messages) {
   messages.forEach(msg => {
     const isOwn = currentUserName && msg.senderName && msg.senderName.toLowerCase() === currentUserName;
     const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-    const senderColor = msg.senderColor || '#00f0ff';
+    const senderColor = isOwn ? (currentMod.color || msg.senderColor || '#FF7F00') : (msg.senderColor || '#00f0ff');
     const cleanSender = (msg.senderName || 'Mod').toLowerCase().trim();
     const fallbackSvg = getInitialsAvatarSvg(msg.senderName, senderColor);
 
@@ -4797,7 +4847,7 @@ function setupModHQListeners() {
   function updateModProfilePreview() {
     if (!previewEditModBadge) return;
     const name = (inputEditModName ? inputEditModName.value.trim() : '') || (state.twitchUser?.display_name || state.twitchUser?.login || 'Mod');
-    const color = inputEditModColor ? inputEditModColor.value : '#00f0ff';
+    const color = inputEditModColor ? inputEditModColor.value : '#FF7F00';
     previewEditModBadge.textContent = name + ':';
     previewEditModBadge.style.color = color;
   }
@@ -4805,10 +4855,10 @@ function setupModHQListeners() {
   if (btnEditModName && modProfileModal) {
     btnEditModName.addEventListener('click', () => {
       const currentName = localStorage.getItem('swg_custom_mod_name') || '';
-      const currentColor = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#00f0ff');
+      const currentColor = localStorage.getItem('swg_user_color') || state.twitchUser?.color || '#FF7F00';
 
       if (inputEditModName) inputEditModName.value = currentName;
-      if (inputEditModColor) inputEditModColor.value = currentColor;
+      if (inputEditModColor) inputEditModColor.value = currentColor.startsWith('#') ? currentColor : '#FF7F00';
 
       updateModProfilePreview();
       modProfileModal.classList.remove('hidden');
@@ -4829,7 +4879,7 @@ function setupModHQListeners() {
   if (btnSaveModProfile && modProfileModal) {
     btnSaveModProfile.addEventListener('click', () => {
       const newName = inputEditModName ? inputEditModName.value.trim() : '';
-      const newColor = inputEditModColor ? inputEditModColor.value : '#00f0ff';
+      const newColor = inputEditModColor ? inputEditModColor.value : '#FF7F00';
 
       if (newName) {
         localStorage.setItem('swg_custom_mod_name', newName);
@@ -4838,7 +4888,13 @@ function setupModHQListeners() {
       }
 
       localStorage.setItem('swg_user_color', newColor);
+      localStorage.setItem('swg_user_color_custom', 'true');
+      if (state.twitchUser) state.twitchUser.color = newColor;
+      ipcRenderer.invoke('twitch:set-color', newColor).catch(() => {});
+
       if (userColorPicker) userColorPicker.value = newColor;
+      const previewModName = document.getElementById('preview-mod-name');
+      if (previewModName) previewModName.style.color = newColor;
 
       updateModHQUserInfo();
       updateTwitchUI();

@@ -95,12 +95,16 @@ class TwitchService {
           }
         } catch(e) {}
 
+        const savedCustomColor = this.store.get('twitch_user_color');
+        const isCustomSet = this.store.get('twitch_custom_color_set');
+        const effectiveColor = (isCustomSet && savedCustomColor) ? savedCustomColor : (chatColor || savedCustomColor || '#FF7F00');
+
         this.user = {
           login: valData.login,
           display_name: displayName,
           id: valData.user_id,
           profile_image_url: profileImage,
-          color: chatColor
+          color: effectiveColor
         };
         this.accessToken = cleanToken;
         if (valData.client_id) {
@@ -353,7 +357,14 @@ class TwitchService {
   }
 
   async fetchUserChatColor() {
-    if (!this.accessToken || !this.user || !this.user.id) return null;
+    const savedCustom = this.store.get('twitch_user_color');
+    const isCustomSet = this.store.get('twitch_custom_color_set');
+    if (isCustomSet && savedCustom) {
+      if (this.user) this.user.color = savedCustom;
+      return savedCustom;
+    }
+
+    if (!this.accessToken || !this.user || !this.user.id) return savedCustom || (this.user ? this.user.color : null);
     try {
       const res = await fetch(`https://api.twitch.tv/helix/chat/color?user_id=${this.user.id}`, {
         headers: {
@@ -364,14 +375,18 @@ class TwitchService {
       if (res.ok) {
         const data = await res.json();
         if (data.data && data.data.length > 0 && data.data[0].color) {
-          this.user.color = data.data[0].color;
-          this.store.set('twitch_user', this.user);
-          this.sendToRenderer('twitch:color-updated', { color: this.user.color });
-          return this.user.color;
+          const twitchColor = data.data[0].color;
+          if (!this.store.get('twitch_custom_color_set')) {
+            this.user.color = twitchColor;
+            this.store.set('twitch_user', this.user);
+            this.store.set('twitch_user_color', twitchColor);
+            this.sendToRenderer('twitch:color-updated', { color: twitchColor });
+            return twitchColor;
+          }
         }
       }
     } catch(e) {}
-    return this.user ? this.user.color : null;
+    return this.user ? this.user.color : (savedCustom || null);
   }
 
   startAuthServer(customClientId = null) {

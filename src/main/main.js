@@ -250,14 +250,20 @@ ipcMain.handle('twitch:fetch-setup', async (event, channel) => {
 });
 
 ipcMain.handle('twitch:get-color', async () => {
+  const customColor = store.get('twitch_user_color');
+  const isCustom = store.get('twitch_custom_color_set');
+  if (isCustom && customColor) return customColor;
   return await twitchService.fetchUserChatColor();
 });
 
 ipcMain.handle('twitch:set-color', async (event, color) => {
-  if (color && twitchService.user) {
-    twitchService.user.color = color;
-    store.set('twitch_user', twitchService.user);
+  if (color) {
+    if (twitchService.user) {
+      twitchService.user.color = color;
+      store.set('twitch_user', twitchService.user);
+    }
     store.set('twitch_user_color', color);
+    store.set('twitch_custom_color_set', true);
   }
   return true;
 });

@@ -68,6 +68,7 @@ function fetchSupabaseEndpoint(pathStr) {
 class DatabaseService {
   constructor() {
     const userDataDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : path.join(process.cwd(), '.temp_user_data');
+    this.dataPath = userDataDir;
     this.dbPath = path.join(userDataDir, 'setup_database.json');
     this.hookahToolsTobaccoCachePath = path.join(userDataDir, 'hookahtools_tobacco_cache.json');
     this.hookahToolsBrandsCachePath = path.join(userDataDir, 'hookahtools_brands_cache.json');
@@ -178,6 +179,30 @@ class DatabaseService {
     this.init();
   }
 
+  _readFile(filename, defaultValue = []) {
+    try {
+      const filePath = path.join(this.dataPath, filename);
+      if (fs.existsSync(filePath)) {
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      }
+      return defaultValue;
+    } catch(e) {
+      console.error('dbService read error (' + filename + '):', e.message);
+      return defaultValue;
+    }
+  }
+
+  _writeFile(filename, data) {
+    try {
+      const filePath = path.join(this.dataPath, filename);
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+      return true;
+    } catch(e) {
+      console.error('dbService write error (' + filename + '):', e.message);
+      return false;
+    }
+  }
+
   init() {
     try {
       const dir = path.dirname(this.dbPath);
@@ -204,35 +229,30 @@ class DatabaseService {
     };
 
     // 1. Try local cache in userData
-    try {
-      if (fs.existsSync(this.hookahToolsTobaccoCachePath)) {
-        const raw = fs.readFileSync(this.hookahToolsTobaccoCachePath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          if (Array.isArray(parsed)) {
-            result.flavors = parsed;
-            result.meta.totalCount = parsed.length;
-          } else if (Array.isArray(parsed.flavors)) {
-            result.flavors = parsed.flavors;
-            result.meta = parsed.meta || result.meta;
-          }
-        }
+    const parsed = this._readFile('hookahtools_tobacco_cache.json', null);
+    if (parsed && typeof parsed === 'object') {
+      if (Array.isArray(parsed)) {
+        result.flavors = parsed;
+        result.meta.totalCount = parsed.length;
+      } else if (Array.isArray(parsed.flavors)) {
+        result.flavors = parsed.flavors;
+        result.meta = parsed.meta || result.meta;
       }
-    } catch(e) {}
+    }
 
     // 2. If userData cache is empty, fall back to bundled snapshot
     if (result.flavors.length === 0) {
       try {
         if (fs.existsSync(this.hookahToolsSnapshotPath)) {
           const raw = fs.readFileSync(this.hookahToolsSnapshotPath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object') {
-            if (Array.isArray(parsed)) {
-              result.flavors = parsed;
-              result.meta.totalCount = parsed.length;
-            } else if (Array.isArray(parsed.flavors)) {
-              result.flavors = parsed.flavors;
-              result.meta = parsed.meta || result.meta;
+          const snapParsed = JSON.parse(raw);
+          if (snapParsed && typeof snapParsed === 'object') {
+            if (Array.isArray(snapParsed)) {
+              result.flavors = snapParsed;
+              result.meta.totalCount = snapParsed.length;
+            } else if (Array.isArray(snapParsed.flavors)) {
+              result.flavors = snapParsed.flavors;
+              result.meta = snapParsed.meta || result.meta;
             }
           }
         }
@@ -245,30 +265,23 @@ class DatabaseService {
   getCatalog() {
     let customTobacco = [];
     let base = { ...this.defaultCatalog };
-    try {
-      if (fs.existsSync(this.dbPath)) {
-        const raw = fs.readFileSync(this.dbPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object') {
-          base = {
-            pipes: Array.isArray(parsed.pipes) ? parsed.pipes : this.defaultCatalog.pipes,
-            bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
-            vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
-            hmds: Array.isArray(parsed.hmds) ? parsed.hmds : this.defaultCatalog.hmds,
-            charcoal: Array.isArray(parsed.charcoal) ? parsed.charcoal : this.defaultCatalog.charcoal,
-            persons: Array.isArray(parsed.persons) && parsed.persons.length > 0 ? parsed.persons : this.defaultCatalog.persons,
-            tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
-            promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
-          };
-          if (Array.isArray(parsed.customTobacco)) {
-            customTobacco = parsed.customTobacco;
-          } else if (Array.isArray(parsed.tobacco)) {
-            customTobacco = parsed.tobacco;
-          }
-        }
+    const parsed = this._readFile('setup_database.json', null);
+    if (parsed && typeof parsed === 'object') {
+      base = {
+        pipes: Array.isArray(parsed.pipes) ? parsed.pipes : this.defaultCatalog.pipes,
+        bowls: Array.isArray(parsed.bowls) ? parsed.bowls : this.defaultCatalog.bowls,
+        vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
+        hmds: Array.isArray(parsed.hmds) ? parsed.hmds : this.defaultCatalog.hmds,
+        charcoal: Array.isArray(parsed.charcoal) ? parsed.charcoal : this.defaultCatalog.charcoal,
+        persons: Array.isArray(parsed.persons) && parsed.persons.length > 0 ? parsed.persons : this.defaultCatalog.persons,
+        tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
+        promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
+      };
+      if (Array.isArray(parsed.customTobacco)) {
+        customTobacco = parsed.customTobacco;
+      } else if (Array.isArray(parsed.tobacco)) {
+        customTobacco = parsed.tobacco;
       }
-    } catch (err) {
-      console.error('Error reading catalog:', err);
     }
 
     if (!Array.isArray(customTobacco) || customTobacco.length === 0) {
@@ -324,45 +337,31 @@ class DatabaseService {
   }
 
   saveCustomTobacco(customTobacco) {
-    try {
-      let currentData = {};
-      if (fs.existsSync(this.dbPath)) {
-        currentData = JSON.parse(fs.readFileSync(this.dbPath, 'utf-8') || '{}');
-      }
-      currentData.customTobacco = customTobacco;
-      currentData.tobacco = customTobacco;
-      fs.writeFileSync(this.dbPath, JSON.stringify(currentData, null, 2), 'utf-8');
-      return true;
-    } catch(e) {
-      return false;
-    }
+    let currentData = this._readFile('setup_database.json', {});
+    currentData.customTobacco = customTobacco;
+    currentData.tobacco = customTobacco;
+    return this._writeFile('setup_database.json', currentData);
   }
 
   saveCatalog(catalog) {
-    try {
-      const customTobaccoList = Array.isArray(catalog.customTobacco)
-        ? catalog.customTobacco
-        : (Array.isArray(catalog.tobacco) ? catalog.tobacco.filter(t => typeof t === 'string' || t.isCustom).map(t => typeof t === 'string' ? t : t.name) : []);
+    const customTobaccoList = Array.isArray(catalog.customTobacco)
+      ? catalog.customTobacco
+      : (Array.isArray(catalog.tobacco) ? catalog.tobacco.filter(t => typeof t === 'string' || t.isCustom).map(t => typeof t === 'string' ? t : t.name) : []);
 
-      const toSave = {
-        pipes: catalog.pipes,
-        bowls: catalog.bowls,
-        vases: catalog.vases,
-        hmds: catalog.hmds,
-        charcoal: catalog.charcoal,
-        persons: catalog.persons,
-        tastings: catalog.tastings,
-        promos: catalog.promos,
-        customTobacco: customTobaccoList,
-        tobacco: customTobaccoList
-      };
+    const toSave = {
+      pipes: catalog.pipes,
+      bowls: catalog.bowls,
+      vases: catalog.vases,
+      hmds: catalog.hmds,
+      charcoal: catalog.charcoal,
+      persons: catalog.persons,
+      tastings: catalog.tastings,
+      promos: catalog.promos,
+      customTobacco: customTobaccoList,
+      tobacco: customTobaccoList
+    };
 
-      fs.writeFileSync(this.dbPath, JSON.stringify(toSave, null, 2), 'utf-8');
-      return true;
-    } catch (err) {
-      console.error('Error saving catalog:', err);
-      return false;
-    }
+    return this._writeFile('setup_database.json', toSave);
   }
 
   mergeRemoteCatalog(remoteCatalog) {
@@ -444,14 +443,9 @@ class DatabaseService {
 
     if (category === 'tobacco' || category === 'customTobacco') {
       let customTobacco = [];
-      try {
-        if (fs.existsSync(this.dbPath)) {
-          const raw = fs.readFileSync(this.dbPath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
-          else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
-        }
-      } catch (e) {}
+      const parsed = this._readFile('setup_database.json', {});
+      if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
+      else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
 
       const filtered = customTobacco.filter(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() !== targetName.toLowerCase());
       if (filtered.length !== customTobacco.length) {
@@ -478,14 +472,9 @@ class DatabaseService {
 
     if (category === 'tobacco' || category === 'customTobacco') {
       let customTobacco = [];
-      try {
-        if (fs.existsSync(this.dbPath)) {
-          const raw = fs.readFileSync(this.dbPath, 'utf-8');
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
-          else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
-        }
-      } catch (e) {}
+      const parsed = this._readFile('setup_database.json', {});
+      if (Array.isArray(parsed.customTobacco)) customTobacco = parsed.customTobacco;
+      else if (Array.isArray(parsed.tobacco)) customTobacco = parsed.tobacco;
 
       const idx = customTobacco.findIndex(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() === oldName.toLowerCase());
       if (idx !== -1) {
@@ -632,12 +621,7 @@ class DatabaseService {
   async getBrandMap(forceRefresh = false) {
     let brandMap = {};
     if (!forceRefresh) {
-      try {
-        if (fs.existsSync(this.hookahToolsBrandsCachePath)) {
-          const raw = fs.readFileSync(this.hookahToolsBrandsCachePath, 'utf-8');
-          brandMap = JSON.parse(raw) || {};
-        }
-      } catch(e) {}
+      brandMap = this._readFile('hookahtools_brands_cache.json', {});
     }
 
     if (Object.keys(brandMap).length === 0 || forceRefresh) {
@@ -647,9 +631,7 @@ class DatabaseService {
           brands.forEach(b => {
             if (b && b.id) brandMap[b.id] = (b.name || b.id).trim();
           });
-          try {
-            fs.writeFileSync(this.hookahToolsBrandsCachePath, JSON.stringify(brandMap, null, 2), 'utf-8');
-          } catch(e) {}
+          this._writeFile('hookahtools_brands_cache.json', brandMap);
         }
       } catch(e) {}
     }
@@ -671,16 +653,14 @@ class DatabaseService {
           // CASE 1: No changes at all -> 0 rows downloaded (~150 Bytes check)
           if (isSameCount && isSameLatest) {
             console.log(`[HookahTools SmartCache] Database is up to date (${meta.totalCount} flavors). Skipping download.`);
-            try {
-              const updatedCache = {
-                meta: {
-                  ...localCache.meta,
-                  lastChecked: new Date().toISOString()
-                },
-                flavors: localCache.flavors
-              };
-              fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(updatedCache, null, 2), 'utf-8');
-            } catch(e) {}
+            const updatedCache = {
+              meta: {
+                ...localCache.meta,
+                lastChecked: new Date().toISOString()
+              },
+              flavors: localCache.flavors
+            };
+            this._writeFile('hookahtools_tobacco_cache.json', updatedCache);
 
             return localCache.flavors;
           }
@@ -718,9 +698,7 @@ class DatabaseService {
                 flavors: mergedList
               };
 
-              try {
-                fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(updatedCache, null, 2), 'utf-8');
-              } catch(e) {}
+              this._writeFile('hookahtools_tobacco_cache.json', updatedCache);
 
               console.log(`[HookahTools DeltaSync] Added ${newFormatted.length} new flavor(s). Total: ${mergedList.length}.`);
               return mergedList;
@@ -782,9 +760,7 @@ class DatabaseService {
           flavors: uniqueTobacco
         };
 
-        try {
-          fs.writeFileSync(this.hookahToolsTobaccoCachePath, JSON.stringify(cachePayload, null, 2), 'utf-8');
-        } catch (e) {}
+        this._writeFile('hookahtools_tobacco_cache.json', cachePayload);
         return uniqueTobacco;
       }
     } catch (err) {
@@ -796,82 +772,44 @@ class DatabaseService {
 
   // Mod-Chat Messages (Local Offline Fallback)
   async getModChatMessages() {
-    const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
-    try {
-      if (fs.existsSync(localFile)) {
-        return JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-    return [];
+    return this._readFile('mod_chat_messages.json', []);
   }
 
   async sendModChatMessage(msgObj) {
-    const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
-    let msgs = [];
-    try {
-      if (fs.existsSync(localFile)) {
-        msgs = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    let msgs = this._readFile('mod_chat_messages.json', []);
     msgs.push(msgObj);
     msgs = msgs.slice(-100);
-
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(msgs, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('mod_chat_messages.json', msgs);
     return msgs;
   }
 
   async clearModChatMessages() {
-    const localFile = path.join(app.getPath('userData'), 'mod_chat_messages.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify([], null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('mod_chat_messages.json', []);
     return [];
   }
 
   // Watchlist (Local Offline Fallback)
   async getWatchlist() {
-    const localFile = path.join(app.getPath('userData'), 'mod_watchlist.json');
-    try {
-      if (fs.existsSync(localFile)) {
-        return JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-    return [];
+    return this._readFile('mod_watchlist.json', []);
   }
 
   async saveWatchlist(list) {
-    const localFile = path.join(app.getPath('userData'), 'mod_watchlist.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('mod_watchlist.json', list);
     return list;
   }
 
   // Stream Markers (Session Cache)
   getStreamMarkers() {
-    const localFile = path.join(app.getPath('userData'), 'stream_markers.json');
-    try {
-      if (fs.existsSync(localFile)) {
-        return JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-    return [];
+    return this._readFile('stream_markers.json', []);
   }
 
   saveStreamMarkers(markers) {
-    const localFile = path.join(app.getPath('userData'), 'stream_markers.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(markers, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('stream_markers.json', markers);
     return markers;
   }
 
   // Giveaway Winners & DSGVO Address Database (Local Offline Fallback)
   async getGiveawayWinners() {
-    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
     const decryptList = (arr) => {
       if (!Array.isArray(arr)) return [];
       return arr.map(w => {
@@ -882,70 +820,36 @@ class DatabaseService {
       });
     };
 
-    let localList = [];
-    try {
-      if (fs.existsSync(localFile)) {
-        localList = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    const localList = this._readFile('giveaway_winners.json', []);
     return decryptList(localList);
   }
 
   async saveGiveawayWinner(winnerObj) {
-    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
-    let list = [];
-    try {
-      if (fs.existsSync(localFile)) {
-        list = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    let list = this._readFile('giveaway_winners.json', []);
     const idx = list.findIndex(w => w.id === winnerObj.id);
     if (idx >= 0) {
       list[idx] = { ...list[idx], ...winnerObj };
     } else {
       list.unshift(winnerObj);
     }
-
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('giveaway_winners.json', list);
     return list;
   }
 
   async updateGiveawayWinner(id, updates) {
-    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
-    let list = [];
-    try {
-      if (fs.existsSync(localFile)) {
-        list = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    let list = this._readFile('giveaway_winners.json', []);
     const idx = list.findIndex(w => w.id === id);
     if (idx >= 0) {
       list[idx] = { ...list[idx], ...updates };
-      try {
-        fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
-      } catch(e) {}
+      this._writeFile('giveaway_winners.json', list);
     }
     return list;
   }
 
   async deleteGiveawayWinner(id) {
-    const localFile = path.join(app.getPath('userData'), 'giveaway_winners.json');
-    let list = [];
-    try {
-      if (fs.existsSync(localFile)) {
-        list = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    let list = this._readFile('giveaway_winners.json', []);
     list = list.filter(w => w.id !== id);
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(list, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('giveaway_winners.json', list);
     return list;
   }
 
@@ -998,115 +902,75 @@ class DatabaseService {
 
   // Telegram & Giveaway Portal Config (Local Offline Fallback)
   async getTelegramConfig() {
-    const localFile = path.join(app.getPath('userData'), 'telegram_config.json');
-    let cfg = { botToken: '', chatId: '', claimUrl: '' };
-    try {
-      if (fs.existsSync(localFile)) {
-        cfg = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    let cfg = this._readFile('telegram_config.json', { botToken: '', chatId: '', claimUrl: '' });
+    if (!cfg || typeof cfg !== 'object') {
+      cfg = { botToken: '', chatId: '', claimUrl: '' };
+    }
     if (!cfg.claimUrl) {
       cfg.claimUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
     }
-
     return cfg;
   }
 
   async saveTelegramConfig(cfg) {
-    const localFile = path.join(app.getPath('userData'), 'telegram_config.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(cfg, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('telegram_config.json', cfg);
     return cfg;
   }
 
   // --- Q&A Questions & Moderation (Local Offline Fallback) ---
   async getQnAQuestions() {
-    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
-    let questions = [];
-    try {
-      if (fs.existsSync(localFile)) {
-        questions = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-      }
-    } catch(e) {}
-
+    const questions = this._readFile('qna_questions.json', []);
     return Array.isArray(questions) ? questions : [];
   }
 
   async saveQnAQuestions(questions) {
-    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
     const now = Date.now();
     const updatedQuestions = (questions || []).map(q => ({
       ...q,
       updatedAt: q.updatedAt || now
     }));
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(updatedQuestions, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('qna_questions.json', updatedQuestions);
     return updatedQuestions;
   }
 
   async deleteQnAQuestion(questionId) {
-    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
     try {
       let questions = await this.getQnAQuestions();
       questions = questions.filter(q => q.id !== questionId);
-      fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
-      return true;
+      return this._writeFile('qna_questions.json', questions);
     } catch(e) {
       return false;
     }
   }
 
   async deleteAllQnAQuestions() {
-    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify([], null, 2), 'utf-8');
-      return true;
-    } catch(e) {
-      return false;
-    }
+    return this._writeFile('qna_questions.json', []);
   }
 
   async deleteAnsweredQnAQuestions() {
-    const localFile = path.join(app.getPath('userData'), 'qna_questions.json');
     try {
       let questions = await this.getQnAQuestions();
       questions = questions.filter(q => q.status !== 'answered');
-      fs.writeFileSync(localFile, JSON.stringify(questions, null, 2), 'utf-8');
-      return true;
+      return this._writeFile('qna_questions.json', questions);
     } catch(e) {
       return false;
     }
   }
 
   async getActiveQnAQuestion() {
-    const localFile = path.join(app.getPath('userData'), 'qna_active.json');
-    let localData = { active: null, updatedAt: 0 };
-    try {
-      if (fs.existsSync(localFile)) {
-        const raw = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-        if (raw && typeof raw === 'object' && 'active' in raw) {
-          localData = raw;
-        } else {
-          localData = { active: raw || null, updatedAt: (raw && (raw.updatedAt || raw.timestamp)) || 0 };
-        }
-      }
-    } catch(e) {}
-
-    return localData.active;
+    const raw = this._readFile('qna_active.json', { active: null, updatedAt: 0 });
+    if (raw && typeof raw === 'object' && 'active' in raw) {
+      return raw.active;
+    }
+    return (raw && raw.active !== undefined) ? raw.active : (raw || null);
   }
 
   async setActiveQnAQuestion(activeObj) {
-    const localFile = path.join(app.getPath('userData'), 'qna_active.json');
     const data = {
       active: activeObj,
       updatedAt: Date.now()
     };
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(data, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('qna_active.json', data);
     return activeObj;
   }
 
@@ -1145,62 +1009,33 @@ class DatabaseService {
   }
 
   async getPollTemplates() {
-    const localFile = path.join(app.getPath('userData'), 'poll_templates.json');
-    let templates = this.getDefaultPollTemplates();
-    try {
-      if (fs.existsSync(localFile)) {
-        const loaded = JSON.parse(fs.readFileSync(localFile, 'utf-8'));
-        if (Array.isArray(loaded) && loaded.length > 0) {
-          templates = loaded;
-        }
-      }
-    } catch(e) {}
-
-    return templates;
+    const defaultTemplates = this.getDefaultPollTemplates();
+    const loaded = this._readFile('poll_templates.json', defaultTemplates);
+    return (Array.isArray(loaded) && loaded.length > 0) ? loaded : defaultTemplates;
   }
 
   async savePollTemplates(templates) {
-    const localFile = path.join(app.getPath('userData'), 'poll_templates.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(templates, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('poll_templates.json', templates);
     return templates;
   }
 
   // --- Shisha Sessions Local Persistence ---
   getShishaSessions() {
-    const localFile = path.join(app.getPath('userData'), 'shisha_sessions.json');
-    try {
-      if (fs.existsSync(localFile)) {
-        return JSON.parse(fs.readFileSync(localFile, 'utf-8')) || [];
-      }
-    } catch(e) {}
-    return [];
+    const loaded = this._readFile('shisha_sessions.json', []);
+    return Array.isArray(loaded) ? loaded : [];
   }
 
   saveShishaSessions(sessions) {
-    const localFile = path.join(app.getPath('userData'), 'shisha_sessions.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(sessions, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('shisha_sessions.json', sessions);
     return sessions;
   }
 
   getActiveTimerState() {
-    const localFile = path.join(app.getPath('userData'), 'shisha_timer.json');
-    try {
-      if (fs.existsSync(localFile)) {
-        return JSON.parse(fs.readFileSync(localFile, 'utf-8')) || null;
-      }
-    } catch(e) {}
-    return null;
+    return this._readFile('shisha_timer.json', null);
   }
 
   saveActiveTimerState(timerState) {
-    const localFile = path.join(app.getPath('userData'), 'shisha_timer.json');
-    try {
-      fs.writeFileSync(localFile, JSON.stringify(timerState, null, 2), 'utf-8');
-    } catch(e) {}
+    this._writeFile('shisha_timer.json', timerState);
     return timerState;
   }
 }

@@ -27,11 +27,15 @@ let state = {
   expandedOptionalCards: new Set() // track which person cards have optional fields open
 };
 
+let commandIsReady = false;
+let liveStreamCheckInterval = null;
+
 // DOM Elements
 const personsContainer = document.getElementById('persons-container');
 const personCountLabel = document.getElementById('person-count-label');
 const btnIncPersons = document.getElementById('btn-inc-persons');
 const commandOutput = document.getElementById('command-output');
+const previewChatText = document.getElementById('preview-chat-text');
 const btnCopy = document.getElementById('btn-copy');
 const btnSendChat = document.getElementById('btn-send-chat');
 const btnFetchChatSetup = document.getElementById('btn-fetch-chat-setup');
@@ -195,6 +199,7 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
     await ipcRenderer.invoke('profiles:set-active', activeProfileId);
     showToast(`🎮 Aktiver Streamer: ${prof.name} (#${prof.targetChannel})`, 'success');
   }
+  updateTwitchUI();
 }
 
 function setupProfileEventListeners() {
@@ -519,7 +524,17 @@ async function initApp() {
 
   // Check live stream status immediately & every 60 seconds
   checkLiveStreamStatus();
-  setInterval(checkLiveStreamStatus, 60000);
+  if (typeof liveStreamCheckInterval !== 'undefined' && liveStreamCheckInterval) {
+    clearInterval(liveStreamCheckInterval);
+  }
+  liveStreamCheckInterval = setInterval(checkLiveStreamStatus, 60000);
+
+  // Global App Notification IPC Handler
+  ipcRenderer.on('app:notify', (event, payload) => {
+    if (payload && payload.message) {
+      showToast(payload.message, payload.type || 'info');
+    }
+  });
 
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
@@ -604,9 +619,8 @@ function showView(targetViewId) {
   // If opening Giveaways, start live sync of winners history for all mods
   if (targetViewId === 'view-giveaways') {
     loadGiveawayWinnersHistory();
-    if (!giveawaySyncInterval) {
-      giveawaySyncInterval = setInterval(loadGiveawayWinnersHistory, 2500);
-    }
+    if (giveawaySyncInterval) clearInterval(giveawaySyncInterval);
+    giveawaySyncInterval = setInterval(loadGiveawayWinnersHistory, 2500);
   } else {
     if (giveawaySyncInterval) {
       clearInterval(giveawaySyncInterval);
@@ -623,9 +637,8 @@ function showView(targetViewId) {
       badge.textContent = '0';
     }
     loadQnAState();
-    if (!qnaSyncInterval) {
-      qnaSyncInterval = setInterval(loadQnAState, 2500);
-    }
+    if (qnaSyncInterval) clearInterval(qnaSyncInterval);
+    qnaSyncInterval = setInterval(loadQnAState, 2500);
   } else {
     if (qnaSyncInterval) {
       clearInterval(qnaSyncInterval);
@@ -843,17 +856,22 @@ function updateChannelBotTooltips() {
 function updateTwitchUI() {
   const previewModName = document.getElementById('preview-mod-name');
   const userColorPicker = document.getElementById('user-color-picker');
-  const savedColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+  const savedColor = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#FF7F00');
   const hubTiles = document.querySelectorAll('.hub-tile-card');
   const landingSubtitle = document.querySelector('.landing-subtitle');
   const landingTwitchBanner = document.getElementById('landing-twitch-banner');
+  const bannerTokenExpired = document.getElementById('banner-token-expired');
+
+  const activeProf = getActiveStreamerProfile();
+  const hasTelegram = !!(activeProf?.telegram?.botToken && activeProf?.telegram?.chatId);
 
   if (state.twitchUser) {
+    if (bannerTokenExpired) bannerTokenExpired.classList.add('hidden');
     btnTwitchLogin.classList.add('hidden');
     twitchUserBadge.classList.remove('hidden');
-    const name = state.twitchUser.display_name || state.twitchUser.login;
+    const name = state.twitchUser?.display_name || state.twitchUser?.login || '';
     userDisplayName.textContent = name;
-    userAvatar.src = state.twitchUser.profile_image_url || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+    userAvatar.src = state.twitchUser?.profile_image_url || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
     if (previewModName) {
       previewModName.textContent = `${name}:`;
       previewModName.style.color = savedColor;
@@ -870,9 +888,29 @@ function updateTwitchUI() {
       tile.classList.remove('locked');
       tile.removeAttribute('aria-disabled');
       const badge = tile.querySelector('.tile-badge');
+      const target = tile.getAttribute('data-target');
+
       if (badge && !badge.classList.contains('planned')) {
-        badge.className = 'tile-badge ready';
-        badge.textContent = 'Bereit / Aktiv';
+        if (target === 'view-giveaways') {
+          if (hasTelegram) {
+            badge.className = 'tile-badge ready';
+            badge.textContent = 'Bereit';
+          } else {
+            badge.className = 'tile-badge warning';
+            badge.textContent = 'Kein Telegram';
+          }
+        } else if (target === 'view-qna' || target === 'view-polls') {
+          if (state.twitchUser) {
+            badge.className = 'tile-badge ready';
+            badge.textContent = 'Bereit';
+          } else {
+            badge.className = 'tile-badge warning';
+            badge.textContent = 'Twitch fehlt';
+          }
+        } else {
+          badge.className = 'tile-badge ready';
+          badge.textContent = 'Bereit';
+        }
       }
       const actionSpan = tile.querySelector('.tile-action span');
       if (actionSpan) {
@@ -880,6 +918,7 @@ function updateTwitchUI() {
       }
     });
   } else {
+    if (bannerTokenExpired) bannerTokenExpired.classList.remove('hidden');
     btnTwitchLogin.classList.remove('hidden');
     twitchUserBadge.classList.add('hidden');
     if (previewModName) {
@@ -895,9 +934,19 @@ function updateTwitchUI() {
       tile.classList.add('locked');
       tile.setAttribute('aria-disabled', 'true');
       const badge = tile.querySelector('.tile-badge');
+      const target = tile.getAttribute('data-target');
+
       if (badge && !badge.classList.contains('planned')) {
-        badge.className = 'tile-badge locked';
-        badge.textContent = '🔒 Login erforderlich';
+        if (target === 'view-giveaways' && !hasTelegram) {
+          badge.className = 'tile-badge warning';
+          badge.textContent = 'Kein Telegram';
+        } else if (target === 'view-qna' || target === 'view-polls') {
+          badge.className = 'tile-badge warning';
+          badge.textContent = 'Twitch fehlt';
+        } else {
+          badge.className = 'tile-badge locked';
+          badge.textContent = '🔒 Login erforderlich';
+        }
       }
       const actionSpan = tile.querySelector('.tile-action span');
       if (actionSpan) {
@@ -1419,22 +1468,33 @@ function generateCommandString() {
     fullCommand += ' //';
   }
 
-  commandOutput.value = fullCommand;
+  const generatedCommand = (parts.length > 0 || globalParts.length > 0) ? fullCommand.trim() : '';
+  const isCommandValid = !!(generatedCommand && generatedCommand.length > 0 && generatedCommand !== '!editsetup' && (parts.length > 0 || globalParts.length > 0));
+
+  if (isCommandValid) {
+    commandIsReady = true;
+    if (commandOutput) commandOutput.value = generatedCommand;
+    if (previewChatText) previewChatText.textContent = generatedCommand;
+    const sendBtn = document.getElementById('btn-send-chat');
+    if (sendBtn) sendBtn.removeAttribute('disabled');
+  } else {
+    commandIsReady = false;
+    if (commandOutput) commandOutput.value = '';
+    if (previewChatText) previewChatText.textContent = 'Noch kein Setup konfiguriert...';
+    const sendBtn = document.getElementById('btn-send-chat');
+    if (sendBtn) sendBtn.setAttribute('disabled', 'true');
+  }
 
   // Update Authentic Twitch-Chat Primary Output Box
   const previewModName = document.getElementById('preview-mod-name');
-  const previewChatText = document.getElementById('preview-chat-text');
   if (previewModName) {
-    const name = state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod';
+    const name = state.twitchUser?.display_name || state.twitchUser?.login || 'Mod';
     previewModName.textContent = `${name}:`;
-    const color = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#FF7F00');
+    const color = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#FF7F00');
     previewModName.style.color = color;
   }
-  if (previewChatText) {
-    previewChatText.textContent = fullCommand;
-  }
 
-  const len = fullCommand.length;
+  const len = isCommandValid ? generatedCommand.length : 0;
   if (commandLengthBadge) {
     if (len > 500) {
       commandLengthBadge.classList.add('warning');
@@ -1727,7 +1787,7 @@ const COMMON_PERSON_NAMES = [
   'niklas', 'tim', 'alex', 'chris', 'jan', 'max', 'sven', 'leon', 'robin',
   'nils', 'lukas', 'jonas', 'paul', 'finn', 'elias', 'noah', 'luis', 'david', 'simon',
   'hannes', 'erik', 'marc', 'lars', 'julian', 'flo', 'stefan', 'micha', 'christian',
-  'hasty', 'hastydj', 'bazztee', 'bazzteedj',
+  'hasty', 'hastydj', 'bazztee',
   'person 1', 'person 2', 'person 3', 'person 4', 'person 5', 'person 6'
 ];
 
@@ -2299,6 +2359,13 @@ function setupEventListeners() {
     await ipcRenderer.invoke('twitch:login');
   });
 
+  const btnBannerGotoLogin = document.getElementById('btn-banner-goto-login');
+  if (btnBannerGotoLogin) {
+    btnBannerGotoLogin.addEventListener('click', () => {
+      btnTwitchLogin.click();
+    });
+  }
+
   btnCloseTwitchModal.addEventListener('click', () => {
     twitchModal.classList.add('hidden');
   });
@@ -2445,8 +2512,13 @@ function setupEventListeners() {
 
   // Send to Twitch Chat
   btnSendChat.addEventListener('click', async () => {
+    if (!commandIsReady || !commandOutput.value.trim()) {
+      showToast('Kein Befehl zum Senden vorhanden. Bitte zuerst ein Setup konfigurieren.', 'warning');
+      return;
+    }
+
     const message = commandOutput.value.trim();
-    if (!message) {
+    if (!message || message === '!editsetup') {
       showToast('Kein Befehl zum Senden vorhanden', 'error');
       return;
     }
@@ -2573,7 +2645,11 @@ function setupEventListeners() {
     // Ctrl+Enter -> Send to chat
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault();
-      if (btnSendChat) btnSendChat.click();
+      if (btnSendChat && !btnSendChat.disabled && commandIsReady) {
+        btnSendChat.click();
+      } else {
+        showToast('Kein Befehl zum Senden bereit. Bitte zuerst ein Setup konfigurieren.', 'warning');
+      }
     }
   });
 
@@ -2628,22 +2704,35 @@ function setupEventListeners() {
     });
   }
 
-  // Onboarding Hint — show once on first ever launch
+  // Onboarding Hint — show once on first ever launch or on Help button click
   const onboardingHint = document.getElementById('onboarding-hint');
   const btnDismissOnboarding = document.getElementById('btn-dismiss-onboarding');
+  const btnShowOnboarding = document.getElementById('btn-show-onboarding');
+  let onboardingTimer = null;
+
   if (onboardingHint && !localStorage.getItem('swg_onboarding_done')) {
     onboardingHint.classList.remove('hidden');
-    const onboardingTimer = setTimeout(() => {
+    onboardingTimer = setTimeout(() => {
       onboardingHint.classList.add('hidden');
       localStorage.setItem('swg_onboarding_done', '1');
     }, 8000);
-    if (btnDismissOnboarding) {
-      btnDismissOnboarding.addEventListener('click', () => {
-        clearTimeout(onboardingTimer);
-        onboardingHint.classList.add('hidden');
-        localStorage.setItem('swg_onboarding_done', '1');
-      });
-    }
+  }
+
+  if (btnDismissOnboarding && onboardingHint) {
+    btnDismissOnboarding.addEventListener('click', () => {
+      if (onboardingTimer) clearTimeout(onboardingTimer);
+      onboardingHint.classList.add('hidden');
+      localStorage.setItem('swg_onboarding_done', '1');
+    });
+  }
+
+  if (btnShowOnboarding && onboardingHint) {
+    btnShowOnboarding.addEventListener('click', () => {
+      if (onboardingTimer) clearTimeout(onboardingTimer);
+      localStorage.removeItem('swg_onboarding_done');
+      onboardingHint.classList.remove('hidden');
+      showToast('Onboarding-Hilfe eingeblendet ℹ️', 'info');
+    });
   }
 
   // Close all dropdowns when clicking outside
@@ -4120,10 +4209,10 @@ function getInitialsAvatarSvg(name, color = '#7c3aed') {
 }
 
 function getActiveModInfo() {
-  const customColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#00f0ff');
+  const customColor = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#00f0ff');
   const customModName = localStorage.getItem('swg_custom_mod_name');
-  const senderName = customModName || (state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod');
-  const senderAvatar = (state.twitchUser && state.twitchUser.profile_image_url)
+  const senderName = customModName || (state.twitchUser?.display_name || state.twitchUser?.login || 'Mod');
+  const senderAvatar = state.twitchUser?.profile_image_url
     ? state.twitchUser.profile_image_url
     : getInitialsAvatarSvg(senderName, customColor);
 
@@ -4587,6 +4676,7 @@ function setupModHQListeners() {
 
   if (btnClearModChat) {
     btnClearModChat.addEventListener('click', async () => {
+      if (!confirm('Den gesamten Mod-Chat unwiderruflich leeren?')) return;
       lastMessagesSignature = '';
       await ipcRenderer.invoke('modchat:clear-messages');
       renderModChatMessages([]);
@@ -4706,7 +4796,7 @@ function setupModHQListeners() {
 
   function updateModProfilePreview() {
     if (!previewEditModBadge) return;
-    const name = (inputEditModName ? inputEditModName.value.trim() : '') || (state.twitchUser ? (state.twitchUser.display_name || state.twitchUser.login) : 'Mod');
+    const name = (inputEditModName ? inputEditModName.value.trim() : '') || (state.twitchUser?.display_name || state.twitchUser?.login || 'Mod');
     const color = inputEditModColor ? inputEditModColor.value : '#00f0ff';
     previewEditModBadge.textContent = name + ':';
     previewEditModBadge.style.color = color;
@@ -4715,7 +4805,7 @@ function setupModHQListeners() {
   if (btnEditModName && modProfileModal) {
     btnEditModName.addEventListener('click', () => {
       const currentName = localStorage.getItem('swg_custom_mod_name') || '';
-      const currentColor = localStorage.getItem('swg_user_color') || (state.twitchUser && state.twitchUser.color ? state.twitchUser.color : '#00f0ff');
+      const currentColor = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#00f0ff');
 
       if (inputEditModName) inputEditModName.value = currentName;
       if (inputEditModColor) inputEditModColor.value = currentColor;
@@ -4790,6 +4880,43 @@ function setupModHQListeners() {
 // =========================================================================
 
 let giveawaySyncInterval = null;
+const notifiedTodayWinners = new Set();
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function announceWinnerWithCountdown(winnerObj) {
+  const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+  if (!sendChat || !state.twitchUser || !winnerObj) return;
+
+  const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+
+  let claimBaseUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
+  try {
+    const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
+    if (cfg && cfg.claimUrl && cfg.claimUrl.trim()) {
+      claimBaseUrl = cfg.claimUrl.trim();
+    }
+  } catch(e) {}
+
+  const sep = claimBaseUrl.includes('?') ? '&' : '?';
+  const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}&v=${Date.now()}`;
+  const winChatMsg = `🎉 Glückwunsch @${winnerObj.username}! Du hast "${winnerObj.prize}" gewonnen! 🎁 Bitte trage deine Versandadresse direkt hier ein: ${link}`;
+
+  try {
+    await ipcRenderer.invoke('twitch:send-chat', { message: 'Der Gewinner wird gewählt... 🎰', channel });
+    await sleep(1000);
+    await ipcRenderer.invoke('twitch:send-chat', { message: '3...', channel });
+    await sleep(1000);
+    await ipcRenderer.invoke('twitch:send-chat', { message: '2...', channel });
+    await sleep(1000);
+    await ipcRenderer.invoke('twitch:send-chat', { message: '1...', channel });
+    await sleep(1000);
+    await ipcRenderer.invoke('twitch:send-chat', { message: winChatMsg, channel });
+    showToast(`🎉 Gewinner ausgelost & live im Twitch-Chat verkündet: @${winnerObj.displayName}!`, 'success');
+  } catch(e) {
+    showToast(`🎉 Gewinner ausgelost: ${winnerObj.displayName}!`, 'success');
+  }
+}
 
 const giveawayState = {
   isActive: false,
@@ -4850,6 +4977,19 @@ const btnRefreshWinnersHistory = document.getElementById('btn-refresh-winners-hi
 
 const KNOWN_BOTS = ['nightbot', 'streamelements', 'moobot', 'wizebot', 'fossabot', 'marvedbot', 'bot', 'soundbot', 'chatterino', 'streamlabs'];
 
+function isWinnerFromToday(winner) {
+  if (!winner) return false;
+  const rawDate = winner.created_at || winner.timestamp || winner.ended_at || winner.started_at || winner.won_at;
+  if (!rawDate) return false;
+
+  const d = new Date(rawDate);
+  if (isNaN(d.getTime())) return false;
+
+  const today = new Date().toLocaleDateString('de-DE');
+  const wonAt = d.toLocaleDateString('de-DE');
+  return today === wonAt;
+}
+
 function isParticipantExcluded(participant) {
   const login = (participant.login || '').toLowerCase();
 
@@ -4870,10 +5010,13 @@ function isParticipantExcluded(participant) {
     }
   }
 
-  // Previous winners check
+  // Previous winners check (only exclude winners from today)
   if (chkGwExcludePrevWinners && chkGwExcludePrevWinners.checked) {
-    if (giveawayState.winnersHistory && giveawayState.winnersHistory.some(w => (w.username || '').toLowerCase() === login)) {
-      return true;
+    if (giveawayState.winnersHistory) {
+      const todayWinners = giveawayState.winnersHistory.filter(isWinnerFromToday);
+      if (todayWinners.some(w => (w.username || w.user_login || w.user_name || '').toLowerCase() === login)) {
+        return true;
+      }
     }
   }
 
@@ -4932,6 +5075,7 @@ function updateGiveawayStatus(status) {
 }
 
 async function startGiveawayRegistration() {
+  notifiedTodayWinners.clear();
   const prize = inputGiveawayPrize ? inputGiveawayPrize.value.trim() : '';
   if (!prize) {
     showToast('⚠️ Bitte gib zuerst einen Gewinnpreis ein, bevor du das Giveaway startest!', 'error');
@@ -5096,28 +5240,10 @@ async function drawGiveawayWinner() {
         btnDrawWinner.textContent = '🎲 GEWINNER AUSLOSEN';
       }
 
-      // Announce winner in Twitch chat (if enabled)
+      // Announce winner in Twitch chat with countdown (if enabled)
       const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
-      if (sendChat) {
-        const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-        let claimBaseUrl = 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
-        try {
-          const cfg = await ipcRenderer.invoke('giveaway:get-telegram-config');
-          if (cfg && cfg.claimUrl && cfg.claimUrl.trim()) {
-            claimBaseUrl = cfg.claimUrl.trim();
-          }
-        } catch(e) {}
-
-        const sep = claimBaseUrl.includes('?') ? '&' : '?';
-        const link = `${claimBaseUrl}${sep}id=${winnerObj.id}&user=${encodeURIComponent(winnerObj.username)}&prize=${encodeURIComponent(winnerObj.prize)}&v=${Date.now()}`;
-        const winChatMsg = `🎉 Glückwunsch @${winnerObj.username}! Du hast "${winnerObj.prize}" gewonnen! 🎁 Bitte trage deine Versandadresse direkt hier ein: ${link}`;
-
-        try {
-          await ipcRenderer.invoke('twitch:send-chat', { message: winChatMsg, channel });
-          showToast(`🎉 Gewinner ausgelost & live im Twitch-Chat verkündet: @${winnerObj.displayName}!`, 'success');
-        } catch(e) {
-          showToast(`🎉 Gewinner ausgelost: ${winnerObj.displayName}!`, 'success');
-        }
+      if (sendChat && state.twitchUser) {
+        announceWinnerWithCountdown(winnerObj);
       } else {
         showToast(`🎉 Gewinner ausgelost (Stiller Modus): @${winnerObj.displayName}!`, 'success');
       }
@@ -5627,7 +5753,28 @@ function setupGiveawaysListeners() {
     if (!giveawayState.isActive) return;
     if (!participant || !participant.login) return;
 
-    giveawayState.participants.set(participant.login.toLowerCase(), participant);
+    const login = participant.login.toLowerCase();
+    const displayName = participant.displayName || participant.login;
+
+    // Check if participant won today and exclude filter is active
+    if (chkGwExcludePrevWinners && chkGwExcludePrevWinners.checked && giveawayState.winnersHistory) {
+      const todayWinners = giveawayState.winnersHistory.filter(isWinnerFromToday);
+      const isAlreadyWonToday = todayWinners.some(w => (w.username || w.user_login || w.user_name || '').toLowerCase() === login);
+
+      if (isAlreadyWonToday) {
+        if (!notifiedTodayWinners.has(login)) {
+          notifiedTodayWinners.add(login);
+          const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
+          if (sendChat && state.twitchUser) {
+            const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+            const friendlyMsg = `@${displayName} Du hast heute schon gewonnen – gönn dir das! 🎉 Beim Stream mit Giveaway bist Du wieder dabei 🙌`;
+            ipcRenderer.invoke('twitch:send-chat', { message: friendlyMsg, channel }).catch(() => {});
+          }
+        }
+      }
+    }
+
+    giveawayState.participants.set(login, participant);
     renderParticipantsPool();
   });
 }
@@ -5943,6 +6090,7 @@ function setupQnAListeners() {
         showToast('Keine beantworteten Fragen zum Löschen vorhanden.', 'info');
         return;
       }
+      if (!confirm('Alle beantworteten Fragen löschen?')) return;
       const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
       qnaState.questions = qnaState.questions.filter(q => q.status !== 'answered');
       await ipcRenderer.invoke('qna:clear-answered-questions', chan);
@@ -6006,16 +6154,15 @@ function setupQnAListeners() {
   const btnDeleteAll = document.getElementById('btn-qna-delete-all');
   if (btnDeleteAll) {
     btnDeleteAll.addEventListener('click', async () => {
-      if (confirm('Möchtest du wirklich ALLE Fragen in der Inbox unwiderruflich löschen?')) {
-        const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-        qnaState.questions = [];
-        qnaState.activeQuestion = null;
-        await ipcRenderer.invoke('qna:delete-all-questions', chan);
-        await ipcRenderer.invoke('qna:set-active', null, chan);
-        renderQnASpotlight();
-        renderQnAQuestionsList();
-        showToast('Alle Fragen wurden gelöscht. 🗑️', 'info');
-      }
+      if (!confirm('Alle Fragen unwiderruflich löschen?')) return;
+      const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+      qnaState.questions = [];
+      qnaState.activeQuestion = null;
+      await ipcRenderer.invoke('qna:delete-all-questions', chan);
+      await ipcRenderer.invoke('qna:set-active', null, chan);
+      renderQnASpotlight();
+      renderQnAQuestionsList();
+      showToast('Alle Fragen wurden gelöscht. 🗑️', 'info');
     });
   }
 
@@ -7952,9 +8099,8 @@ function checkAndAutoStartHeadSession(force = false) {
   statsState.coalRotations = 0;
   statsState.lastAlertPhase = null;
 
-  if (!statsState.intervalId) {
-    statsState.intervalId = setInterval(updateStatsTimerTick, 1000);
-  }
+  if (statsState.intervalId) clearInterval(statsState.intervalId);
+  statsState.intervalId = setInterval(updateStatsTimerTick, 1000);
 
   updateStatsTimerTick();
 
@@ -8415,7 +8561,7 @@ function setupStatsListeners() {
   // OBS Link copy
   if (btnCopyObs) {
     btnCopyObs.addEventListener('click', () => {
-      const url = `https://bazzteedj.github.io/shishawg-mod-setup-tool/qna.html?mode=timer`;
+      const url = `https://bazztee.github.io/shishawg-mod-setup-tool/qna.html?mode=timer`;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(url).then(() => {
           showToast('📺 OBS-Timer Overlay URL in die Zwischenablage kopiert!', 'success');

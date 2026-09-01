@@ -9,7 +9,14 @@ class TwitchService {
     this.mainWindow = mainWindow;
     this.store = store;
     this.authServer = null;
-    this.ws = null;
+    this.ircWs = null;
+    this.ircReady = false;
+    this.ircConnecting = false;
+    this.ircReconnectTimer = null;
+    this.messageHandlers = new Map(); // key -> handler function
+    this.channelJoined = null;
+    this.explicitIrcDisconnect = false;
+
     // Official ShishaWG Mod Setup Tool Twitch Client ID
     this.clientId = '440sjk1dkut7ltxkf7b3p267dekbpu'; 
     const savedCid = store.get('twitch_client_id', '');
@@ -21,6 +28,11 @@ class TwitchService {
     this.accessToken = store.get('twitch_access_token', '');
     this.user = store.get('twitch_user', null);
     this.targetChannel = store.get('target_channel', 'marved');
+
+    this.giveawayKeyword = '!join';
+    this.giveawayParticipants = new Map();
+    this.channelPointsProcessed = new Set();
+    this.qnaUserCooldowns = new Map();
   }
 
   setClientId(clientId) {
@@ -109,6 +121,220 @@ class TwitchService {
       console.error('Twitch token validation error:', err);
     }
     return null;
+  }
+
+  _parseTags(rawMsg) {
+    const tags = {};
+    if (rawMsg.startsWith('@')) {
+      const spaceIdx = rawMsg.indexOf(' ');
+      if (spaceIdx > 0) {
+        const tagStr = rawMsg.substring(1, spaceIdx);
+        tagStr.split(';').forEach(kv => {
+          const eqIdx = kv.indexOf('=');
+          if (eqIdx > 0) {
+            tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
+          }
+        });
+      }
+    }
+    return tags;
+  }
+
+  _parseUsername(rawMsg) {
+    let rest = rawMsg;
+    if (rest.startsWith('@')) {
+      const spaceIdx = rest.indexOf(' ');
+      if (spaceIdx > 0) {
+        rest = rest.substring(spaceIdx + 1);
+      }
+    }
+    const privIdx = rest.indexOf(' PRIVMSG ');
+    if (privIdx > 0) {
+      let senderPart = rest.substring(0, privIdx);
+      if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
+      const exclIdx = senderPart.indexOf('!');
+      return (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
+    }
+    const userNoticeIdx = rest.indexOf(' USERNOTICE ');
+    if (userNoticeIdx > 0) {
+      let senderPart = rest.substring(0, userNoticeIdx);
+      if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
+      const exclIdx = senderPart.indexOf('!');
+      return (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
+    }
+    return '';
+  }
+
+  _parseMessageText(rawMsg) {
+    let rest = rawMsg;
+    if (rest.startsWith('@')) {
+      const spaceIdx = rest.indexOf(' ');
+      if (spaceIdx > 0) {
+        rest = rest.substring(spaceIdx + 1);
+      }
+    }
+    const privIdx = rest.indexOf(' PRIVMSG ');
+    if (privIdx > 0) {
+      const colonIdx = rest.indexOf(' :', privIdx);
+      if (colonIdx > 0) {
+        return rest.substring(colonIdx + 2).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      }
+    }
+    return '';
+  }
+
+  async connectIRC(channel = this.targetChannel) {
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    this.targetChannel = chan;
+    this.explicitIrcDisconnect = false;
+
+    if (this.ircWs && (this.ircWs.readyState === WebSocket.OPEN || this.ircWs.readyState === WebSocket.CONNECTING)) {
+      if (this.ircWs.readyState === WebSocket.OPEN && this.channelJoined !== chan) {
+        if (this.channelJoined) {
+          try { this.ircWs.send(`PART #${this.channelJoined}`); } catch(e) {}
+        }
+        this.ircWs.send(`JOIN #${chan}`);
+        this.channelJoined = chan;
+      }
+      return Promise.resolve(this.ircWs);
+    }
+
+    if (this.ircConnecting && this.ircConnectPromise) {
+      return this.ircConnectPromise;
+    }
+
+    if (this.ircReconnectTimer) {
+      clearTimeout(this.ircReconnectTimer);
+      this.ircReconnectTimer = null;
+    }
+
+    this.ircConnecting = true;
+    this.ircConnectPromise = new Promise((resolve) => {
+      let resolved = false;
+      const safeResolve = () => {
+        if (!resolved) {
+          resolved = true;
+          this.ircConnecting = false;
+          resolve(this.ircWs);
+        }
+      };
+
+      try {
+        if (this.ircWs) {
+          try { this.ircWs.close(); } catch(e) {}
+        }
+
+        const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+        this.ircWs = ws;
+        this.ircReady = false;
+
+        const connectTimeout = setTimeout(() => {
+          safeResolve();
+        }, 10000);
+
+        ws.on('open', () => {
+          ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
+          if (this.accessToken && this.user && this.user.login) {
+            ws.send(`PASS oauth:${this.accessToken}`);
+            ws.send(`NICK ${this.user.login.toLowerCase()}`);
+          } else {
+            const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
+            ws.send(`NICK ${nick}`);
+          }
+          ws.send(`JOIN #${chan}`);
+          this.channelJoined = chan;
+        });
+
+        ws.on('message', (data) => {
+          const rawLines = data.toString().split(/\r\n|\r|\n/);
+          for (const line of rawLines) {
+            const raw = line.trim();
+            if (!raw) continue;
+
+            if (raw.startsWith('PING')) {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send('PONG :tmi.twitch.tv');
+              }
+              continue;
+            }
+
+            if (raw.includes('376') || raw.includes('JOIN') || raw.includes('USERSTATE') || raw.includes('GLOBALUSERSTATE')) {
+              this.ircReady = true;
+              clearTimeout(connectTimeout);
+              safeResolve();
+            }
+
+            this.parseIrcColor(raw);
+
+            if (raw.includes('PRIVMSG') || raw.includes('USERNOTICE')) {
+              const tags = this._parseTags(raw);
+              const login = this._parseUsername(raw);
+              const text = this._parseMessageText(raw);
+              const parsedMsg = { raw, tags, login, text, channel: this.channelJoined || chan };
+
+              for (const [key, handlerFn] of this.messageHandlers.entries()) {
+                try {
+                  handlerFn(parsedMsg, raw);
+                } catch(err) {
+                  console.error(`Error in Twitch IRC message handler (${key}):`, err.message);
+                }
+              }
+            }
+          }
+        });
+
+        ws.on('close', () => {
+          this.ircReady = false;
+          if (this.ircWs === ws) {
+            this.ircWs = null;
+          }
+          safeResolve();
+          if (!this.explicitIrcDisconnect) {
+            if (this.ircReconnectTimer) clearTimeout(this.ircReconnectTimer);
+            this.ircReconnectTimer = setTimeout(() => {
+              this.connectIRC(this.targetChannel);
+            }, 5000);
+          }
+        });
+
+        ws.on('error', (err) => {
+          console.error('Twitch IRC WebSocket error:', err.message);
+          try { ws.close(); } catch(e) {}
+          safeResolve();
+        });
+
+      } catch(err) {
+        console.error('Failed to create Twitch IRC WebSocket:', err.message);
+        this.ircConnecting = false;
+        safeResolve();
+      }
+    });
+
+    return this.ircConnectPromise;
+  }
+
+  addMessageHandler(key, handlerFn) {
+    this.messageHandlers.set(key, handlerFn);
+    return () => this.messageHandlers.delete(key);
+  }
+
+  removeMessageHandler(key) {
+    this.messageHandlers.delete(key);
+  }
+
+  disconnectIRC() {
+    this.explicitIrcDisconnect = true;
+    if (this.ircReconnectTimer) {
+      clearTimeout(this.ircReconnectTimer);
+      this.ircReconnectTimer = null;
+    }
+    this.messageHandlers.clear();
+    if (this.ircWs) {
+      try { this.ircWs.close(); } catch(e) {}
+      this.ircWs = null;
+    }
+    this.ircReady = false;
+    this.channelJoined = null;
   }
 
   parseIrcColor(msg) {
@@ -243,10 +469,7 @@ class TwitchService {
     this.user = null;
     this.store.delete('twitch_access_token');
     this.store.delete('twitch_user');
-    if (this.ws) {
-      try { this.ws.close(); } catch(e){}
-      this.ws = null;
-    }
+    this.disconnectIRC();
     this.sendToRenderer('twitch:logout', {});
   }
 
@@ -552,59 +775,19 @@ class TwitchService {
       throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
     }
 
-    const chan = (channel || 'marft').toLowerCase().replace('#', '').trim();
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    await this.connectIRC(chan);
 
-    return new Promise((resolve, reject) => {
-      let resolved = false;
-      let hasSentCommand = false;
-      const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    if (!this.ircWs || this.ircWs.readyState !== WebSocket.OPEN) {
+      throw new Error('Keine Verbindung zum Twitch Chat WebSocket.');
+    }
 
-      const timeout = setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          try { ws.close(); } catch(e){}
-          reject(new Error('Zeitüberschreitung bei Verbindung zum Twitch Chat'));
-        }
-      }, 10000);
+    this.ircWs.send(`PRIVMSG #${chan} :${message}`);
+    return { success: true, channel: chan, message };
+  }
 
-      ws.on('open', () => {
-        ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-        ws.send(`PASS oauth:${this.accessToken}`);
-        ws.send(`NICK ${this.user.login.toLowerCase()}`);
-        ws.send(`JOIN #${chan}`);
-      });
-
-      ws.on('message', (data) => {
-        const msg = data.toString();
-
-        if (msg.startsWith('PING')) {
-          ws.send('PONG :tmi.twitch.tv');
-        }
-
-        this.parseIrcColor(msg);
-
-        if (!hasSentCommand && (msg.includes('376') || msg.includes('JOIN') || msg.includes('USERSTATE'))) {
-          hasSentCommand = true;
-          ws.send(`PRIVMSG #${chan} :${message}`);
-          setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              try { ws.close(); } catch(e){}
-              resolve({ success: true, channel: chan, message });
-            }
-          }, 800);
-        }
-      });
-
-      ws.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          reject(err);
-        }
-      });
-    });
+  async sendMessage(message, channel = this.targetChannel) {
+    return this.sendChatMessage(message, channel);
   }
 
   async fetchSetupFromChat(channel = this.targetChannel) {
@@ -612,318 +795,172 @@ class TwitchService {
       throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
     }
 
-    const chan = (channel || 'marft').toLowerCase().replace('#', '').trim();
+    const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    await this.connectIRC(chan);
+
+    if (!this.ircWs || this.ircWs.readyState !== WebSocket.OPEN) {
+      throw new Error('Keine Verbindung zum Twitch Chat.');
+    }
 
     return new Promise((resolve, reject) => {
       let resolved = false;
-      let hasSentSetup = false;
-      const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+      const handlerKey = `fetch_setup_${Date.now()}`;
 
       const timeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          try { ws.close(); } catch(e){}
+          this.removeMessageHandler(handlerKey);
           reject(new Error('Keine Antwort von bot/marvedbot im Chat innerhalb von 10 Sekunden erhalten.'));
         }
       }, 10000);
 
-      ws.on('open', () => {
-        ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-        ws.send(`PASS oauth:${this.accessToken}`);
-        ws.send(`NICK ${this.user.login.toLowerCase()}`);
-        ws.send(`JOIN #${chan}`);
-      });
+      this.addMessageHandler(handlerKey, (parsedMsg) => {
+        const { text, login } = parsedMsg;
+        const author = (login || '').toLowerCase();
 
-      ws.on('message', (data) => {
-        const raw = data.toString();
-
-        if (raw.startsWith('PING')) {
-          ws.send('PONG :tmi.twitch.tv');
+        // Ignore our own !setup request
+        if (text === '!setup' && author === this.user.login.toLowerCase()) {
+          return;
         }
 
-        // Once joined, send !setup EXACTLY ONCE to trigger bot response
-        if (!hasSentSetup && (raw.includes('376') || raw.includes('JOIN'))) {
-          hasSentSetup = true;
-          ws.send(`PRIVMSG #${chan} :!setup`);
-        }
-
-        // Check for IRC PRIVMSG containing setup pattern (containing // or from marvedbot)
-        if (raw.includes('PRIVMSG')) {
-          const match = raw.match(/:([^!]+)![^@]+@[^\s]+\s+PRIVMSG\s+#\w+\s+:(.+)/);
-          if (match) {
-            const author = match[1].toLowerCase();
-            let text = match[2].replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-            text = text.replace(/^ACTION\s+/i, '').trim();
-
-            // Ignore our own !setup request
-            if (text === '!setup' && author === this.user.login.toLowerCase()) {
-              return;
-            }
-
-            // Check if message is a setup response (contains // or contains name/tobacco)
-            if (text.includes('//') || author.includes('marvedbot') || author.includes('bot')) {
-              if (!resolved) {
-                resolved = true;
-                clearTimeout(timeout);
-                try { ws.close(); } catch(e){}
-                resolve({ success: true, author: match[1], text });
-              }
-            }
+        // Check if message is a setup response (contains // or from marvedbot/bot)
+        if (text.includes('//') || author.includes('marvedbot') || author.includes('bot')) {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            this.removeMessageHandler(handlerKey);
+            const authorDisplayName = parsedMsg.tags?.['display-name'] || author;
+            resolve({ success: true, author: authorDisplayName, text });
           }
         }
       });
 
-      ws.on('error', (err) => {
-        if (!resolved) {
-          resolved = true;
-          clearTimeout(timeout);
-          reject(err);
-        }
-      });
+      this.ircWs.send(`PRIVMSG #${chan} :!setup`);
     });
   }
 
   startGiveawayListener(keyword, channel = this.targetChannel) {
-    this.stopGiveawayListener();
-
     const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
     const cleanKeyword = (keyword || '!join').toLowerCase().trim();
 
-    try {
-      this.giveawayWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-      this.giveawayKeyword = cleanKeyword;
-      this.giveawayParticipants = new Map();
+    this.giveawayKeyword = cleanKeyword;
+    this.giveawayParticipants = new Map();
 
-      this.giveawayWs.on('open', () => {
-        this.giveawayWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-        const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
-        this.giveawayWs.send(`NICK ${nick}`);
-        this.giveawayWs.send(`JOIN #${chan}`);
-      });
+    this.connectIRC(chan);
 
-      this.giveawayWs.on('message', (data) => {
-        const rawLines = data.toString().split(/\r\n|\r|\n/);
-        for (const line of rawLines) {
-          const raw = line.trim();
-          if (!raw) continue;
+    this.addMessageHandler('giveaway', (parsedMsg) => {
+      const { text, login, tags } = parsedMsg;
+      if (!login || !text) return;
 
-          if (raw.startsWith('PING')) {
-            if (this.giveawayWs && this.giveawayWs.readyState === WebSocket.OPEN) {
-              this.giveawayWs.send('PONG :tmi.twitch.tv');
-            }
-            continue;
-          }
+      const lowerText = text.toLowerCase();
+      const kw = this.giveawayKeyword;
 
-          if (raw.includes('PRIVMSG')) {
-            let tags = {};
-            let rest = raw;
+      // Ignore start/stop announcement messages from bot or broadcaster
+      const isAnnouncement = lowerText.includes('giveaway gestartet') || 
+                             lowerText.includes('giveaway beendet') ||
+                             lowerText.includes('schreibt ' + kw) ||
+                             lowerText.includes('um teilzunehmen');
 
-            if (rest.startsWith('@')) {
-              const spaceIdx = rest.indexOf(' ');
-              if (spaceIdx > 0) {
-                const tagStr = rest.substring(1, spaceIdx);
-                rest = rest.substring(spaceIdx + 1);
-                tagStr.split(';').forEach(kv => {
-                  const eqIdx = kv.indexOf('=');
-                  if (eqIdx > 0) {
-                    tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
-                  }
-                });
-              }
-            }
+      if (isAnnouncement) return;
 
-            const privIdx = rest.indexOf(' PRIVMSG ');
-            if (privIdx > 0) {
-              let senderPart = rest.substring(0, privIdx);
-              if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
-              const exclIdx = senderPart.indexOf('!');
-              const login = (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
+      // Match keyword: exactly equal to keyword, or start with keyword, or word token matches
+      const tokens = lowerText.split(/\s+/);
+      const matchesKeyword = (lowerText === kw) || lowerText.startsWith(kw + ' ') || tokens.includes(kw);
 
-              const colonIdx = rest.indexOf(' :', privIdx);
-              if (colonIdx > 0 && login) {
-                const text = rest.substring(colonIdx + 2).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().toLowerCase();
-                const kw = this.giveawayKeyword;
+      if (matchesKeyword) {
+        const displayName = tags['display-name'] || login;
+        const color = tags['color'] || '#00f0ff';
+        const badges = tags['badges'] || '';
+        const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
+        const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
 
-                // Ignore start/stop announcement messages from bot or broadcaster
-                const isAnnouncement = text.includes('giveaway gestartet') || 
-                                       text.includes('giveaway beendet') ||
-                                       text.includes('schreibt ' + kw) ||
-                                       text.includes('um teilzunehmen');
+        const participant = {
+          login,
+          displayName,
+          color,
+          isMod,
+          isSub,
+          timestamp: Date.now()
+        };
 
-                if (isAnnouncement) return;
+        this.giveawayParticipants.set(login, participant);
+        this.sendToRenderer('giveaway:new-participant', participant);
+      }
+    });
 
-                // Match keyword: exactly equal to keyword, or start with keyword, or word token matches
-                const tokens = text.split(/\s+/);
-                const matchesKeyword = (text === kw) || text.startsWith(kw + ' ') || tokens.includes(kw);
-
-                if (matchesKeyword) {
-                  const displayName = tags['display-name'] || login;
-                  const color = tags['color'] || '#00f0ff';
-                  const badges = tags['badges'] || '';
-                  const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
-                  const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
-
-                  const participant = {
-                    login,
-                    displayName,
-                    color,
-                    isMod,
-                    isSub,
-                    timestamp: Date.now()
-                  };
-
-                  this.giveawayParticipants.set(login, participant);
-                  this.sendToRenderer('giveaway:new-participant', participant);
-                }
-              }
-            }
-          }
-        }
-      });
-
-      this.giveawayWs.on('error', () => {});
-      return { success: true, keyword: cleanKeyword, channel: chan };
-    } catch(e) {
-      return { success: false, error: e.message };
-    }
+    return { success: true, keyword: cleanKeyword, channel: chan };
   }
 
   stopGiveawayListener() {
-    if (this.giveawayWs) {
-      try {
-        this.giveawayWs.close();
-      } catch(e) {}
-      this.giveawayWs = null;
-    }
+    this.removeMessageHandler('giveaway');
     return { success: true };
   }
 
   // --- Channel Points Rewards (Kohle-Stücke) Live Monitor ---
   startChannelPointsListener(channel = this.targetChannel, autoChat = true) {
     const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
-    if (this.channelPointsWs) {
-      try { this.channelPointsWs.close(); } catch(e) {}
-      this.channelPointsWs = null;
-    }
 
-    try {
-      this.channelPointsWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-      this.channelPointsProcessed = new Set();
+    this.connectIRC(chan);
 
-      this.channelPointsWs.on('open', () => {
-        this.channelPointsWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
-        const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
-        this.channelPointsWs.send(`NICK ${nick}`);
-        this.channelPointsWs.send(`JOIN #${chan}`);
-      });
+    this.addMessageHandler('channelpoints', async (parsedMsg, raw) => {
+      if (raw.includes('custom-reward-id') || (raw.includes('USERNOTICE') && raw.includes('reward-gift'))) {
+        const tags = parsedMsg.tags || {};
+        const msgId = tags['id'] || `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 
-      this.channelPointsWs.on('message', async (data) => {
-        const rawLines = data.toString().split(/\r\n|\r|\n/);
-        for (const line of rawLines) {
-          const raw = line.trim();
-          if (!raw) continue;
+        if (this.channelPointsProcessed.has(msgId)) return;
+        this.channelPointsProcessed.add(msgId);
+        if (this.channelPointsProcessed.size > 200) {
+          const first = this.channelPointsProcessed.values().next().value;
+          this.channelPointsProcessed.delete(first);
+        }
 
-          if (raw.startsWith('PING')) {
-            if (this.channelPointsWs && this.channelPointsWs.readyState === WebSocket.OPEN) {
-              this.channelPointsWs.send('PONG :tmi.twitch.tv');
-            }
-            continue;
-          }
+        const login = (tags['display-name'] || parsedMsg.login || '').toLowerCase().trim();
+        const displayName = tags['display-name'] || login || 'Zuschauer';
+        const uniqueId = `kp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const prizeTitle = '1KG Zauberwürfel FREE!';
 
-          // Check for IRC messages with custom-reward-id or USERNOTICE reward
-          if (raw.includes('custom-reward-id') || (raw.includes('USERNOTICE') && raw.includes('reward-gift'))) {
-            let tags = {};
-            let rest = raw;
+        const redemptionItem = {
+          id: uniqueId,
+          user_login: login,
+          user_name: displayName,
+          prize: prizeTitle,
+          type: 'channel_points',
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          channel: chan
+        };
 
-            if (rest.startsWith('@')) {
-              const spaceIdx = rest.indexOf(' ');
-              if (spaceIdx > 0) {
-                const tagStr = rest.substring(1, spaceIdx);
-                rest = rest.substring(spaceIdx + 1);
-                tagStr.split(';').forEach(kv => {
-                  const eqIdx = kv.indexOf('=');
-                  if (eqIdx > 0) {
-                    tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
-                  }
-                });
-              }
-            }
+        // Save to Supabase database
+        try {
+          await supabaseService.saveGiveawayWinner(redemptionItem, chan);
+        } catch(e) {
+          console.error('Failed to save channel points redemption to Supabase:', e);
+        }
 
-            const rewardId = tags['custom-reward-id'] || tags['msg-id'] || '';
-            const msgId = tags['id'] || `${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-
-            if (this.channelPointsProcessed.has(msgId)) continue;
-            this.channelPointsProcessed.add(msgId);
-            if (this.channelPointsProcessed.size > 200) {
-              const first = this.channelPointsProcessed.values().next().value;
-              this.channelPointsProcessed.delete(first);
-            }
-
-            let login = (tags['display-name'] || '').toLowerCase().trim();
-            if (!login) {
-              const privIdx = rest.indexOf(' PRIVMSG ');
-              if (privIdx > 0) {
-                let senderPart = rest.substring(0, privIdx);
-                if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
-                const exclIdx = senderPart.indexOf('!');
-                login = (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
-              }
-            }
-
-            const displayName = tags['display-name'] || login || 'Zuschauer';
-            const uniqueId = `kp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-            const prizeTitle = '1KG Zauberwürfel FREE!';
-
-            const redemptionItem = {
-              id: uniqueId,
-              user_login: login,
-              user_name: displayName,
-              prize: prizeTitle,
-              type: 'channel_points',
-              status: 'pending',
-              created_at: new Date().toISOString(),
-              channel: chan
-            };
-
-            // Save to Supabase database
-            try {
-              await supabaseService.saveGiveawayWinner(redemptionItem, chan);
-            } catch(e) {
-              console.error('Failed to save channel points redemption to Supabase:', e);
-            }
-
-            // Post automated chat reply if configured
-            const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(login)}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
-            if (autoChat) {
-              try {
-                const chatMsg = `@${displayName} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
-                await this.sendMessage(chatMsg, chan);
-              } catch(e) {
-                console.error('Failed to send channel points chat message:', e);
-              }
-            }
-
-            // Notify Mod-Tool UI
-            this.sendToRenderer('channelpoints:new-redemption', {
-              ...redemptionItem,
-              claimUrl
-            });
+        // Post automated chat reply if configured
+        const claimUrl = `https://bazztee.github.io/shishawg-mod-setup-tool/claim.html?user=${encodeURIComponent(login)}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
+        if (autoChat) {
+          try {
+            const chatMsg = `@${displayName} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
+            await this.sendMessage(chatMsg, chan);
+          } catch(e) {
+            console.error('Failed to send channel points chat message:', e);
           }
         }
-      });
 
-      this.channelPointsWs.on('error', () => {});
-      return { success: true, channel: chan };
-    } catch(e) {
-      return { success: false, error: e.message };
-    }
+        // Notify Mod-Tool UI
+        this.sendToRenderer('channelpoints:new-redemption', {
+          ...redemptionItem,
+          claimUrl
+        });
+      }
+    });
+
+    return { success: true, channel: chan };
   }
 
   stopChannelPointsListener() {
-    if (this.channelPointsWs) {
-      try { this.channelPointsWs.close(); } catch(e) {}
-      this.channelPointsWs = null;
-    }
+    this.removeMessageHandler('channelpoints');
     return { success: true };
   }
 
@@ -1258,112 +1295,50 @@ class TwitchService {
 
   // --- Q&A Twitch Chat Listener ---
   startQnAListener(channel = this.targetChannel) {
-    this.stopQnAListener();
-
     const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
 
-    try {
-      this.qnaWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-      this.qnaUserCooldowns = new Map();
+    this.connectIRC(chan);
 
-      this.qnaWs.on('open', () => {
-        this.qnaWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-        const nick = `justinfan${Math.floor(10000 + Math.random() * 89999)}`;
-        this.qnaWs.send(`NICK ${nick}`);
-        this.qnaWs.send(`JOIN #${chan}`);
-      });
+    this.addMessageHandler('qna', (parsedMsg) => {
+      const { text, login, tags } = parsedMsg;
+      if (!login || !text) return;
 
-      this.qnaWs.on('message', (data) => {
-        const rawLines = data.toString().split(/\r\n|\r|\n/);
-        for (const line of rawLines) {
-          const raw = line.trim();
-          if (!raw) continue;
+      // Check if message is a Q&A trigger command: !frage, !q, !question
+      const match = text.match(/^!(?:frage|q|question)(?:\s+(.+)|$)/i);
+      if (match) {
+        const questionText = (match[1] || '').trim();
+        if (questionText.length < 3) return; // ignore empty / too short triggers
 
-          if (raw.startsWith('PING')) {
-            if (this.qnaWs && this.qnaWs.readyState === WebSocket.OPEN) {
-              this.qnaWs.send('PONG :tmi.twitch.tv');
-            }
-            continue;
-          }
+        const displayName = tags['display-name'] || login;
+        const color = tags['color'] || '#00f0ff';
+        const badges = tags['badges'] || '';
+        const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
+        const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
 
-          if (raw.includes('PRIVMSG')) {
-            let tags = {};
-            let rest = raw;
+        const questionObj = {
+          id: 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+          login,
+          displayName,
+          userColor: color,
+          userId: tags['user-id'] || '',
+          isMod,
+          isSub,
+          badges,
+          question: questionText,
+          timestamp: Date.now(),
+          status: 'pending', // pending, approved, on_air, answered, rejected
+          channel: chan
+        };
 
-            if (rest.startsWith('@')) {
-              const spaceIdx = rest.indexOf(' ');
-              if (spaceIdx > 0) {
-                const tagStr = rest.substring(1, spaceIdx);
-                rest = rest.substring(spaceIdx + 1);
-                tagStr.split(';').forEach(kv => {
-                  const eqIdx = kv.indexOf('=');
-                  if (eqIdx > 0) {
-                    tags[kv.substring(0, eqIdx)] = kv.substring(eqIdx + 1);
-                  }
-                });
-              }
-            }
+        this.sendToRenderer('qna:new-question', questionObj);
+      }
+    });
 
-            const privIdx = rest.indexOf(' PRIVMSG ');
-            if (privIdx > 0) {
-              let senderPart = rest.substring(0, privIdx);
-              if (senderPart.startsWith(':')) senderPart = senderPart.substring(1);
-              const exclIdx = senderPart.indexOf('!');
-              const login = (exclIdx > 0 ? senderPart.substring(0, exclIdx) : senderPart).toLowerCase().trim();
-
-              const colonIdx = rest.indexOf(' :', privIdx);
-              if (colonIdx > 0 && login) {
-                const rawMsg = rest.substring(colonIdx + 2).replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-                
-                // Check if message is a Q&A trigger command: !frage, !q, !question
-                const match = rawMsg.match(/^!(?:frage|q|question)(?:\s+(.+)|$)/i);
-                if (match) {
-                  const questionText = (match[1] || '').trim();
-                  if (questionText.length < 3) return; // ignore empty / too short triggers
-
-                  const displayName = tags['display-name'] || login;
-                  const color = tags['color'] || '#00f0ff';
-                  const badges = tags['badges'] || '';
-                  const isMod = tags['mod'] === '1' || badges.includes('moderator') || badges.includes('broadcaster');
-                  const isSub = tags['subscriber'] === '1' || badges.includes('subscriber') || badges.includes('founder');
-
-                  const questionObj = {
-                    id: 'q_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-                    login,
-                    displayName,
-                    userColor: color,
-                    userId: tags['user-id'] || '',
-                    isMod,
-                    isSub,
-                    badges,
-                    question: questionText,
-                    timestamp: Date.now(),
-                    status: 'pending', // pending, approved, on_air, answered, rejected
-                    channel: chan
-                  };
-
-                  this.sendToRenderer('qna:new-question', questionObj);
-                }
-              }
-            }
-          }
-        }
-      });
-
-      this.qnaWs.on('error', () => {});
-      return { success: true, channel: chan };
-    } catch(e) {
-      return { success: false, error: e.message };
-    }
+    return { success: true, channel: chan };
   }
 
   stopQnAListener() {
-    if (this.qnaWs) {
-      try {
-        this.qnaWs.close();
-      } catch(e) {}
-      this.qnaWs = null;
-    }
+    this.removeMessageHandler('qna');
     return { success: true };
   }
 

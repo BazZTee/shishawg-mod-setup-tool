@@ -145,6 +145,7 @@ function setupAutoUpdater() {
 
 app.whenReady().then(() => {
   createWindow();
+  startObsServer();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -1340,6 +1341,20 @@ function startObsServer() {
 
   obsServer.on('error', (err) => {
     console.log('OBS Server error (port likely in use):', err.message);
+    const sendNotify = () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:notify', {
+          type: 'error',
+          message: '⚠️ OBS-Server konnte Port 18942 nicht belegen. ' +
+                   'Läuft das Tool bereits? OBS-Overlay nicht verfügbar.'
+        });
+      }
+    };
+    if (mainWindow && mainWindow.webContents.isLoading()) {
+      mainWindow.webContents.once('did-finish-load', sendNotify);
+    } else {
+      sendNotify();
+    }
   });
 }
 
@@ -1447,10 +1462,6 @@ function getOverlayHtml() {
 </html>`;
 }
 
-// Start OBS Server on startup
-app.whenReady().then(() => {
-  startObsServer();
-});
 
 ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
   latestLiveSetup = {

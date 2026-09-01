@@ -14,7 +14,7 @@
       <div class="brand">
         <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
         <div class="brand-text">
-          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Klicken, um auf Updates von GitHub zu prüfen"><span id="app-version-tag">v6.0.0</span> 🔄</button></h1>
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Klicken, um auf Updates von GitHub zu prüfen"><span id="app-version-tag">v7.0.0</span> 🔄</button></h1>
           <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
         </div>
       </div>
@@ -62,6 +62,12 @@
         </div>
       </div>
     </header>
+
+    <!-- Persistent Warning Banner (e.g. Expired Twitch Token) -->
+    <div id="banner-token-expired" class="app-warning-banner hidden">
+      <span>⚠️ Twitch-Sitzung ist abgelaufen oder nicht verbunden. Bitte neu verbinden!</span>
+      <button id="btn-banner-goto-login" class="btn btn-sm btn-dark">Jetzt verbinden</button>
+    </div>
 
     <!-- Main Content Area -->
     <main class="app-content">
@@ -230,6 +236,9 @@
             <button id="btn-reset-all" class="btn btn-danger-outline">
               🗑️ Leeren
             </button>
+            <button id="btn-show-onboarding" class="btn btn-secondary" title="Onboarding-Hilfe anzeigen">
+              ❓ Hilfe
+            </button>
 
             <!-- Hamburger Secondary Menu -->
             <div class="dropdown-wrapper">
@@ -347,7 +356,7 @@
                 <strong class="twitch-username" id="preview-mod-name" title="Klicke hier, um deine Twitch-Chat-Farbe anzupassen">Mod:</strong>
                 <input type="color" id="user-color-picker" class="hidden" value="#FF7F00" title="Chat-Farbe auswählen">
               </div>
-              <span class="twitch-msg-body" id="preview-chat-text">!editsetup Marvin: Amotion Futr // Cosmo Bowl // ONMO // Musthave Pinkman // Magic Cubes (Zauberwürfel) !kohle</span>
+              <span class="twitch-msg-body" id="preview-chat-text">Noch kein Setup konfiguriert...</span>
               <button id="btn-copy" class="btn-copy" title="In Zwischenablage kopieren (Klick oder Tastatur)">
                 <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
                 <span>Kopieren</span>
@@ -357,7 +366,7 @@
             
             <div class="generator-actions">
               <span class="send-hint" title="Drücke Strg+Enter zum sofortigen Absenden">⌨ Strg+Enter</span>
-              <button id="btn-send-chat" class="btn btn-twitch btn-large" title="Direkt via verbundenen Twitch-Bot in den Chat senden">
+              <button id="btn-send-chat" class="btn btn-twitch btn-large" disabled title="Direkt via verbundenen Twitch-Bot in den Chat senden">
                 <svg class="icon-lg" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 In Twitch-Chat Senden (!editsetup)
               </button>
@@ -794,7 +803,7 @@
                     <label class="toggle-switch gw-checkbox-label">
                       <input type="checkbox" id="chk-gw-exclude-prev-winners" checked>
                       <span class="toggle-slider"></span>
-                      <span class="toggle-text">🏆 Bisherige Gewinner ausschließen</span>
+                      <span class="toggle-text">🏆 Heutige Gewinner ausschließen</span>
                     </label>
                   </div>
                 </div>

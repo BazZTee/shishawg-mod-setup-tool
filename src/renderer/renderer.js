@@ -8103,24 +8103,73 @@ function updateStatsTimerTick() {
 }
 
 function extractCurrentSetupFromState() {
-  const p = state.persons && state.persons[0];
-  if (!p) return null;
-
   const tobaccos = [];
-  const rawTobaccos = p.tobaccos || [];
-  for (let t of rawTobaccos) {
-    const clean = (t || '').trim();
-    if (clean) tobaccos.push(clean);
+  const bowls = [];
+  const pipes = [];
+  const hmds = [];
+  const persons = [];
+
+  const count = state.personCount || (state.persons ? state.persons.length : 1);
+  for (let i = 0; i < count; i++) {
+    const p = state.persons && state.persons[i];
+    if (!p) continue;
+    if (p.name) persons.push(p.name.trim());
+    if (p.pipe) pipes.push(p.pipe.trim());
+    if (p.bowl) bowls.push(p.bowl.trim());
+    if (p.hmd) hmds.push(p.hmd.trim());
+
+    const rawTobaccos = p.tobaccos || [];
+    for (let t of rawTobaccos) {
+      const clean = (t || '').trim();
+      if (clean) tobaccos.push(clean);
+    }
+    if (p.tobacco && !rawTobaccos.length) {
+      const clean = p.tobacco.trim();
+      if (clean) tobaccos.push(clean);
+    }
   }
-  let tobStr = tobaccos.join(' & ');
-  if (!tobStr && p.tobacco) tobStr = (p.tobacco || '').trim();
+
+  // Fallback: Read directly from Generator DOM input fields if state.persons is empty
+  if (tobaccos.length === 0) {
+    document.querySelectorAll('.input-p-tobacco').forEach(inp => {
+      const val = (inp.value || '').trim();
+      if (val) tobaccos.push(val);
+    });
+  }
+  if (pipes.length === 0) {
+    document.querySelectorAll('.input-p-pipe').forEach(inp => {
+      const val = (inp.value || '').trim();
+      if (val) pipes.push(val);
+    });
+  }
+  if (bowls.length === 0) {
+    document.querySelectorAll('.input-p-bowl').forEach(inp => {
+      const val = (inp.value || '').trim();
+      if (val) bowls.push(val);
+    });
+  }
+  if (hmds.length === 0) {
+    document.querySelectorAll('.input-p-hmd').forEach(inp => {
+      const val = (inp.value || '').trim();
+      if (val) hmds.push(val);
+    });
+  }
+  if (persons.length === 0) {
+    document.querySelectorAll('.input-p-name').forEach(inp => {
+      const val = (inp.value || '').trim();
+      if (val) persons.push(val);
+    });
+  }
+
+  const tobStr = tobaccos.join(' & ');
+  if (!tobStr && !pipes.length && !bowls.length && !hmds.length) return null;
 
   return {
-    tobacco: tobStr,
-    bowl: (p.bowl || '').trim(),
-    pipe: (p.pipe || '').trim(),
-    hmd: (p.hmd || '').trim(),
-    person: (p.name || '').trim() || 'Marvin'
+    tobacco: tobStr || 'Unbekannter Tabak',
+    bowl: bowls.join(' // '),
+    pipe: pipes.join(' // '),
+    hmd: hmds.join(' // '),
+    person: persons.join(' & ') || 'Marvin'
   };
 }
 
@@ -8245,17 +8294,14 @@ function resetActiveTimer() {
 function importCurrentGeneratorSetup() {
   const currentSetup = extractCurrentSetupFromState();
   if (currentSetup) {
-    if (currentSetup.tobacco) document.getElementById('input-session-tobacco').value = currentSetup.tobacco;
-    if (currentSetup.bowl) document.getElementById('input-session-bowl').value = currentSetup.bowl;
-    if (currentSetup.hmd) document.getElementById('input-session-hmd').value = currentSetup.hmd;
-    if (currentSetup.pipe) document.getElementById('input-session-pipe').value = currentSetup.pipe;
-    if (currentSetup.person) document.getElementById('input-session-person').value = currentSetup.person;
+    statsState.activeSetup = currentSetup;
   }
 }
 
 async function saveActiveTimerStateToBackend() {
   try {
     const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+    const active = statsState.activeSetup || extractCurrentSetupFromState() || {};
     const payload = {
       isRunning: statsState.isRunning,
       sessionStartTime: statsState.sessionStartTime,
@@ -8265,11 +8311,11 @@ async function saveActiveTimerStateToBackend() {
       coalRotations: statsState.coalRotations,
       headCountToday: statsState.headCountToday,
       activeSetup: {
-        tobacco: (document.getElementById('input-session-tobacco') ? document.getElementById('input-session-tobacco').value : ''),
-        bowl: (document.getElementById('input-session-bowl') ? document.getElementById('input-session-bowl').value : ''),
-        hmd: (document.getElementById('input-session-hmd') ? document.getElementById('input-session-hmd').value : ''),
-        pipe: (document.getElementById('input-session-pipe') ? document.getElementById('input-session-pipe').value : ''),
-        person: (document.getElementById('input-session-person') ? document.getElementById('input-session-person').value : 'Marvin'),
+        tobacco: active.tobacco || '',
+        bowl: active.bowl || '',
+        hmd: active.hmd || '',
+        pipe: active.pipe || '',
+        person: active.person || 'Marvin',
         notes: (document.getElementById('input-session-notes') ? document.getElementById('input-session-notes').value : '')
       },
       updatedAt: Date.now()
@@ -8280,27 +8326,26 @@ async function saveActiveTimerStateToBackend() {
 
 async function finishAndSaveHeadSession() {
   const chan = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
-  const inputTob = document.getElementById('input-session-tobacco');
-  const inputBowl = document.getElementById('input-session-bowl');
-  const inputHmd = document.getElementById('input-session-hmd');
-  const inputPipe = document.getElementById('input-session-pipe');
-  const inputPerson = document.getElementById('input-session-person');
+  const active = statsState.activeSetup || extractCurrentSetupFromState() || {};
   const selectRating = document.getElementById('select-modal-finish-rating');
   const inputFinishNotes = document.getElementById('input-modal-finish-notes');
 
   const durMins = Math.max(1, Math.round(statsState.sessionElapsedSeconds / 60));
+  const finalTobacco = (active.tobacco && active.tobacco !== 'Unbekannter Tabak')
+    ? active.tobacco.trim()
+    : (extractCurrentSetupFromState()?.tobacco || 'Unbekannter Tabak');
 
   const sessionObj = {
     id: 'sess_' + Date.now(),
     channel: chan,
-    headNum: statsState.headCountToday,
-    tobacco: (inputTob ? inputTob.value.trim() : '') || 'Unbekannter Tabak',
-    bowl: (inputBowl ? inputBowl.value.trim() : '') || '',
-    hmd: (inputHmd ? inputHmd.value.trim() : '') || '',
-    pipe: (inputPipe ? inputPipe.value.trim() : '') || '',
-    person: (inputPerson ? inputPerson.value.trim() : '') || 'Marvin',
+    headNum: statsState.headCountToday || 1,
+    tobacco: finalTobacco,
+    bowl: (active.bowl || '').trim() || (extractCurrentSetupFromState()?.bowl || ''),
+    hmd: (active.hmd || '').trim() || (extractCurrentSetupFromState()?.hmd || ''),
+    pipe: (active.pipe || '').trim() || (extractCurrentSetupFromState()?.pipe || ''),
+    person: (active.person || '').trim() || (extractCurrentSetupFromState()?.person || 'Marvin'),
     durationMinutes: durMins,
-    coalRotations: statsState.coalRotations,
+    coalRotations: statsState.coalRotations || 0,
     rating: selectRating ? (parseInt(selectRating.value, 10) || 0) : 0,
     notes: (inputFinishNotes ? inputFinishNotes.value.trim() : ''),
     startedAt: statsState.sessionStartTime ? new Date(statsState.sessionStartTime).toISOString() : new Date().toISOString(),
@@ -8314,8 +8359,6 @@ async function finishAndSaveHeadSession() {
     if (res && res.success) {
       resetActiveTimer();
 
-      // Clear setup inputs for next head
-      if (inputTob) inputTob.value = '';
       if (inputFinishNotes) inputFinishNotes.value = '';
       const inputNotes = document.getElementById('input-session-notes');
       if (inputNotes) inputNotes.value = '';
@@ -8585,26 +8628,7 @@ async function loadStatsState() {
         updateHeadCounterUI();
       }
       if (ts.activeSetup) {
-        if (ts.activeSetup.tobacco) {
-          const inp = document.getElementById('input-session-tobacco');
-          if (inp && !inp.value) inp.value = ts.activeSetup.tobacco;
-        }
-        if (ts.activeSetup.bowl) {
-          const inp = document.getElementById('input-session-bowl');
-          if (inp && !inp.value) inp.value = ts.activeSetup.bowl;
-        }
-        if (ts.activeSetup.hmd) {
-          const inp = document.getElementById('input-session-hmd');
-          if (inp && !inp.value) inp.value = ts.activeSetup.hmd;
-        }
-        if (ts.activeSetup.pipe) {
-          const inp = document.getElementById('input-session-pipe');
-          if (inp && !inp.value) inp.value = ts.activeSetup.pipe;
-        }
-        if (ts.activeSetup.person) {
-          const inp = document.getElementById('input-session-person');
-          if (inp && !inp.value) inp.value = ts.activeSetup.person;
-        }
+        statsState.activeSetup = ts.activeSetup;
       }
     }
   } catch(e) {

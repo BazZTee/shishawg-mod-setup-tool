@@ -1403,8 +1403,20 @@ function generateCommandString() {
       if (promoTarget === 'hmd' && hmdVal && !isElec) hmdVal = `${hmdVal} ${promoText}`;
     }
 
-    if (pipeVal) personSegments.push(pipeVal);
-    if (bowlVal) personSegments.push(bowlVal);
+    if (pipeVal && bowlVal) {
+      const pNorm = pipeVal.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const bNorm = bowlVal.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (pNorm === bNorm || (pNorm.includes('shii') && bNorm.includes('shii'))) {
+        personSegments.push(bowlVal);
+      } else {
+        personSegments.push(pipeVal);
+        personSegments.push(bowlVal);
+      }
+    } else if (pipeVal) {
+      personSegments.push(pipeVal);
+    } else if (bowlVal) {
+      personSegments.push(bowlVal);
+    }
     if (hmdVal && !isElec) personSegments.push(hmdVal);
 
     // Kohle (Magic Charcoal) placed directly behind HMD!
@@ -8113,10 +8125,23 @@ function extractCurrentSetupFromState() {
   for (let i = 0; i < count; i++) {
     const p = state.persons && state.persons[i];
     if (!p) continue;
-    if (p.name) persons.push(p.name.trim());
-    if (p.pipe) pipes.push(p.pipe.trim());
-    if (p.bowl) bowls.push(p.bowl.trim());
-    if (p.hmd) hmds.push(p.hmd.trim());
+    let pName = (p.name || '').trim();
+    let pPipe = (p.pipe || '').trim();
+    let pBowl = (p.bowl || '').trim();
+    let pHmd = (p.hmd || '').trim();
+
+    // All-In-One (AIO) Smart-Handling (e.g. XKAH Shii):
+    // If bowl contains 'shii', 'aio', 'all-in-one' or is electric and pipe is empty, attribute bowl as pipe for stats/history!
+    const bLower = pBowl.toLowerCase();
+    const isAio = bLower.includes('shii') || bLower.includes('all-in-one') || bLower.includes('aio') || (p.isElectric && !pPipe && pBowl);
+    if (isAio && !pPipe) {
+      pPipe = pBowl;
+    }
+
+    if (pName) persons.push(pName);
+    if (pPipe) pipes.push(pPipe);
+    if (pBowl) bowls.push(pBowl);
+    if (pHmd) hmds.push(pHmd);
 
     const rawTobaccos = p.tobaccos || [];
     for (let t of rawTobaccos) {
@@ -8158,6 +8183,16 @@ function extractCurrentSetupFromState() {
     document.querySelectorAll('.input-p-name').forEach(inp => {
       const val = (inp.value || '').trim();
       if (val) persons.push(val);
+    });
+  }
+
+  // DOM Fallback AIO handling
+  if (pipes.length === 0 && bowls.length > 0) {
+    bowls.forEach(b => {
+      const bLower = b.toLowerCase();
+      if (bLower.includes('shii') || bLower.includes('all-in-one') || bLower.includes('aio')) {
+        pipes.push(b);
+      }
     });
   }
 
@@ -8426,7 +8461,8 @@ function renderSessionsHistory(sessions) {
     daySessions.forEach(s => {
       const timeStr = s.ended_at ? new Date(s.ended_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (s.endedAt ? new Date(s.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-');
       const tobacco = s.tobacco || '-';
-      const bowlHmd = [s.bowl, s.hmd].filter(Boolean).join(' • ') || '-';
+      const rawParts = [s.pipe, s.bowl, s.hmd].filter(Boolean);
+      const bowlHmd = [...new Set(rawParts)].join(' • ') || '-';
       const dur = s.duration_minutes || s.durationMinutes || 0;
       const coals = s.coal_rotations || s.coalRotations || 0;
       const rating = s.rating ? `🌟 ${s.rating}/10` : '-';
@@ -8490,6 +8526,7 @@ function renderStatsAnalytics(sessions) {
     const coals = s.coal_rotations || s.coalRotations || 0;
     const r = s.rating || 0;
     const tob = (s.tobacco || '').trim();
+    const pipe = (s.pipe || '').trim();
     const bowl = (s.bowl || '').trim();
     const hmd = (s.hmd || '').trim();
 
@@ -8504,10 +8541,13 @@ function renderStatsAnalytics(sessions) {
       tobaccoCounts[tob] = (tobaccoCounts[tob] || 0) + 1;
     }
 
-    if (bowl) {
+    if (pipe) {
+      hardwareCounts[pipe] = (hardwareCounts[pipe] || 0) + 1;
+    }
+    if (bowl && bowl.toLowerCase() !== pipe.toLowerCase()) {
       hardwareCounts[bowl] = (hardwareCounts[bowl] || 0) + 1;
     }
-    if (hmd) {
+    if (hmd && hmd.toLowerCase() !== bowl.toLowerCase() && hmd.toLowerCase() !== pipe.toLowerCase()) {
       hardwareCounts[hmd] = (hardwareCounts[hmd] || 0) + 1;
     }
   });

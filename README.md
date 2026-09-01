@@ -1,4 +1,4 @@
-# 💨 ShishaWG Mod Setup Tool (v7.0.2)
+# 💨 ShishaWG Mod Setup Tool (v7.0.3)
 
 Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team des Twitch-Kanals **ShishaWG**. Entwickelt für schnelles Erstellen, Importieren, Verwalten und Live-Senden von Shisha-Setups, Giveaways, Q&A-Sessions, Stream-Aktionen und Cloud-Synchronisation in Echtzeit.
 
@@ -6,7 +6,7 @@ Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team d
 
 ## 📑 Inhaltsverzeichnis
 
-- [✨ Highlights & Neuerungen in v7.0.2](#-highlights--neuerungen-in-v702)
+- [✨ Highlights & Neuerungen in v7.0.3](#-highlights--neuerungen-in-v703)
 - [🎛️ Die Module im Überblick](#️-die-module-im-überblick)
   - [1. 💬 Setup Generator & Chat-Befehl](#1--setup-generator--chat-befehl)
   - [2. ⚡ Quick-Actions & Stream-Manager](#2--quick-actions--stream-manager)
@@ -22,8 +22,9 @@ Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team d
 
 ---
 
-## ✨ Highlights & Neuerungen in v7.0.2
+## ✨ Highlights & Neuerungen in v7.0.3
 
+- 👑 **Mod-Prioritäts-Kaskade & Anti-Doppelpost-Schutz**: Automatische Chat-Antworten (Kanalpunkte-Claim-Links & Giveaway-Hinweise) folgen einer festen Kaskade: **`BazZTeeDJ` (Sofort)** ➔ **`flashmobnbg` (2,5s Backup)** ➔ **Restlicher Mod-Pool (5s)**. Ein Live-Chat-Sniffer verhindert jegliche Doppelposts.
 - ⬛ **Präzise Kanalpunkte-Erkennung**: Lauscht gezielt auf echte Bot-Einlösungen (`marvedbot`, etc.) und verhindert Fehlalarme bei normalen hervorgehobenen Chat-Nachrichten.
 - 🎨 **Dauerhafte Wunschfarben-Speicherung**: Deine ausgewählte Chat-Farbe (z.B. Orange) bleibt dauerhaft gespeichert und wird nicht mehr durch Twitch-Standardfarben überschrieben.
 - 💬 **Farb-Synchronisation im Mod-Chat**: Die gewählte Farbe wird automatisch an Supabase übermittelt und für alle Moderatoren im Team-Chat konsistent angezeigt.
@@ -120,7 +121,7 @@ Das ultimative Moderator- und Stream-Management-Tool für das Moderatoren-Team d
 | `#btn-stop-giveaway` | ⏹️ **Registrierung Stoppen** | Schließt den Lostopf für neue Teilnehmer. |
 | `#btn-draw-winner` | 🎲 **GEWINNER AUSLOSEN** | Startet die Roulette-Animation und den Chat-Countdown zur Gewinnerziehung. |
 | `#btn-send-winner-telegram` | ✈️ **An Telegram Senden** | Übermittelt die geprüfte Lieferadresse an das Logistik-Team. |
-| `#btn-check-updates` | 🔄 **v7.0.2** | Prüft manuell auf neue Releases auf GitHub. |
+| `#btn-check-updates` | 🔄 **v7.0.3** | Prüft manuell auf neue Releases auf GitHub. |
 
 ---
 
@@ -150,11 +151,11 @@ Beim Profilwechsel passen sich alle Chat-Befehle, Q&A-Listener und Giveaway-Eins
 ## 🚀 Installation & Updates
 
 ### Portable Version (ohne Installation)
-1. Die Datei `ShishaWG-Mod-Setup-Tool-Portable-7.0.2.exe` aus dem [Release-Bereich](https://github.com/BazZTee/shishawg-mod-setup-tool/releases) herunterladen.
+1. Die Datei `ShishaWG-Mod-Setup-Tool-Portable-7.0.3.exe` aus dem [Release-Bereich](https://github.com/BazZTee/shishawg-mod-setup-tool/releases) herunterladen.
 2. An einem beliebigen Ort ausführen – keine Administratorrechte erforderlich.
 
 ### Setup Installer
-1. Die Datei `ShishaWG-Mod-Setup-Tool-Setup-7.0.2.exe` herunterladen und ausführen.
+1. Die Datei `ShishaWG-Mod-Setup-Tool-Setup-7.0.3.exe` herunterladen und ausführen.
 2. Installiert die App im Benutzerverzeichnis und erstellt eine Desktop-Verknüpfung.
 
 ### Automatisches Update

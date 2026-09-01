@@ -32,7 +32,19 @@ class TwitchService {
     this.giveawayKeyword = '!join';
     this.giveawayParticipants = new Map();
     this.channelPointsProcessed = new Set();
+    this.chatAnnouncedClaims = new Map(); // key: user_login -> timestamp
     this.qnaUserCooldowns = new Map();
+  }
+
+  getModPriorityDelay() {
+    const login = (this.user?.login || '').toLowerCase().trim();
+    if (login === 'bazzteedj' || login === 'bazztee') {
+      return 0; // Priority 1: Instant response (0ms)
+    }
+    if (login === 'flashmobnbg' || login.includes('flashmob')) {
+      return 2500; // Priority 2: Standby backup (2500ms)
+    }
+    return 5000 + Math.floor(Math.random() * 800); // Priority 3: General mod pool fallback (5000-5800ms)
   }
 
   setClientId(clientId) {
@@ -275,6 +287,18 @@ class TwitchService {
               const login = this._parseUsername(raw);
               const text = this._parseMessageText(raw);
               const parsedMsg = { raw, tags, login, text, channel: this.channelJoined || chan };
+
+              // Live Chat Sniffer: Check if any mod/bot has already posted claim links or winner notices in chat
+              if (text) {
+                const txtLower = text.toLowerCase();
+                if (txtLower.includes('claim.html') || (txtLower.includes('du hast') && txtLower.includes('eingelöst')) || (txtLower.includes('du hast heute schon gewonnen'))) {
+                  const userMatch = text.match(/@([a-zA-Z0-9_]+)/);
+                  if (userMatch) {
+                    const u = userMatch[1].toLowerCase();
+                    this.chatAnnouncedClaims.set(u, Date.now());
+                  }
+                }
+              }
 
               for (const [key, handlerFn] of this.messageHandlers.entries()) {
                 try {
@@ -954,7 +978,7 @@ class TwitchService {
           this.channelPointsProcessed.delete(first);
         }
 
-        const uniqueId = `kp_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        const uniqueId = `kp_${redeemedUser.toLowerCase()}_${Math.floor(Date.now() / (1000 * 60))}`;
 
         const redemptionItem = {
           id: uniqueId,
@@ -967,7 +991,7 @@ class TwitchService {
           channel: chan
         };
 
-        // Save to Supabase database
+        // Save to Supabase database (deterministic ID prevents duplicate rows across multiple online mods)
         try {
           await supabaseService.saveGiveawayWinner(redemptionItem, chan);
         } catch(e) {
@@ -986,21 +1010,37 @@ class TwitchService {
         const sep = claimBaseUrl.includes('?') ? '&' : '?';
         const claimUrl = `${claimBaseUrl}${sep}user=${encodeURIComponent(redeemedUser.toLowerCase())}&prize=${encodeURIComponent(prizeTitle)}&id=${uniqueId}&channel=${encodeURIComponent(chan)}`;
 
-        // Post automated chat reply with claim link
-        if (autoChat) {
-          try {
-            const chatMsg = `@${redeemedUser} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
-            await this.sendMessage(chatMsg, chan);
-          } catch(e) {
-            console.error('Failed to send channel points chat message:', e);
-          }
-        }
-
         // Notify Mod-Tool UI
         this.sendToRenderer('channelpoints:new-redemption', {
           ...redemptionItem,
           claimUrl
         });
+
+        // Post automated chat reply with claim link using Mod Priority Cascade
+        // (Priority 1: BazZTeeDJ -> Priority 2: FlashmobNBG -> Priority 3: Other Mods)
+        if (autoChat) {
+          const uLogin = redeemedUser.toLowerCase();
+          const priorityDelay = this.getModPriorityDelay();
+          const currentLogin = (this.user?.login || 'mod').toLowerCase();
+
+          setTimeout(async () => {
+            // Check if someone with higher priority (or anyone in chat) already posted for this user
+            const lastAnnounced = this.chatAnnouncedClaims.get(uLogin);
+            const isAlreadyAnnounced = lastAnnounced && (Date.now() - lastAnnounced < 60000);
+
+            if (isAlreadyAnnounced) {
+              return;
+            }
+
+            try {
+              const chatMsg = `@${redeemedUser} 🎉 Du hast "${prizeTitle}" eingelöst! Trage hier deine Adresse für den kostenlosen Versand ein 👉 ${claimUrl}`;
+              await this.sendMessage(chatMsg, chan);
+              this.chatAnnouncedClaims.set(uLogin, Date.now());
+            } catch(e) {
+              console.error('Failed to send channel points chat message:', e);
+            }
+          }, priorityDelay);
+        }
       }
     });
 

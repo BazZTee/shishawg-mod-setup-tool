@@ -5819,12 +5819,27 @@ function setupGiveawaysListeners() {
 
       if (isAlreadyWonToday) {
         if (!notifiedTodayWinners.has(login)) {
-          notifiedTodayWinners.add(login);
           const sendChat = chkGwSendChat ? chkGwSendChat.checked : true;
           if (sendChat && state.twitchUser) {
             const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
             const friendlyMsg = `@${displayName} Du hast heute schon gewonnen – gönn dir das! 🎉 Beim Stream mit Giveaway bist Du wieder dabei 🙌`;
-            ipcRenderer.invoke('twitch:send-chat', { message: friendlyMsg, channel }).catch(() => {});
+
+            // Priority Cascade Delay (Priority 1: BazZTeeDJ -> Priority 2: FlashmobNBG -> Priority 3: Mod-Pool)
+            const myLogin = (state.twitchUser?.login || '').toLowerCase().trim();
+            let pDelay = 0;
+            if (myLogin === 'bazzteedj' || myLogin === 'bazztee') {
+              pDelay = 0;
+            } else if (myLogin === 'flashmobnbg' || myLogin.includes('flashmob')) {
+              pDelay = 2500;
+            } else {
+              pDelay = 5000 + Math.floor(Math.random() * 800);
+            }
+
+            setTimeout(() => {
+              if (notifiedTodayWinners.has(login)) return;
+              notifiedTodayWinners.add(login);
+              ipcRenderer.invoke('twitch:send-chat', { message: friendlyMsg, channel }).catch(() => {});
+            }, pDelay);
           }
         }
       }

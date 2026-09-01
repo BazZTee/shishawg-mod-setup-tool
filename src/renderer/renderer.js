@@ -3925,7 +3925,7 @@ function renderYouTubeBoard(isLiveSearch = false) {
 
     let idx = channels.findIndex(c => name.includes(c) || c.includes(name));
     if (idx === -1) {
-      if (name.includes('shisha') || name.includes('marvin')) idx = 0;
+      if (name.includes('shisha') || name.includes('wg')) idx = 0;
       else if (name.includes('marvocado') || name.includes('vlog') || name.includes('food')) idx = 1;
       else idx = 2;
     }
@@ -3948,7 +3948,7 @@ function renderYouTubeBoard(isLiveSearch = false) {
     const videoId = video.videoId || extractYouTubeVideoId(video.url);
     const thumbUrl = video.thumb || (videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : '');
     const isPinned = youtubeVideos.some(v => v.url === video.url && v.pinned);
-    const tagText = video.category || (video.channel || 'ShishaWG');
+    const tagText = video.channel || video.category || 'ShishaWG';
     const tagStyle = getYtChannelTagStyle(tagText);
 
     item.innerHTML = `

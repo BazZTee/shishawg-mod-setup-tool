@@ -505,7 +505,11 @@ ipcMain.handle('youtube:search', async (event, payload) => {
                       const videoId = vr.videoId;
                       const title = vr.title?.runs?.[0]?.text || '';
                       const desc = vr.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map(r => r.text).join('') || vr.descriptionSnippet?.runs?.map(r => r.text).join('') || '';
-                      const channelName = vr.ownerText?.runs?.[0]?.text || '';
+                      const channelName = vr.ownerText?.runs?.[0]?.text
+                        || vr.longBylineText?.runs?.[0]?.text
+                        || vr.shortBylineText?.runs?.[0]?.text
+                        || channelBadge
+                        || 'YouTube';
                       const lengthText = vr.lengthText?.simpleText || '';
                       const thumb = vr.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
 
@@ -518,7 +522,7 @@ ipcMain.handle('youtube:search', async (event, payload) => {
                         channel: channelName,
                         duration: lengthText,
                         thumb: thumb,
-                        category: channelBadge || channelName || 'YouTube',
+                        category: channelName,
                         isLiveResult: true
                       });
                       if (items.length >= 8) break;

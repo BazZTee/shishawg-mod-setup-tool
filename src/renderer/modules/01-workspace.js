@@ -641,9 +641,28 @@ let unreadModChatCount = 0;
 let lastSeenModChatTimestamp = 0;
 let globalModChatInterval = null;
 
+function isCurrentUserModerator() {
+  if (!state.twitchUser) return false;
+  const login = String(state.twitchUser.login || '').toLowerCase().trim();
+  const trusted = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg'];
+  if (trusted.includes(login)) return true;
+  const target = String(state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+  if (login === target) return true;
+  return !!(state.twitchUser.isModerator || state.twitchUser.isBroadcaster);
+}
+
 // Hub Navigation & View Switcher
 function showView(targetViewId) {
   if (!document.getElementById(targetViewId)?.classList.contains('hub-view-pane')) return;
+  if (targetViewId !== 'view-landing') {
+    if (!state.twitchUser) {
+      showToast('🔒 Bitte verbinde dich zuerst oben rechts mit Twitch!', 'warning');
+      targetViewId = 'view-landing';
+    } else if (!isCurrentUserModerator()) {
+      showToast('⛔ Zugriff verweigert: Nur Moderatoren haben Zugriff auf die Tools.', 'error');
+      targetViewId = 'view-landing';
+    }
+  }
   currentActiveView = targetViewId;
   window.dispatchEvent(new CustomEvent('swg:view-changed', { detail: targetViewId }));
   const viewPanes = document.querySelectorAll('.hub-view-pane');
@@ -775,6 +794,10 @@ function setupHubNavigation() {
         highlightTwitchLoginButton();
         return;
       }
+      if (!isCurrentUserModerator()) {
+        showToast('⛔ Zugriff verweigert: Dein Twitch-Konto ist kein Moderator in diesem Kanal.', 'error');
+        return;
+      }
       const targetViewId = tile.getAttribute('data-target');
       if (targetViewId) showView(targetViewId);
     });
@@ -786,6 +809,10 @@ function setupHubNavigation() {
         if (!state.twitchUser) {
           showToast('🔒 Bitte verbinde dich zuerst oben rechts mit Twitch!', 'warning');
           highlightTwitchLoginButton();
+          return;
+        }
+        if (!isCurrentUserModerator()) {
+          showToast('⛔ Zugriff verweigert: Dein Twitch-Konto ist kein Moderator in diesem Kanal.', 'error');
           return;
         }
         const targetViewId = tile.getAttribute('data-target');

@@ -41,7 +41,7 @@
     {
       "icon": "🛡️",
       "title": "Stabiler und sicherer",
-      "description": "Verbesserte Datenbank-Synchronisierung, sichtbare Speicherfehler, sicherere lokale Einstellungen und zahlreiche Fehlerkorrekturen im Hintergrund."
+      "description": "Automatische Twitch-Moderatorprüfung zum Schutz sensibler Adressen und Mod-Tools, sichtbare Datenbank-Fehlerbehandlung und zahlreiche Verbesserungen im Hintergrund."
     }
   ]
 }

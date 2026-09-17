@@ -57,8 +57,22 @@ class TwitchService {
 
   setTargetChannel(channel) {
     if (!channel) return;
+    const prev = this.targetChannel;
     this.targetChannel = channel.toLowerCase().replace('#', '').trim();
     this.store.set('target_channel', this.targetChannel);
+    if (prev !== this.targetChannel) {
+      this._cachedBroadcasterId = null;
+      if (this.user && this.accessToken) {
+        this.checkUserIsModerator(this.user, this.accessToken).then(modStatus => {
+          if (this.user) {
+            this.user.isModerator = !!modStatus.isModerator;
+            this.user.isBroadcaster = !!modStatus.isBroadcaster;
+            this.store.set('twitch_user', this.user);
+            this.sendToRenderer('twitch:authenticated', { user: this.user, token: this.accessToken });
+          }
+        }).catch(() => {});
+      }
+    }
   }
 
   async validateToken(tokenInput = this.accessToken) {
@@ -117,13 +131,24 @@ class TwitchService {
           display_name: displayName,
           id: valData.user_id,
           profile_image_url: profileImage,
-          color: effectiveColor
+          color: effectiveColor,
+          isModerator: false,
+          isBroadcaster: false
         };
         this.accessToken = cleanToken;
         if (valData.client_id) {
           this.clientId = valData.client_id;
           this.store.set('twitch_client_id', this.clientId);
         }
+
+        try {
+          const modStatus = await this.checkUserIsModerator(this.user, cleanToken);
+          this.user.isModerator = !!modStatus.isModerator;
+          this.user.isBroadcaster = !!modStatus.isBroadcaster;
+        } catch (e) {
+          console.error('Twitch moderator check error:', e);
+        }
+
         this.store.set('twitch_access_token', cleanToken);
         this.store.set('twitch_user', this.user);
 
@@ -138,6 +163,87 @@ class TwitchService {
       console.error('Twitch token validation error:', err);
     }
     return null;
+  }
+
+  async checkUserIsModerator(user = this.user, token = this.accessToken) {
+    if (!user || !user.login) {
+      return { isModerator: false, isBroadcaster: false, reason: 'no_user' };
+    }
+
+    const cleanLogin = String(user.login).toLowerCase().trim();
+    const cleanChan = (this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+
+    // 1. Broadcaster match
+    if (cleanLogin === cleanChan || cleanLogin === 'marved') {
+      return { isModerator: true, isBroadcaster: true, reason: 'broadcaster' };
+    }
+
+    // 2. Core trusted team check (safety fallback so core team is never locked out)
+    const TRUSTED_CORE_MODS = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg'];
+    if (TRUSTED_CORE_MODS.includes(cleanLogin)) {
+      return { isModerator: true, isBroadcaster: false, reason: 'core_team' };
+    }
+
+    if (!token) {
+      return { isModerator: false, isBroadcaster: false, reason: 'no_token' };
+    }
+
+    // 3. Check via Twitch Helix API
+    try {
+      let broadcasterId = this._cachedBroadcasterId;
+      if (!broadcasterId) {
+        const uResp = await fetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(cleanChan)}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Client-Id': this.clientId
+          }
+        });
+        if (uResp.ok) {
+          const uData = await uResp.json();
+          if (uData.data && uData.data.length > 0) {
+            broadcasterId = uData.data[0].id;
+            this._cachedBroadcasterId = broadcasterId;
+          }
+        }
+      }
+
+      if (broadcasterId) {
+        if (String(user.id) === String(broadcasterId)) {
+          return { isModerator: true, isBroadcaster: true, reason: 'broadcaster_id' };
+        }
+
+        // Query Helix moderation moderators endpoint
+        const modResp = await fetch(`https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=${broadcasterId}&user_id=${user.id}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Client-Id': this.clientId
+          }
+        });
+
+        if (modResp.ok) {
+          const modData = await modResp.json();
+          if (modData.data && modData.data.length > 0) {
+            return { isModerator: true, isBroadcaster: false, reason: 'helix_api' };
+          }
+        } else {
+          console.warn(`Twitch moderation check returned status ${modResp.status} for ${cleanLogin}`);
+        }
+      }
+    } catch (err) {
+      console.error('Twitch moderator check error:', err);
+    }
+
+    return { isModerator: false, isBroadcaster: false, reason: 'not_moderator' };
+  }
+
+  isUserAuthorizedMod() {
+    if (!this.user || !this.user.login) return false;
+    const cleanLogin = String(this.user.login).toLowerCase().trim();
+    const TRUSTED_CORE_MODS = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg'];
+    if (TRUSTED_CORE_MODS.includes(cleanLogin)) return true;
+    const cleanChan = (this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    if (cleanLogin === cleanChan) return true;
+    return !!(this.user.isModerator || this.user.isBroadcaster);
   }
 
   _parseTags(rawMsg) {

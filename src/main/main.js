@@ -835,6 +835,9 @@ ipcMain.handle('giveaway:stop-listener', async () => {
 
 ipcMain.handle('giveaway:get-winners', async () => {
   try {
+    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+      return { success: false, winners: [], error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten und Adressen abrufen.' };
+    }
     const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
     let winners = [];
     if (supabaseService) {
@@ -859,6 +862,9 @@ ipcMain.handle('giveaway:get-winners', async () => {
 
 ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
   try {
+    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten speichern.' };
+    }
     const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
     if (supabaseService) {
       await supabaseService.saveGiveawayWinner(winnerObj, winnerObj.channel || chan);
@@ -872,6 +878,9 @@ ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
 
 ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
   try {
+    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten aktualisieren.' };
+    }
     const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
     const winners = await dbService.updateGiveawayWinner(id, updates);
     if (supabaseService) {
@@ -888,6 +897,9 @@ ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
 
 ipcMain.handle('giveaway:delete-winner', async (event, id) => {
   try {
+    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten löschen.' };
+    }
     if (supabaseService) {
       await supabaseService.deleteGiveawayWinner(id);
     }
@@ -900,6 +912,9 @@ ipcMain.handle('giveaway:delete-winner', async (event, id) => {
 
 ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId }) => {
   try {
+    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Versanddaten per Telegram übermitteln.' };
+    }
     const activeProfileId = store.get('active_profile_id', 'prof_shishawg');
     const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
     const activeProf = profiles.find(p => p.id === activeProfileId) || profiles[0];
@@ -959,6 +974,9 @@ ipcMain.handle('channelpoints:stop-listener', async () => {
 });
 
 ipcMain.handle('channelpoints:create-manual-link', async (event, { user, prize, type, channel, postToChat }) => {
+  if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+    return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können manuelle Adresslinks erstellen.' };
+  }
   const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
   return twitchService.createManualClaimLink(user, prize, chan, postToChat, type);
 });

@@ -100,6 +100,7 @@ function updateTwitchUI() {
 
   const activeProf = getActiveStreamerProfile();
   const hasTelegram = !!(activeProf?.telegram?.botToken && activeProf?.telegram?.chatId);
+  const isAuthorizedMod = isCurrentUserModerator();
 
   if (state.twitchUser) {
     if (bannerTokenExpired) bannerTokenExpired.classList.add('hidden');
@@ -108,6 +109,37 @@ function updateTwitchUI() {
     const name = state.twitchUser?.display_name || state.twitchUser?.login || '';
     userDisplayName.textContent = name;
     userAvatar.src = state.twitchUser?.profile_image_url || 'https://static-cdn.jtvnw.net/user-default-pictures-uv/75305db0-3a59-4d70-9050-0b42c497426a-profile_image-70x70.png';
+
+    if (!isAuthorizedMod) {
+      if (previewModName) {
+        previewModName.textContent = `${name} (Kein Mod):`;
+        previewModName.style.color = '#ef4444';
+      }
+      if (landingTwitchBanner) landingTwitchBanner.classList.remove('hidden');
+      if (landingSubtitle) {
+        landingSubtitle.innerHTML = `<span style="color:#ef4444; font-weight:700;">⛔ Zugriff verweigert:</span> Dein Twitch-Account <strong>@${escapeHtml(name)}</strong> ist kein Moderator auf <em>twitch.tv/${escapeHtml(state.targetChannel || 'marved')}</em>.`;
+      }
+
+      // Lock all tiles (grey out & non-clickable)
+      hubTiles.forEach(tile => {
+        tile.classList.add('locked');
+        tile.setAttribute('aria-disabled', 'true');
+        const badge = tile.querySelector('.tile-badge');
+        if (badge && !badge.classList.contains('planned')) {
+          badge.className = 'tile-badge locked';
+          badge.textContent = '⛔ Kein Mod';
+        }
+        const actionSpan = tile.querySelector('.tile-action span');
+        if (actionSpan) {
+          actionSpan.textContent = '⛔ Kein Zugriff';
+        }
+      });
+
+      renderCustomDashboardTile();
+      window.dispatchEvent(new CustomEvent('swg:auth-changed', { detail: { connected: false, isModerator: false } }));
+      return;
+    }
+
     if (previewModName) {
       previewModName.textContent = `${name}:`;
       previewModName.style.color = savedColor;
@@ -1846,7 +1878,11 @@ function setupEventListeners() {
     updateTwitchUI();
     twitchModal.classList.add('hidden');
     checkLiveStreamStatus();
-    showToast(`Erfolgreich eingeloggt als ${user.display_name || user.login}!`, 'success');
+    if (isCurrentUserModerator()) {
+      showToast(`Erfolgreich als Moderator @${user.display_name || user.login} eingeloggt!`, 'success');
+    } else {
+      showToast(`⛔ Zugriff verweigert: @${user.display_name || user.login} ist kein Moderator auf diesem Kanal.`, 'error');
+    }
   });
 
   // User Chat Color Customization & Sync

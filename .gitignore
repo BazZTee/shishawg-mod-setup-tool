@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.electron-cache/
+.electron-builder-cache/
 .DS_Store
 *.log
 npm-debug.log*
@@ -7,3 +9,6 @@ yarn-debug.log*
 yarn-error.log*
 app_settings.json
 setup_database.json
+.temp_user_data/
+qa-output/
+

@@ -31,6 +31,92 @@ function formatHookahToolsTobacco(brandName, line, flavorName) {
   return `${prefix} - ${n}`;
 }
 
+const NOTE_TRANSLATIONS = {
+  strawberry: 'Erdbeere',
+  raspberry: 'Himbeere',
+  grapefruit: 'Grapefruit',
+  green_apple: 'Grüner Apfel',
+  apple_green: 'Grüner Apfel',
+  apple: 'Apfel',
+  pear: 'Birne',
+  kiwi: 'Kiwi',
+  watermelon: 'Wassermelone',
+  melon: 'Melone',
+  peach: 'Pfirsich',
+  mango: 'Mango',
+  passion_fruit: 'Maracuja',
+  passionfruit: 'Maracuja',
+  lemon: 'Zitrone',
+  lime: 'Limette',
+  blood_orange: 'Blutorange',
+  orange: 'Orange',
+  grape: 'Traube',
+  mint: 'Minze',
+  peppermint: 'Pfefferminze',
+  ice: 'Ice',
+  blueberry: 'Blaubeere',
+  blackberry: 'Brombeere',
+  cherry: 'Kirsche',
+  banana: 'Banane',
+  pineapple: 'Ananas',
+  coconut: 'Kokosnuss',
+  vanilla: 'Vanille',
+  caramel: 'Karamell',
+  chocolate: 'Schokolade',
+  coffee: 'Kaffee',
+  cookie: 'Keks',
+  biscuit: 'Keks',
+  cinnamon: 'Zimt',
+  cola: 'Cola',
+  bubblegum: 'Kaugummi',
+  gum_bubble: 'Kaugummi',
+  gum: 'Kaugummi',
+  tea_green: 'Grüner Tee',
+  tea_black: 'Schwarzer Tee',
+  tea: 'Tee',
+  pistachio: 'Pistazie',
+  hazelnut: 'Haselnuss',
+  almond: 'Mandel',
+  pomegranate: 'Granatapfel',
+  guava: 'Guave',
+  lychee: 'Litschi',
+  berry: 'Beerenmix',
+  fruit: 'Früchtemix',
+  sweet: 'Süß',
+  cheesecake: 'Käsekuchen',
+  cream: 'Sahne',
+  milk: 'Milch',
+  rose: 'Rose',
+  basil: 'Basilikum',
+  cucumber: 'Gurke',
+  ginger: 'Ingwer',
+  apricot: 'Aprikose',
+  plum: 'Pflaume',
+  gooseberry: 'Stachelbeere',
+  lemongrass: 'Zitronengras',
+  honey: 'Honig',
+  jasmine: 'Jasmin',
+  rosemary: 'Rosmarin',
+  champagne: 'Champagner',
+  starfruit: 'Sternfrucht',
+  double_apple: 'Doppelapfel'
+};
+
+function formatFlavorNotes(baseNotes, description) {
+  if (Array.isArray(baseNotes) && baseNotes.length > 0) {
+    const translated = baseNotes
+      .map(n => typeof n === 'string' ? (NOTE_TRANSLATIONS[n.toLowerCase()] || n.charAt(0).toUpperCase() + n.slice(1)) : '')
+      .filter(Boolean);
+    if (translated.length > 0) {
+      return [...new Set(translated)].join(', ');
+    }
+  }
+  if (description && typeof description === 'string' && description.trim()) {
+    return description.trim().replace(/^[^:]+:\s*/, '');
+  }
+  return null;
+}
+
 function fetchSupabaseEndpoint(pathStr) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -173,7 +259,9 @@ class DatabaseService {
         'Trofimoffs No Aroma Tasting'
       ],
       promos: [
-        'Code SHISHAWG10 für 10% Rabatt'
+        'Code SWG10 für 10% Rabatt',
+        'Code SWG',
+        'Code SWG5'
       ]
     };
     this.init();
@@ -232,11 +320,17 @@ class DatabaseService {
     const parsed = this._readFile('hookahtools_tobacco_cache.json', null);
     if (parsed && typeof parsed === 'object') {
       if (Array.isArray(parsed)) {
-        result.flavors = parsed;
-        result.meta.totalCount = parsed.length;
+        const hasRich = parsed.some(f => typeof f === 'object' && f.flavor);
+        if (hasRich) {
+          result.flavors = parsed;
+          result.meta.totalCount = parsed.length;
+        }
       } else if (Array.isArray(parsed.flavors)) {
-        result.flavors = parsed.flavors;
-        result.meta = parsed.meta || result.meta;
+        const hasRich = parsed.flavors.some(f => typeof f === 'object' && f.flavor);
+        if (hasRich) {
+          result.flavors = parsed.flavors;
+          result.meta = parsed.meta || result.meta;
+        }
       }
     }
 
@@ -306,10 +400,12 @@ class DatabaseService {
     const seenNames = new Set();
 
     for (const item of customTobacco) {
-      const name = (typeof item === 'string' ? item : item.name).trim();
+      const name = (typeof item === 'string' ? item : item.name || '').trim();
+      const flavor = (typeof item === 'object' && item.flavor) ? item.flavor : null;
       if (!name) continue;
       combinedTobacco.push({
         name,
+        flavor: flavor ? String(flavor).trim() : null,
         source: 'custom',
         isCustom: true
       });
@@ -318,10 +414,12 @@ class DatabaseService {
 
     // 2. HookahTools tobacco entries (marked as source: 'hookahtools', isCustom: false)
     for (const item of hookahTobacco) {
-      const name = (typeof item === 'string' ? item : item.name).trim();
+      const name = (typeof item === 'string' ? item : item.name || '').trim();
+      const flavor = (typeof item === 'object' && item.flavor) ? item.flavor : (typeof item === 'object' && item.description ? item.description : null);
       if (!name || seenNames.has(name.toLowerCase())) continue;
       combinedTobacco.push({
         name,
+        flavor: flavor ? String(flavor).trim() : null,
         source: 'hookahtools',
         isCustom: false
       });
@@ -368,24 +466,46 @@ class DatabaseService {
     if (!remoteCatalog || typeof remoteCatalog !== 'object') return this.getCatalog();
     try {
       const current = this.getCatalog();
-      const updated = {
-        pipes: Array.isArray(remoteCatalog.pipes) && remoteCatalog.pipes.length > 0 ? remoteCatalog.pipes : current.pipes,
-        bowls: Array.isArray(remoteCatalog.bowls) && remoteCatalog.bowls.length > 0 ? remoteCatalog.bowls : current.bowls,
-        vases: Array.isArray(remoteCatalog.vases) && remoteCatalog.vases.length > 0 ? remoteCatalog.vases : current.vases,
-        hmds: Array.isArray(remoteCatalog.hmds) && remoteCatalog.hmds.length > 0 ? remoteCatalog.hmds : current.hmds,
-        charcoal: Array.isArray(remoteCatalog.charcoal) && remoteCatalog.charcoal.length > 0 ? remoteCatalog.charcoal : current.charcoal,
-        persons: Array.isArray(remoteCatalog.persons) && remoteCatalog.persons.length > 0 ? remoteCatalog.persons : current.persons,
-        tastings: Array.isArray(remoteCatalog.tastings) && remoteCatalog.tastings.length > 0 ? remoteCatalog.tastings : current.tastings,
-        promos: Array.isArray(remoteCatalog.promos) && remoteCatalog.promos.length > 0 ? remoteCatalog.promos : current.promos
+
+      const mergeList = (localList, remoteList) => {
+        const map = new Map();
+        const add = item => {
+          if (!item) return;
+          const str = (typeof item === 'string' ? item : item.name || '').trim();
+          if (!str) return;
+          const key = str.toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, item);
+          } else if (typeof item === 'object' && item.isElectric) {
+            map.set(key, item);
+          }
+        };
+        (Array.isArray(localList) ? localList : []).forEach(add);
+        (Array.isArray(remoteList) ? remoteList : []).forEach(add);
+        const result = [...map.values()];
+        result.sort((a, b) => {
+          const nameA = typeof a === 'string' ? a : a.name || '';
+          const nameB = typeof b === 'string' ? b : b.name || '';
+          return nameA.localeCompare(nameB, 'de');
+        });
+        return result;
       };
 
-      if (Array.isArray(remoteCatalog.tobacco) && remoteCatalog.tobacco.length > 0) {
-        updated.customTobacco = remoteCatalog.tobacco;
-      } else if (Array.isArray(remoteCatalog.customTobacco) && remoteCatalog.customTobacco.length > 0) {
-        updated.customTobacco = remoteCatalog.customTobacco;
-      } else {
-        updated.customTobacco = current.customTobacco;
-      }
+      const updated = {
+        pipes: mergeList(current.pipes, remoteCatalog.pipes),
+        bowls: mergeList(current.bowls, remoteCatalog.bowls),
+        vases: mergeList(current.vases, remoteCatalog.vases),
+        hmds: mergeList(current.hmds, remoteCatalog.hmds),
+        charcoal: mergeList(current.charcoal, remoteCatalog.charcoal),
+        persons: mergeList(current.persons, remoteCatalog.persons),
+        tastings: mergeList(current.tastings, remoteCatalog.tastings),
+        promos: mergeList(current.promos, remoteCatalog.promos)
+      };
+
+      const remoteTobacco = Array.isArray(remoteCatalog.tobacco) && remoteCatalog.tobacco.length > 0
+        ? remoteCatalog.tobacco
+        : (Array.isArray(remoteCatalog.customTobacco) && remoteCatalog.customTobacco.length > 0 ? remoteCatalog.customTobacco : []);
+      updated.customTobacco = mergeList(current.customTobacco, remoteTobacco);
 
       this.saveCatalog(updated);
     } catch (err) {
@@ -669,7 +789,7 @@ class DatabaseService {
           const isAdditionsOnly = meta.totalCount >= localCache.meta.totalCount && localCache.meta.latestUpdatedAt;
           if (isAdditionsOnly) {
             console.log(`[HookahTools DeltaSync] Fetching only new flavors added since ${localCache.meta.latestUpdatedAt}...`);
-            const deltaFlavors = await fetchSupabaseEndpoint(`flavors?select=id,name,brand_id,line,updated_at&updated_at=gt.${encodeURIComponent(localCache.meta.latestUpdatedAt)}&order=updated_at.asc`);
+            const deltaFlavors = await fetchSupabaseEndpoint(`flavors?select=id,name,brand_id,line,description,base_notes,updated_at&updated_at=gt.${encodeURIComponent(localCache.meta.latestUpdatedAt)}&order=updated_at.asc`);
 
             if (Array.isArray(deltaFlavors) && deltaFlavors.length > 0) {
               const brandMap = await this.getBrandMap();
@@ -682,11 +802,25 @@ class DatabaseService {
                   brand = (f.brand_id && refreshedBrands[f.brand_id]) ? refreshedBrands[f.brand_id] : f.brand_id;
                 }
                 const formatted = formatHookahToolsTobacco(brand, f.line, f.name);
-                if (formatted) newFormatted.push(formatted);
+                if (formatted) {
+                  const flavor = formatFlavorNotes(f.base_notes, f.description);
+                  newFormatted.push({ name: formatted, flavor });
+                }
               }
 
-              const mergedSet = new Set([...localCache.flavors, ...newFormatted]);
-              const mergedList = Array.from(mergedSet).sort((a, b) => a.localeCompare(b, 'de'));
+              const flavorMap = new Map();
+              for (const entry of (localCache.flavors || [])) {
+                const n = (typeof entry === 'string' ? entry : entry.name || '').trim();
+                const fl = typeof entry === 'object' ? (entry.flavor || null) : null;
+                if (n) flavorMap.set(n, fl);
+              }
+              for (const entry of newFormatted) {
+                flavorMap.set(entry.name, entry.flavor);
+              }
+
+              const mergedList = Array.from(flavorMap.entries())
+                .map(([name, flavor]) => flavor ? { name, flavor } : { name, flavor: null })
+                .sort((a, b) => a.name.localeCompare(b.name, 'de'));
 
               const updatedCache = {
                 meta: {
@@ -725,7 +859,7 @@ class DatabaseService {
       let hasMore = true;
 
       while (hasMore) {
-        const page = await fetchSupabaseEndpoint(`flavors?select=id,name,brand_id,line&order=name.asc&limit=${limit}&offset=${offset}`);
+        const page = await fetchSupabaseEndpoint(`flavors?select=id,name,brand_id,line,description,base_notes&order=name.asc&limit=${limit}&offset=${offset}`);
         if (!Array.isArray(page) || page.length === 0) {
           hasMore = false;
         } else {
@@ -743,11 +877,18 @@ class DatabaseService {
         const brand = (f.brand_id && brandMap[f.brand_id]) ? brandMap[f.brand_id] : (f.brand_id || '');
         const formatted = formatHookahToolsTobacco(brand, f.line, f.name);
         if (formatted) {
-          formattedList.push(formatted);
+          const flavor = formatFlavorNotes(f.base_notes, f.description);
+          formattedList.push({ name: formatted, flavor });
         }
       }
 
-      const uniqueTobacco = [...new Set(formattedList)].sort((a, b) => a.localeCompare(b, 'de'));
+      const flavorMap = new Map();
+      for (const entry of formattedList) {
+        flavorMap.set(entry.name, entry.flavor);
+      }
+      const uniqueTobacco = Array.from(flavorMap.entries())
+        .map(([name, flavor]) => flavor ? { name, flavor } : { name, flavor: null })
+        .sort((a, b) => a.name.localeCompare(b.name, 'de'));
       if (uniqueTobacco.length > 0) {
         const meta = await this.fetchHookahToolsMetadata();
         const cachePayload = {

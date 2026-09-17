@@ -1,12 +1,20 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="swg-starting">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>html.swg-starting { background: #080e1c; } html.swg-starting body { visibility: hidden; }</style>
   <title>ShishaWG Mod Setup Tool</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="workspace.css">
+  <link rel="stylesheet" href="glass.css">
+  <link rel="stylesheet" href="liquid-motion.css">
+  <link rel="stylesheet" href="disclosure-motion.css">
+  <link rel="stylesheet" href="shell-layout.css">
+  <link rel="stylesheet" href="stream-actions.css">
+  <link rel="stylesheet" href="mod-hq-workspace.css">
 </head>
-<body>
+<body class="swg-workspace">
   <div class="app-container">
 
     <!-- Top Header Navigation -->
@@ -14,7 +22,7 @@
       <div class="brand">
         <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
         <div class="brand-text">
-          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Klicken, um auf Updates von GitHub zu prüfen"><span id="app-version-tag">v7.0.8</span> 🔄</button></h1>
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Klicken, um auf Updates von GitHub zu prüfen"><span id="app-version-tag">v8.0.0</span> 🔄</button></h1>
           <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
         </div>
       </div>
@@ -186,6 +194,19 @@
               <span>🔒 Twitch verbinden</span>
             </div>
           </div>
+
+          <!-- Tile 8: Mein Mod-Dashboard (Spec #3) -->
+          <div class="hub-tile-card hub-tile-custom-dashboard" id="card-custom-dashboard" data-target="view-custom-dashboard" tabindex="0" role="button">
+            <div class="tile-header">
+              <span class="tile-icon" id="icon-custom-dashboard">✨</span>
+              <span id="badge-custom-dashboard" class="tile-badge ready">Modular</span>
+            </div>
+            <h3 id="title-custom-dashboard">Mein Mod-Dashboard</h3>
+            <p id="desc-custom-dashboard">Stelle dir dein persönliches Cockpit aus verschiebbaren Widgets zusammen.</p>
+            <div class="tile-action">
+              <span id="action-custom-dashboard">Tool öffnen ➔</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -274,7 +295,7 @@
         <section id="notes-card" class="notes-card">
           <div class="notes-header">
             <h4>📝 Moderator Schnell-Notizen (Scratchpad mit Fuzzy Matching)</h4>
-            <button id="btn-clear-notes" class="btn-icon" title="Notizen leeren">🗑️</button>
+            <button id="btn-clear-notes" class="btn-icon" title="Notizen leeren" aria-label="Notizen leeren"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg></button>
           </div>
           <textarea id="notes-textarea" placeholder="Hier schnell im Streamgeschehen mitschreiben... (z. B. Marvin: Amotion Futr // Cosmo Bowl // ONMO // Musthave Pinkman)"></textarea>
         </section>
@@ -346,6 +367,21 @@
         <section class="generator-card generator-card-sticky">
           <div class="generator-header">
             <h2>💬 Schritt 3: Twitch-Chat Befehl <span id="command-length-badge" class="char-badge">0 / 500</span></h2>
+            <div class="generator-header-actions" style="display:flex; align-items:center; gap:12px;">
+              <label class="checkbox-label" style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.8rem; color:var(--text-secondary);" title="Hängt bei kurzen Befehlen (unter 300 Zeichen) automatisch die Geschmacksnoten der Tabaksorten an">
+                <input type="checkbox" id="chk-include-tobacco-flavors" checked>
+                <span>Aromen anfügen</span>
+              </label>
+              <label class="toggle-switch checkbox-label" style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.8rem; color:var(--text-secondary); opacity:0.5;" title="Aktivieren, wenn du während eines laufenden Kopfes Tippfehler korrigieren oder Hardware/Tabak anpassen möchtest, ohne den Zähler/Timer neu zu starten.">
+                <input type="checkbox" id="chk-update-active-session-only" disabled>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Nur laufendes Setup anpassen</span>
+              </label>
+              <button id="btn-copy" class="btn-copy" style="position:static;" title="In Zwischenablage kopieren (Klick oder Tastatur)">
+                <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                <span>Kopieren</span>
+              </button>
+            </div>
           </div>
 
           <div class="generator-sticky-body">
@@ -357,10 +393,6 @@
                 <input type="color" id="user-color-picker" class="hidden" value="#FF7F00" title="Chat-Farbe auswählen">
               </div>
               <span class="twitch-msg-body" id="preview-chat-text">Noch kein Setup konfiguriert...</span>
-              <button id="btn-copy" class="btn-copy" title="In Zwischenablage kopieren (Klick oder Tastatur)">
-                <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-                <span>Kopieren</span>
-              </button>
               <input type="hidden" id="command-output" value="">
             </div>
             
@@ -592,7 +624,6 @@
             🏠 Hauptmenü
           </button>
           <span class="tool-breadcrumb">Dashboard ➔ <strong>💬 Mod-HQ &amp; Live-Chat</strong></span>
-          <button id="btn-clear-mod-chat" class="btn btn-secondary btn-sm" title="Chat-Verlauf für alle leeren">🗑️ Leeren</button>
         </div>
 
         <div class="modhq-grid-container">
@@ -607,10 +638,13 @@
                   <span class="chat-status-sub"><span class="status-dot green"></span> Live Synchronisiert</span>
                 </div>
               </div>
-              <div class="chat-user-indicator" id="chat-current-user-info" title="Dein Mod-Profil (Avatar, Name &amp; Chatfarbe)">
-                <img id="chat-logged-avatar" src="" alt="Avatar" class="chat-user-badge-avatar hidden">
-                <span class="chat-logged-as"><strong id="chat-logged-name">Mod</strong></span>
-                <button id="btn-edit-mod-name" class="btn-icon-xs" title="Namen/Farbe anpassen">✏️</button>
+              <div class="chat-header-actions">
+                <button id="btn-clear-mod-chat" class="btn btn-secondary btn-sm" title="Chat-Verlauf für alle leeren">🗑️ Leeren</button>
+                <div class="chat-user-indicator" id="chat-current-user-info" title="Dein Mod-Profil (Avatar, Name &amp; Chatfarbe)">
+                  <img id="chat-logged-avatar" src="" alt="Avatar" class="chat-user-badge-avatar hidden">
+                  <span class="chat-logged-as"><strong id="chat-logged-name">Mod</strong></span>
+                  <button id="btn-edit-mod-name" class="btn-icon-xs" title="Namen/Farbe anpassen">✏️</button>
+                </div>
               </div>
             </div>
 
@@ -630,9 +664,23 @@
                 <button class="btn-chat-emoji" data-emoji="👀">👀</button>
                 <button class="btn-chat-emoji" data-emoji="✅">✅</button>
                 <button class="btn-chat-emoji" data-emoji="⚠️">⚠️</button>
+                <button type="button" id="btn-toggle-7tv-picker" class="btn-chat-emoji btn-chat-7tv" title="7TV Emotes durchsuchen">7TV</button>
               </div>
+
+              <!-- 7TV Emote Picker Popover -->
+              <div id="mod-chat-7tv-popover" class="mod-chat-7tv-popover hidden">
+                <div class="popover-7tv-header">
+                  <span class="popover-7tv-title">7TV Emotes</span>
+                  <input type="text" id="input-7tv-search" class="input-7tv-search" placeholder="Emote suchen..." autocomplete="off">
+                  <button type="button" id="btn-close-7tv-popover" class="btn-close-7tv-popover" title="Schließen">✕</button>
+                </div>
+                <div id="grid-7tv-emotes" class="grid-7tv-emotes">
+                  <div class="popover-7tv-status">Lade 7TV Emotes...</div>
+                </div>
+              </div>
+
               <div class="chat-input-row">
-                <input type="text" id="input-mod-chat" placeholder="Nachricht an die Mods schreiben (Enter zum Senden)..." autocomplete="off" maxlength="300">
+                <textarea id="input-mod-chat" placeholder="Nachricht an die Mods schreiben (Enter zum Senden, Umschalt+Enter für neue Zeile)..." autocomplete="off" maxlength="300" rows="1"></textarea>
                 <button id="btn-send-mod-chat" class="btn btn-primary btn-chat-send" title="Nachricht senden">
                   <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                 </button>
@@ -729,17 +777,30 @@
             🏠 Hauptmenü
           </button>
           <span class="tool-breadcrumb">Dashboard ➔ <strong>🎁 Giveaways &amp; Adressen</strong></span>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <button id="btn-open-manual-reward-modal" class="btn btn-primary btn-sm font-bold" title="Gesicherten Adresslink für Kohle-Stücke oder Spezial-Gewinne erstellen">
+          <div class="gw-header-actions">
+            <button id="btn-open-manual-reward-modal" class="btn btn-secondary btn-sm gw-header-action" title="Gesicherten Adresslink für Kohle-Stücke oder Spezial-Gewinne erstellen">
               ➕ Belohnung / Adresslink erstellen
             </button>
-            <button id="btn-reset-giveaway" class="btn btn-secondary btn-sm" title="Aktuelles Giveaway zurücksetzen">🔄 Zurücksetzen</button>
+            <button id="btn-reset-giveaway" class="btn btn-secondary btn-sm gw-header-action" title="Aktuelles Giveaway zurücksetzen">🔄 Aktuelles Giveaway zurücksetzen</button>
           </div>
         </div>
 
-        <div class="giveaway-grid-container">
+        <nav class="giveaway-workspace-tabs" aria-label="Giveaway-Arbeitsbereich">
+          <button class="giveaway-workspace-tab active" type="button" data-gw-workspace="live" aria-selected="true">
+            <span class="gw-workspace-tab-icon">🎲</span>
+            <span><strong>Live-Giveaway</strong><small>Vorbereiten, sammeln &amp; auslosen</small></span>
+          </button>
+          <button class="giveaway-workspace-tab" type="button" data-gw-workspace="addresses" aria-selected="false">
+            <span class="gw-workspace-tab-icon">📦</span>
+            <span><strong>Gewinne &amp; Adressen</strong><small>Prüfen, versenden &amp; archivieren</small></span>
+            <span id="gw-address-work-count" class="gw-workspace-count">0</span>
+          </button>
+        </nav>
 
-          <!-- LEFT COLUMN: GIVEAWAY CONTROLLER & PARTICIPANTS -->
+        <div id="giveaway-workspace-live" class="giveaway-workspace-panel active" data-gw-panel="live">
+        <div class="giveaway-grid-container giveaway-live-grid">
+
+          <!-- LEFT COLUMN: GIVEAWAY CONTROLLER -->
           <div class="giveaway-main-panel">
 
             <!-- Card 1: Giveaway Setup & Trigger -->
@@ -782,8 +843,11 @@
                 </div>
 
                 <!-- Exclusion Filters -->
-                <div class="giveaway-filters-group">
-                  <label class="form-label" style="margin-bottom:6px;">Ausschluss-Filter:</label>
+                <details class="giveaway-filters-group gw-rules-disclosure">
+                  <summary>
+                    <span><strong>🛡️ Teilnahme-Regeln</strong><small>Bots, Mods, Watchlist und heutige Gewinner filtern</small></span>
+                    <span id="gw-active-rules-count" class="gw-rules-count">2 aktiv</span>
+                  </summary>
                   <div class="gw-checkbox-grid">
                     <label class="toggle-switch gw-checkbox-label">
                       <input type="checkbox" id="chk-gw-exclude-bots" checked>
@@ -806,7 +870,7 @@
                       <span class="toggle-text">🏆 Heutige Gewinner ausschließen</span>
                     </label>
                   </div>
-                </div>
+                </details>
 
                 <!-- Chat Announcement Toggle (Silent Test Mode Option) -->
                 <div class="gw-chat-toggle-card">
@@ -829,31 +893,6 @@
                     ⏹️ Giveaway beenden &amp; schließen
                   </button>
                 </div>
-              </div>
-            </section>
-
-            <!-- Card 2: Live Participants List & Draw Button -->
-            <section class="giveaway-card" style="margin-top:14px;">
-              <div class="giveaway-card-header" style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="qa-title-group">
-                  <span class="qa-header-icon">👥</span>
-                  <div>
-                    <h3>Teilnehmer-Pool (<span id="giveaway-participants-count" style="color:var(--accent-cyan)">0</span>)</h3>
-                    <p class="qa-subtitle">Live-Erfassung aller gültigen Teilnehmer im Stream</p>
-                  </div>
-                </div>
-                <button id="btn-clear-participants" class="btn btn-secondary btn-xs" title="Teilnehmerliste leeren">🗑️ Leeren</button>
-              </div>
-
-              <div class="giveaway-card-body">
-                <div id="giveaway-participants-grid" class="participants-grid">
-                  <div class="empty-list-placeholder">Noch keine Teilnehmer. Starte die Registrierung, damit Zuschauer beitreten können.</div>
-                </div>
-
-                <!-- Big Draw Winner Button -->
-                <button id="btn-draw-winner" class="btn btn-primary btn-draw-winner" style="margin-top:12px; width:100%; height:48px; font-size:1.05rem; font-weight:800; letter-spacing:0.5px;">
-                  🎲 GEWINNER AUSLOSEN
-                </button>
               </div>
             </section>
 
@@ -887,18 +926,75 @@
                   <button id="btn-reroll-winner" class="btn btn-secondary btn-sm" style="width:100%;" title="Neuen Gewinner ziehen (falls bisheriger AFK oder ungültig)">
                     🔄 Gewinner neu auslosen (Reroll)
                   </button>
+                  <button id="btn-open-winner-address" class="btn btn-primary btn-sm" style="width:100%; margin-top:8px;" title="Gewinner in der Adressverwaltung öffnen">
+                    📦 Adresse prüfen &amp; Versand vorbereiten
+                  </button>
                 </div>
               </div>
             </section>
 
-            <!-- CARD 2: 2-STEP ADDRESS VERIFICATION & TELEGRAM BOT DISPATCH -->
-            <section class="giveaway-card" style="margin-top:14px;">
+            <!-- CARD 2: Live Participants List & Draw Button -->
+            <section class="giveaway-card giveaway-participants-card" style="margin-top:14px;">
+              <div class="giveaway-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">👥</span>
+                  <div>
+                    <h3>Teilnehmer-Pool (<span id="giveaway-participants-count" style="color:var(--accent-cyan)">0</span>)</h3>
+                    <p class="qa-subtitle">Live-Erfassung aller gültigen Teilnehmer im Stream</p>
+                  </div>
+                </div>
+                <button id="btn-clear-participants" class="btn btn-secondary btn-xs" title="Teilnehmerliste leeren">🗑️ Leeren</button>
+              </div>
+
+              <div class="giveaway-card-body">
+                <div id="giveaway-participants-grid" class="participants-grid">
+                  <div class="empty-list-placeholder">Noch keine Teilnehmer. Starte die Registrierung, damit Zuschauer beitreten können.</div>
+                </div>
+
+                <button id="btn-draw-winner" class="btn btn-primary btn-draw-winner" style="margin-top:12px; width:100%; height:48px; font-size:1.05rem; font-weight:800; letter-spacing:0.5px;">
+                  🎲 GEWINNER AUSLOSEN
+                </button>
+              </div>
+            </section>
+
+          </div>
+
+        </div>
+        </div>
+
+        <div id="giveaway-workspace-addresses" class="giveaway-workspace-panel" data-gw-panel="addresses" hidden>
+          <div class="giveaway-fulfillment-grid">
+            <!-- WINNER QUEUE / HISTORY -->
+            <section class="giveaway-card giveaway-history-card">
+              <div class="giveaway-card-header gw-history-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">📋</span>
+                  <div>
+                    <h3>Gewinne &amp; Versandstatus</h3>
+                    <p class="qa-subtitle">Eintrag auswählen und rechts bearbeiten</p>
+                  </div>
+                </div>
+                <button id="btn-refresh-winners-history" class="btn btn-secondary btn-xs" title="Liste aktualisieren">🔄</button>
+              </div>
+              <div class="gw-history-filter-pills">
+                <button class="btn btn-secondary btn-sm pill-btn active" data-filter="all" id="btn-filter-gw-all">Alle (<span id="count-gw-all">0</span>)</button>
+                <button class="btn btn-secondary btn-sm pill-btn" data-filter="giveaway" id="btn-filter-gw-giveaway">🎁 Giveaways (<span id="count-gw-giveaway">0</span>)</button>
+                <button class="btn btn-secondary btn-sm pill-btn" data-filter="channel_points" id="btn-filter-gw-channelpoints">⬛ Kohle (<span id="count-gw-channelpoints">0</span>)</button>
+              </div>
+              <div id="winners-history-list" class="winners-history-list">
+                <div class="empty-list-placeholder">Noch keine Gewinner in der Historie.</div>
+              </div>
+              <table class="hidden" aria-hidden="true"><tbody id="winners-history-tbody"></tbody></table>
+            </section>
+
+            <!-- 2-STEP ADDRESS VERIFICATION & TELEGRAM BOT DISPATCH -->
+            <section class="giveaway-card giveaway-address-card">
               <div class="giveaway-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <div class="qa-title-group">
                   <span class="qa-header-icon">📥</span>
                   <div>
-                    <h3>DSGVO-Adressprüfung &amp; Versand</h3>
-                    <p class="qa-subtitle">Daten prüfen &amp; per 1-Klick an Marvin (Telegram) übergeben</p>
+                    <h3>Adressprüfung &amp; Versand</h3>
+                    <p class="qa-subtitle">Persönliche Daten prüfen und sicher übergeben</p>
                   </div>
                 </div>
                 <span id="winner-address-status-pill" class="address-status-pill pending">Kein Gewinner</span>
@@ -924,6 +1020,13 @@
                 </div>
 
                 <!-- Address Input / Review Fields -->
+                <div id="winner-address-privacy" class="gw-address-privacy is-empty">
+                  <button id="btn-toggle-address-privacy" class="gw-address-privacy-cover" type="button" aria-pressed="false" title="Adresse dauerhaft anzeigen">
+                    <span class="gw-address-privacy-icon">👁️</span>
+                    <strong>Persönliche Daten geschützt</strong>
+                    <small>Darüberfahren zum Ansehen · Klicken zum Bearbeiten</small>
+                  </button>
+                  <div class="gw-address-sensitive-content">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:6px;">
                   <div class="form-group">
                     <label class="form-label" style="font-size:0.75rem;">Vor- &amp; Nachname:</label>
@@ -949,6 +1052,8 @@
                     <input type="text" id="input-winner-country" value="Deutschland" class="gw-input-sm">
                   </div>
                 </div>
+                  </div>
+                </div>
 
                 <!-- Release & Dispatch Button Group -->
                 <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
@@ -962,6 +1067,9 @@
                     <button id="btn-save-winner-address" class="btn btn-secondary btn-sm" style="flex:1;" title="Änderungen lokal speichern">
                       💾 Speichern
                     </button>
+                    <button id="btn-discard-winner-address" class="btn btn-secondary btn-sm" style="flex:1;" title="Ungespeicherte Änderungen verwerfen" disabled>
+                      ↩️ Verwerfen
+                    </button>
                   </div>
                   <button id="btn-finish-giveaway" class="btn btn-success btn-sm" style="width:100%; margin-top:6px; font-weight:700; height:36px;" title="Aktuelles Giveaway abschließen, in Historie sichern und Maske für die nächste Runde leeren">
                     ✨ Giveaway abschließen &amp; nächste Runde vorbereiten
@@ -969,48 +1077,8 @@
                 </div>
               </div>
             </section>
-
           </div>
-
         </div>
-
-        <!-- SESSION WINNERS HISTORY TABLE -->
-        <section class="giveaway-card" style="margin-top:16px;">
-          <div class="giveaway-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-            <div class="qa-title-group">
-              <span class="qa-header-icon">📜</span>
-              <div>
-                <h3>Gewinner- &amp; Prämien-Historie</h3>
-                <p class="qa-subtitle">Giveaways &amp; Kanalpunkte-Einlösungen (Kohle Stücke)</p>
-              </div>
-            </div>
-            <div class="gw-history-filter-pills" style="display:flex; gap:6px; align-items:center;">
-              <button class="btn btn-secondary btn-sm pill-btn active" data-filter="all" id="btn-filter-gw-all">Alle (<span id="count-gw-all">0</span>)</button>
-              <button class="btn btn-secondary btn-sm pill-btn" data-filter="giveaway" id="btn-filter-gw-giveaway">🎁 Giveaways (<span id="count-gw-giveaway">0</span>)</button>
-              <button class="btn btn-secondary btn-sm pill-btn" data-filter="channel_points" id="btn-filter-gw-channelpoints">⬛ Kohle-Stücke (<span id="count-gw-channelpoints">0</span>)</button>
-            </div>
-          </div>
-          <div class="giveaway-card-body" style="padding:0;">
-            <div class="winners-table-wrapper">
-              <table class="winners-history-table">
-                <thead>
-                  <tr>
-                    <th>Zeit</th>
-                    <th>Twitch-User</th>
-                    <th>Gewinn</th>
-                    <th>Empfänger</th>
-                    <th>Adresse</th>
-                    <th>Status</th>
-                    <th>Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody id="winners-history-tbody">
-                  <tr><td colspan="7" class="empty-list-placeholder">Noch keine Gewinner in der Historie.</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
 
       </div>
 
@@ -1032,6 +1100,7 @@
             <button id="btn-toggle-qna-listener" class="btn btn-sm btn-secondary" style="height:32px; min-width:135px; display:inline-flex; align-items:center; justify-content:center; gap:6px;" title="Twitch Chat-Listener für !frage starten/pausieren">
               <span class="status-dot red"></span> <span>Listener: Aus</span>
             </button>
+            <button id="btn-open-manual-qna-modal" class="btn btn-sm btn-primary" title="Eine Frage manuell erfassen">➕ Frage erfassen</button>
 
             <!-- Hamburger / Options Dropdown Menu for Q&A -->
             <div class="dropdown-wrapper">
@@ -1044,55 +1113,30 @@
                   <span style="font-size:1.1rem; width:20px;">📊</span>
                   <span>Streamer-Auswertung</span>
                 </button>
-                <button id="btn-open-manual-qna-modal" class="dropdown-item">
-                  <span style="font-size:1.1rem; width:20px;">➕</span>
-                  <span>Frage manuell erfassen</span>
-                </button>
                 <button id="btn-open-qna-settings-modal" class="dropdown-item">
                   <span style="font-size:1.1rem; width:20px;">⚙️</span>
                   <span>Filter &amp; Cooldowns</span>
                 </button>
-                <div class="hamburger-divider"></div>
-                <button id="btn-copy-qna-obs" class="dropdown-item">
-                  <span style="font-size:1.1rem; width:20px;">📺</span>
-                  <span>OBS-Overlay Link</span>
+                <button id="btn-open-qna-bestrafungen" class="dropdown-item">
+                  <span style="font-size:1.1rem; width:20px;">🎡</span>
+                  <span>Bestrafungen &amp; Challenges</span>
+                  <span id="badge-bestrafungen-count" class="qna-tab-badge" style="margin-left:auto;">0 offen</span>
                 </button>
-                <button id="btn-copy-qna-prompter" class="dropdown-item">
-                  <span style="font-size:1.1rem; width:20px;">🖥️</span>
-                  <span>Prompter-Link (Streamer)</span>
+                <div class="hamburger-divider"></div>
+                <button id="btn-qna-delete-duplicates" class="dropdown-item" title="Doppelte Fragen aus dem Chat löschen">
+                  <span style="font-size:1.1rem; width:20px;">🧹</span>
+                  <span>Dopplungen bereinigen</span>
+                </button>
+                <button id="btn-clear-answered-qna" class="dropdown-item" title="Alle beantworteten Fragen löschen">
+                  <span style="font-size:1.1rem; width:20px;">✓</span>
+                  <span>Beantwortete leeren</span>
+                </button>
+                <button id="btn-qna-delete-all" class="dropdown-item qna-danger-action" title="Alle Fragen unwiderruflich löschen">
+                  <span style="font-size:1.1rem; width:20px;">🗑️</span>
+                  <span>Alle Fragen löschen</span>
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- Streamer & Wheel Control Bar -->
-        <div class="qna-streamer-control-bar">
-          <div class="streamer-control-left">
-            <span class="control-label">👥 Personen:</span>
-            <div id="qna-persons-pill-list" class="qna-persons-pill-list">
-              <!-- Dynamically populated pills: [Marved ✕] [Hasty ✕] [Kai ✕] -->
-            </div>
-            <div class="add-person-group" style="display:inline-flex; align-items:center; gap:5px;">
-              <input type="text" id="input-new-person-name" placeholder="Name (z. B. Gast)" style="width:115px; height:26px; font-size:0.78rem; padding:2px 8px; border-radius:6px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#fff;">
-              <button id="btn-add-qna-person" class="btn btn-xs btn-primary" style="height:26px; width:26px; min-width:26px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:6px;" title="Person / Gast zur Fragerunde hinzufügen">
-                <svg viewBox="0 0 24 24" width="15" height="15" style="stroke: #ffffff; stroke-width: 3.5; stroke-linecap: round; fill: none;"><path d="M12 5v14M5 12h14"/></svg>
-              </button>
-            </div>
-          </div>
-
-          <div class="streamer-control-right">
-            <label class="toggle-switch qna-wheel-toggle-label" title="Bestrafungs-Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
-              <input type="checkbox" id="chk-qna-wheel-enabled" checked>
-              <span class="toggle-slider"></span>
-              <span class="toggle-text">🎡 Bestrafungsrad</span>
-            </label>
-            <button id="btn-qna-delete-duplicates" class="btn btn-sm btn-secondary" title="Doppelte Fragen aus dem Chat löschen">
-              🧹 Dopplungen bereinigen
-            </button>
-            <button id="btn-qna-delete-all" class="btn btn-sm btn-danger" title="Alle Fragen unwiderruflich löschen">
-              🗑️ Alle löschen
-            </button>
           </div>
         </div>
 
@@ -1140,11 +1184,6 @@
                     <p class="qa-subtitle">Zuschauerfragen aus dem Chat (<code>!frage</code>) sichten, filtern und freigeben</p>
                   </div>
                 </div>
-                <div style="display:flex; gap:6px; align-items:center;">
-                  <button id="btn-clear-answered-qna" class="btn btn-secondary btn-sm" title="Alle als 'Beantwortet' markierten Fragen löschen">
-                    🗑️ Beantwortete leeren
-                  </button>
-                </div>
               </div>
 
               <div class="qna-card-body">
@@ -1188,50 +1227,36 @@
 
           </div>
 
-          <!-- RIGHT COLUMN: BESTRAFUNGEN & CHALLENGES -->
+          <!-- RIGHT COLUMN: FRAGERUNDE -->
           <div class="qna-sidebar-panel">
 
-            <!-- Card 1: Bestrafungen & Challenges Manager -->
-            <section class="qna-card bestrafungen-card">
+            <!-- Card 1: Runde & Personen -->
+            <section class="qna-card qna-round-card">
               <div class="qna-card-header">
                 <div class="qa-title-group">
-                  <span class="qa-header-icon">🎡</span>
+                  <span class="qa-header-icon">👥</span>
                   <div>
-                    <h3>Bestrafungen &amp; Challenges</h3>
-                    <p class="qa-subtitle">Pool für das Glücksrad bei nicht beantworteten Fragen</p>
+                    <h3>Fragerunde</h3>
+                    <p class="qa-subtitle">Personen, Gäste und Bestrafungsrad</p>
                   </div>
                 </div>
-                <span id="badge-bestrafungen-count" class="qna-tab-badge">0 offen</span>
               </div>
-
-              <div class="qna-card-body">
-                <div class="input-action-row" style="margin-bottom: 10px;">
-                  <input type="text" id="input-new-bestrafung" placeholder="Neue Bestrafung (z. B. 10 Liegestütze)..." style="font-size: 0.85rem;">
-                  <button id="btn-add-bestrafung" class="btn btn-primary btn-sm" style="white-space:nowrap;">
-                    ➕ Hinzufügen
-                  </button>
-                </div>
-                <div id="bestrafungen-list-container" class="bestrafungen-list-container">
-                  <!-- Dynamically populated -->
-                  <div class="bestrafungen-empty">Keine Bestrafungen angelegt.</div>
-                </div>
-              </div>
-            </section>
-
-            <!-- Card 2: Streamer Quick Leaderboard -->
-            <section class="qna-card" style="margin-top: 16px;">
-              <div class="qna-card-header">
-                <div class="qa-title-group">
-                  <span class="qa-header-icon">📊</span>
-                  <div>
-                    <h3>Streamer-Kurzübersicht</h3>
-                    <p class="qa-subtitle">Aktivitäten &amp; Fragerunden-Stand</p>
+              <div class="qna-card-body qna-round-controls">
+                <div class="streamer-control-left">
+                  <span class="control-label">Personen &amp; Gäste</span>
+                  <div id="qna-persons-pill-list" class="qna-persons-pill-list"></div>
+                  <div class="add-person-group">
+                    <input type="text" id="input-new-person-name" placeholder="Name oder Gast hinzufügen">
+                    <button id="btn-add-qna-person" class="btn btn-xs btn-primary" title="Person oder Gast hinzufügen">＋</button>
                   </div>
                 </div>
-                <button id="btn-open-stats-from-card" class="btn btn-xs btn-secondary" title="Vollständige Auswertung öffnen">📊 Details</button>
-              </div>
-              <div class="qna-card-body" id="qna-quick-leaderboard-container">
-                <!-- Dynamically populated -->
+                <div class="streamer-control-right">
+                  <label class="toggle-switch qna-wheel-toggle-label" title="Bestrafungs-Glücksrad für nicht beantwortete Fragen aktivieren/deaktivieren">
+                    <input type="checkbox" id="chk-qna-wheel-enabled" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">🎡 Bestrafungsrad verwenden</span>
+                  </label>
+                </div>
               </div>
             </section>
 
@@ -1648,8 +1673,8 @@
             <span class="tool-breadcrumb">Dashboard ➔ <strong>📊 Stats &amp; Kohle-Timer</strong></span>
           </div>
           <div class="sub-header-actions">
-            <button id="btn-copy-timer-obs-link" class="btn btn-sm btn-secondary" title="OBS Overlay URL für Kohletimer & Kopf-Counter kopieren">
-              📺 OBS-Overlay Link
+            <button id="btn-open-timer-overlays" class="btn btn-sm btn-secondary" data-open-overlay-center="timer" title="Timer- und Kopf-Counter-Overlay verwalten">
+              📺 OBS-Overlay verwalten
             </button>
           </div>
         </div>
@@ -1711,37 +1736,42 @@
         <div id="panel-stats-analytics" class="stats-tab-panel hidden">
           <div class="stats-analytics-grid">
             
-            <!-- Quick Metric KPI Cards -->
-            <div class="stat-kpi-card">
-              <span class="kpi-icon">🥣</span>
-              <div class="kpi-data">
-                <strong id="kpi-total-heads">0</strong>
-                <span>Gesamt gerauchte Köpfe</span>
+            <!-- Quick Metric KPI Cards (Full Width Row) -->
+            <div class="stats-kpi-row">
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">🥣</span>
+                <div class="kpi-data">
+                  <strong id="kpi-total-heads">0</strong>
+                  <span>Gesamt Köpfe</span>
+                </div>
               </div>
-            </div>
 
-            <div class="stat-kpi-card">
-              <span class="kpi-icon">⏱️</span>
-              <div class="kpi-data">
-                <strong id="kpi-avg-duration">0 Min</strong>
-                <span>Ø Rauchdauer pro Kopf</span>
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">🪵</span>
+                <div class="kpi-data">
+                  <strong id="kpi-avg-duration-coal">0 Min</strong>
+                  <span>Ø Dauer (Kohle)</span>
+                  <small id="kpi-count-coal" class="kpi-subtext">0 Köpfe</small>
+                </div>
               </div>
-            </div>
 
-            <div class="stat-kpi-card">
-              <span class="kpi-icon">🌟</span>
-              <div class="kpi-data">
-                <strong id="kpi-avg-rating">- / 10</strong>
-                <span>Ø Setup-Bewertung</span>
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">⚡</span>
+                <div class="kpi-data">
+                  <strong id="kpi-avg-duration-electric">0 Min</strong>
+                  <span>Ø Dauer (E-Kopf)</span>
+                  <small id="kpi-count-electric" class="kpi-subtext">0 Köpfe</small>
+                </div>
               </div>
-            </div>
 
-            <div class="stat-kpi-card">
-              <span class="kpi-icon">🪵</span>
-              <div class="kpi-data">
-                <strong id="kpi-total-coals">0</strong>
-                <span>Kohlewechsel gesamt</span>
+              <div class="stat-kpi-card">
+                <span class="kpi-icon">🌟</span>
+                <div class="kpi-data">
+                  <strong id="kpi-avg-rating">- / 10</strong>
+                  <span>Ø Bewertung</span>
+                </div>
               </div>
+
             </div>
 
             <!-- Leaderboard 1: Meistgerauchte Tabaksorten -->
@@ -1750,7 +1780,7 @@
                 <div class="qa-title-group">
                   <span class="qa-header-icon">🍇</span>
                   <div>
-                    <h3>Top 5 meistgerauchte Tabaksorten</h3>
+                    <h3>Top 10 meistgerauchte Tabaksorten</h3>
                     <p class="qa-subtitle">Die beliebtesten Geschmäcker im Stream</p>
                   </div>
                 </div>
@@ -1762,21 +1792,83 @@
               </div>
             </section>
 
-            <!-- Leaderboard 2: Beliebteste Köpfe & HMDs -->
+            <!-- Leaderboard 2: Beliebteste Tabak-Mixes -->
+            <section class="qna-card" style="grid-column: span 2;">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">🧪</span>
+                  <div>
+                    <h3>Top 10 Tabak-Mixes</h3>
+                    <p class="qa-subtitle">Beliebteste Kombinationen</p>
+                  </div>
+                </div>
+              </div>
+              <div class="qna-card-body">
+                <div id="analytics-top-mixes" class="analytics-ranking-list"></div>
+              </div>
+            </section>
+
+            <!-- Leaderboard 3: Top Köpfe -->
             <section class="qna-card" style="grid-column: span 2;">
               <div class="qna-card-header">
                 <div class="qa-title-group">
                   <span class="qa-header-icon">🥣</span>
                   <div>
-                    <h3>Top Hardware (Köpfe &amp; HMDs)</h3>
-                    <p class="qa-subtitle">Die am häufigsten verwendeten Setups</p>
+                    <h3>Top 5 Köpfe</h3>
+                    <p class="qa-subtitle">Meistgenutzte Shisha-Köpfe (Phunnel &amp; Mehrloch)</p>
                   </div>
                 </div>
               </div>
               <div class="qna-card-body">
-                <div id="analytics-top-hardware" class="analytics-ranking-list">
-                  <!-- Populated dynamically -->
+                <div id="analytics-top-bowls" class="analytics-ranking-list"></div>
+              </div>
+            </section>
+
+            <!-- Leaderboard 4: Top Pfeifen -->
+            <section class="qna-card" style="grid-column: span 2;">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">💨</span>
+                  <div>
+                    <h3>Top 5 Pfeifen</h3>
+                    <p class="qa-subtitle">Am häufigsten genutzte Shishas im Stream</p>
+                  </div>
                 </div>
+              </div>
+              <div class="qna-card-body">
+                <div id="analytics-top-pipes" class="analytics-ranking-list"></div>
+              </div>
+            </section>
+
+            <!-- Leaderboard 5: Top HMDs -->
+            <section class="qna-card" style="grid-column: span 2;">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">🔥</span>
+                  <div>
+                    <h3>Top 5 HMDs</h3>
+                    <p class="qa-subtitle">Beliebteste Heat-Management-Systeme</p>
+                  </div>
+                </div>
+              </div>
+              <div class="qna-card-body">
+                <div id="analytics-top-hmds" class="analytics-ranking-list"></div>
+              </div>
+            </section>
+
+            <!-- Leaderboard 6: Top Elektrogeräte -->
+            <section class="qna-card" style="grid-column: span 2;">
+              <div class="qna-card-header">
+                <div class="qa-title-group">
+                  <span class="qa-header-icon">⚡</span>
+                  <div>
+                    <h3>Top 5 Elektrogeräte</h3>
+                    <p class="qa-subtitle">Elektrische Köpfe und All-in-One-Geräte separat</p>
+                  </div>
+                </div>
+              </div>
+              <div class="qna-card-body">
+                <div id="analytics-top-electric" class="analytics-ranking-list"></div>
               </div>
             </section>
 
@@ -1799,11 +1891,11 @@
           <div class="ls-center">
             <div class="ls-clocks">
               <div class="ls-clock-item">
-                <span class="ls-clock-lbl">Rauchdauer:</span>
+                <span class="ls-clock-lbl" id="lbl-primary-timer-label">Rauchdauer:</span>
                 <span class="ls-digital-clock" id="lbl-session-time">00:00:00</span>
               </div>
               <div class="ls-clock-item">
-                <span class="ls-clock-lbl">Kohle:</span>
+                <span class="ls-clock-lbl" id="lbl-secondary-timer-label">Kohle:</span>
                 <span class="ls-digital-clock-coal" id="lbl-coal-time">00:00</span>
               </div>
             </div>
@@ -1814,12 +1906,69 @@
           </div>
 
           <div class="ls-right">
+            <button id="btn-timer-start-head" class="btn btn-sm btn-primary hidden" title="Neuen Kopf aus aktuellem Generator-Setup starten">
+              ▶️ Kopf starten
+            </button>
             <button id="btn-timer-finish-head" class="btn btn-sm btn-secondary" title="Aktuellen Kopf manuell beenden &amp; in Historie speichern">
               🏁 Kopf beenden
             </button>
           </div>
         </div>
 
+      </div>
+
+      <!-- ============================================== -->
+      <!-- VIEW 8: INDIVIDUELLES MOD-DASHBOARD (Spec #3) -->
+      <!-- ============================================== -->
+      <div id="view-custom-dashboard" class="hub-view-pane hidden">
+        <div class="tool-sub-header">
+          <div class="sub-header-left">
+            <button class="btn btn-secondary btn-back-hub" title="Zurück zur Mod-Zentrale (ESC)">
+              <svg class="icon-sm" viewBox="0 0 24 24"><path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+              🏠 Hauptmenü
+            </button>
+            <span class="tool-breadcrumb">Dashboard ➔ <strong>✨ Mein Mod-Dashboard</strong></span>
+          </div>
+          <div class="sub-header-actions" style="display:flex; gap:8px; align-items:center;">
+            <button id="btn-custom-dashboard-lock" class="btn btn-sm btn-secondary" title="Dashboard sperren / entsperren (Verhindert versehentliches Verschieben & Verändern)">
+              🔓 Layout entsperrt
+            </button>
+            <button id="btn-custom-dashboard-add-widget" class="btn btn-sm btn-primary" style="background:#ffca28; color:#121218; font-weight:700;">
+              ➕ Modul hinzufügen
+            </button>
+            <button id="btn-custom-dashboard-reset-layout" class="btn btn-sm btn-secondary" title="Layout auf Standard-Anordnung zurücksetzen">
+              📐 Zurücksetzen
+            </button>
+          </div>
+        </div>
+
+        <div id="custom-dashboard-layout-hint" class="dashboard-layout-hint" aria-live="polite">
+          <span>↔️ <strong>Werkzeug am Reiter ziehen:</strong> an einer Kante teilen, in der Mitte als Tab gruppieren.</span>
+          <span>⋮ <strong>Trennlinie ziehen:</strong> Bereiche stufenlos vergrößern.</span>
+        </div>
+
+        <!-- Interactive dockable workspace -->
+        <div id="custom-dashboard-grid" class="custom-dashboard-grid" style="margin-top: 16px;">
+          <!-- Dynamically populated via renderCustomDashboard() -->
+        </div>
+      </div>
+
+      <!-- Modal: Modul zum Dashboard hinzufügen (Spec #3) -->
+      <div id="modal-add-dashboard-widget" class="modal-overlay hidden">
+        <div class="modal-card" style="max-width: 580px;">
+          <div class="modal-header">
+            <h3>➕ Modul zum Dashboard hinzufügen</h3>
+            <button id="btn-close-add-widget-modal" class="btn-icon">✕</button>
+          </div>
+          <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; padding:20px;">
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
+              Wähle ein Modul aus, um es als Kachel auf deinem persönlichen Dashboard zu platzieren. Du kannst es danach frei verschieben und in der Größe anpassen.
+            </p>
+            <div id="add-widget-catalog-list" style="display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:4px;">
+              <!-- Dynamically populated list of available modules -->
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Finish Head Modal (Rating & Notes) -->
@@ -1835,7 +1984,7 @@
             </p>
             <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:12px; font-size:0.85rem;">
               <div>⏱️ <strong>Rauchdauer:</strong> <span id="lbl-modal-finish-duration">45 Min</span></div>
-              <div style="margin-top:4px;">🪵 <strong>Kohle gewendet:</strong> <span id="lbl-modal-finish-coals">1x</span></div>
+              <div style="margin-top:4px;">🪵 <strong id="lbl-modal-finish-coals-label">Kohle gewendet:</strong> <span id="lbl-modal-finish-coals">1x</span></div>
             </div>
             <div class="form-group">
               <label class="form-label">Bewertung (1–10 Punkte):</label>
@@ -1859,6 +2008,118 @@
           <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
             <button id="btn-cancel-finish-modal" class="btn btn-secondary">Abbrechen</button>
             <button id="btn-confirm-finish-session" class="btn btn-primary">💾 In Historie speichern</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit archived smoking session modal -->
+      <div id="modal-edit-stats-session" class="modal-overlay hidden">
+        <div class="modal-card stats-edit-modal-card">
+          <div class="modal-header">
+            <div>
+              <h3 style="margin:0;">✏️ Gerauchten Kopf bearbeiten</h3>
+              <p style="margin:4px 0 0; color:var(--text-secondary); font-size:0.78rem;">Änderungen werden im bestehenden Protokolleintrag gespeichert.</p>
+            </div>
+            <button id="btn-close-edit-stats-session" class="btn-icon" title="Schließen">✕</button>
+          </div>
+          <div class="modal-body stats-edit-modal-body">
+            <div style="display:grid; grid-template-columns:110px minmax(210px,1fr) minmax(180px,1fr); gap:12px;">
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-head-num">Kopf Nr.</label>
+                <input id="input-edit-session-head-num" class="gw-input" type="number" min="1" step="1" style="width:100%;">
+              </div>
+              <div class="form-group stats-edit-datetime-group">
+                <label class="form-label" for="btn-edit-session-datetime">Datum &amp; Uhrzeit</label>
+                <input id="input-edit-session-ended-at" type="hidden">
+                <button id="btn-edit-session-datetime" type="button" class="stats-edit-datetime-trigger" aria-haspopup="dialog" aria-expanded="false">
+                  <span id="lbl-edit-session-datetime">Datum auswählen</span>
+                  <span aria-hidden="true">📅</span>
+                </button>
+                <div id="edit-session-datetime-popover" class="stats-datetime-picker hidden" role="dialog" aria-label="Datum und Uhrzeit auswählen">
+                  <div class="stats-datetime-picker-header">
+                    <button id="btn-edit-date-prev-month" type="button" class="stats-picker-nav" title="Vorheriger Monat">‹</button>
+                    <strong id="lbl-edit-date-month">September 2026</strong>
+                    <button id="btn-edit-date-next-month" type="button" class="stats-picker-nav" title="Nächster Monat">›</button>
+                  </div>
+                  <div class="stats-picker-weekdays" aria-hidden="true">
+                    <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+                  </div>
+                  <div id="edit-session-calendar-grid" class="stats-picker-calendar"></div>
+                  <div class="stats-picker-time-row">
+                    <span class="stats-picker-time-icon">🕒</span>
+                    <label>Stunde<input id="input-edit-date-hour" type="number" min="0" max="23" step="1"></label>
+                    <span class="stats-picker-time-separator">:</span>
+                    <label>Minute<input id="input-edit-date-minute" type="number" min="0" max="59" step="1"></label>
+                  </div>
+                  <div class="stats-picker-actions">
+                    <button id="btn-edit-date-today" type="button" class="btn btn-xs btn-secondary">Heute</button>
+                    <button id="btn-edit-date-apply" type="button" class="btn btn-xs btn-primary">Übernehmen</button>
+                  </div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-person">Person</label>
+                <input id="input-edit-session-person" class="gw-input" type="text" placeholder="z. B. Marvin" style="width:100%;">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="input-edit-session-tobacco">Tabak oder Tabak-Mix</label>
+              <input id="input-edit-session-tobacco" class="gw-input" type="text" list="list-tobacco" placeholder="Hersteller – Sorte &amp; Hersteller – Sorte" style="width:100%;">
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px;">
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-pipe">Pfeife</label>
+                <input id="input-edit-session-pipe" class="gw-input" type="text" list="list-pipes" style="width:100%;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-bowl">Kopf</label>
+                <input id="input-edit-session-bowl" class="gw-input" type="text" list="list-bowls" style="width:100%;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-hmd">HMD</label>
+                <input id="input-edit-session-hmd" class="gw-input" type="text" list="list-hmds" style="width:100%;">
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:12px;">
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-duration">Rauchdauer (Min.)</label>
+                <input id="input-edit-session-duration" class="gw-input" type="number" min="1" step="1" style="width:100%;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="select-edit-session-rating">Bewertung</label>
+                <select id="select-edit-session-rating" class="gw-select" style="width:100%;">
+                  <option value="0">Keine Bewertung</option>
+                  <option value="1">1 / 10</option><option value="2">2 / 10</option><option value="3">3 / 10</option>
+                  <option value="4">4 / 10</option><option value="5">5 / 10</option><option value="6">6 / 10</option>
+                  <option value="7">7 / 10</option><option value="8">8 / 10</option><option value="9">9 / 10</option>
+                  <option value="10">10 / 10</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:auto minmax(220px,1fr); gap:14px; align-items:end;">
+              <label class="toggle-switch checkbox-label" style="margin-bottom:8px;">
+                <input type="checkbox" id="chk-edit-session-electric">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">⚡ Elektro-Setup</span>
+              </label>
+              <div class="form-group">
+                <label class="form-label" for="input-edit-session-electric-device">Elektrogerät</label>
+                <input id="input-edit-session-electric-device" class="gw-input" type="text" placeholder="z. B. XKAH Shii" style="width:100%;">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="input-edit-session-notes">Notiz</label>
+              <textarea id="input-edit-session-notes" class="gw-input" rows="3" placeholder="Optionale Notiz zum Kopf" style="width:100%; resize:vertical;"></textarea>
+            </div>
+          </div>
+          <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+            <button id="btn-cancel-edit-stats-session" class="btn btn-secondary">Abbrechen</button>
+            <button id="btn-save-edit-stats-session" class="btn btn-primary">💾 Änderungen speichern</button>
           </div>
         </div>
       </div>
@@ -1891,6 +2152,31 @@
       </div>
     </div>
 
+    <!-- Quick reply opened from a native Mod-Chat notification -->
+    <div id="mod-chat-quick-reply-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="mod-chat-quick-reply-title">
+      <div class="modal-card mod-chat-quick-reply-card">
+        <div class="modal-header">
+          <div>
+            <h3 id="mod-chat-quick-reply-title">💬 Auf Mod-Nachricht antworten</h3>
+            <p class="qa-subtitle">Direkt antworten, ohne den Mod-HQ-Chat zu öffnen</p>
+          </div>
+          <button id="btn-close-mod-chat-quick-reply" class="btn-icon" type="button" title="Schließen">✕</button>
+        </div>
+        <div class="modal-body mod-chat-quick-reply-body">
+          <div class="mod-chat-quick-reply-original">
+            <strong id="mod-chat-quick-reply-sender">@Mod</strong>
+            <p id="mod-chat-quick-reply-original-text"></p>
+          </div>
+          <label for="input-mod-chat-quick-reply" class="form-label">Deine Antwort</label>
+          <textarea id="input-mod-chat-quick-reply" class="input-field" rows="3" maxlength="300" placeholder="Antwort schreiben … (Enter zum Senden, Umschalt+Enter für neue Zeile)"></textarea>
+          <div class="mod-chat-quick-reply-actions">
+            <button id="btn-cancel-mod-chat-quick-reply" class="btn btn-secondary" type="button">Abbrechen</button>
+            <button id="btn-send-mod-chat-quick-reply" class="btn btn-primary" type="button">💬 Antworten</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Twitch Chatters List Modal -->
     <div id="chatters-modal" class="modal-overlay hidden">
       <div class="modal-card" style="max-width: 520px;">
@@ -1911,35 +2197,70 @@
 
     <!-- OBS Stream Overlay Modal -->
     <div id="obs-modal" class="modal-overlay hidden">
-      <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-card obs-center-modal">
         <div class="modal-header">
-          <h3>📺 OBS Stream-Overlay (Live-Sync)</h3>
+          <div>
+            <h3>📺 Overlay-Zentrale</h3>
+            <p class="obs-center-header-copy">Alle Stream-Overlays und Streamer-Ansichten an einem Ort.</p>
+          </div>
           <button id="btn-close-obs-modal" class="btn-icon">✕</button>
         </div>
-        <div class="modal-body">
-          <p class="subtitle" style="margin-bottom: 14px;">
-            Sobald ein Mod im Tool auf <strong>"In Twitch-Chat Senden"</strong> klickt, blendet sich das Setup im Stream bei Marvin automatisch mit sanfter Animation für 25 Sekunden ein!
-          </p>
-
-          <div class="obs-link-box">
-            <label style="font-weight: 700; color: var(--accent-cyan); display: block; margin-bottom: 4px;">🌐 Cloud OBS Browser-Quelle URL (für Marvins OBS):</label>
-            <div style="display:flex; gap:8px; margin-bottom: 6px;">
-              <input type="text" id="obs-cloud-url" readonly value="https://bazztee.github.io/shishawg-mod-setup-tool/overlay.html" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:0.85rem; font-family:var(--font-mono);">
-              <button id="btn-copy-obs-cloud" class="btn btn-secondary">📋 Kopieren</button>
+        <div class="modal-body obs-center-body">
+          <section class="obs-center-section">
+            <div class="obs-center-section-heading">
+              <div>
+                <span class="obs-center-kicker">OBS-BROWSERQUELLEN</span>
+                <h4>Overlays für den Stream</h4>
+              </div>
+              <span class="obs-center-live-hint"><span class="status-dot green"></span> Live synchronisiert</span>
             </div>
-            <p class="hint-text" style="font-size:0.8rem; color:var(--text-secondary);">👉 In OBS als <strong>Browser-Quelle</strong> einfügen (Breite: 780px, Höhe: 160px, Transparenz aktiv).</p>
-          </div>
 
-          <div class="obs-link-box" style="margin-top: 14px;">
-            <label style="font-weight: 700; color: var(--accent-purple); display: block; margin-bottom: 4px;">💻 Lokale OBS Browser-Quelle URL (wenn Tool & OBS auf selbem PC laufen):</label>
-            <div style="display:flex; gap:8px; margin-bottom: 6px;">
-              <input type="text" id="obs-local-url" readonly value="http://127.0.0.1:18942/overlay" style="flex:1; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); padding:8px 12px; border-radius:6px; font-size:0.85rem; font-family:var(--font-mono);">
-              <button id="btn-copy-obs-local" class="btn btn-secondary">📋 Kopieren</button>
+            <div class="obs-center-grid">
+              <article class="obs-center-card" data-overlay-card="setup">
+                <div class="obs-center-card-title"><span>🧾</span><div><strong>Setup-Einblendung</strong><small>Zeigt das aktuelle Setup nach dem Senden.</small></div></div>
+                <div class="obs-dimension-badge">780 × 160 px</div>
+                <label>Cloud-Quelle</label>
+                <div class="obs-source-row"><input type="text" id="obs-cloud-url" readonly value="https://bazztee.github.io/shishawg-mod-setup-tool/overlay.html"><button id="btn-copy-obs-cloud" class="btn btn-sm btn-secondary">Kopieren</button></div>
+                <label>Lokale Quelle</label>
+                <div class="obs-source-row"><input type="text" id="obs-local-url" readonly value="http://127.0.0.1:18942/overlay"><button id="btn-copy-obs-local" class="btn btn-sm btn-secondary">Kopieren</button></div>
+                <button id="btn-test-overlay-browser" class="btn btn-sm btn-secondary obs-test-btn">Im Browser testen</button>
+              </article>
+
+              <article class="obs-center-card" data-overlay-card="qna">
+                <div class="obs-center-card-title"><span>🙋</span><div><strong>Fragen &amp; Antworten</strong><small>Blendet die aktuell gewählte Frage ein.</small></div></div>
+                <div class="obs-dimension-badge">1920 × 1080 px</div>
+                <label>Cloud-Quelle</label>
+                <div class="obs-source-row"><input type="text" id="obs-qna-cloud-url" readonly><button id="btn-copy-qna-obs" class="btn btn-sm btn-secondary">Kopieren</button></div>
+                <label>Lokale Quelle</label>
+                <div class="obs-source-row"><input type="text" id="obs-qna-local-url" readonly><button id="btn-copy-qna-local" class="btn btn-sm btn-secondary">Kopieren</button></div>
+                <button id="btn-test-qna-overlay" class="btn btn-sm btn-secondary obs-test-btn">Im Browser testen</button>
+              </article>
+
+              <article class="obs-center-card" data-overlay-card="timer">
+                <div class="obs-center-card-title"><span>⏱️</span><div><strong>Kohletimer &amp; Kopf-Counter</strong><small>Zeigt Laufzeit und aktuellen Kopfstand.</small></div></div>
+                <div class="obs-dimension-badge">1920 × 1080 px</div>
+                <label>Cloud-Quelle</label>
+                <div class="obs-source-row"><input type="text" id="obs-timer-cloud-url" readonly><button id="btn-copy-timer-obs-link" class="btn btn-sm btn-secondary">Kopieren</button></div>
+                <label>Lokale Quelle</label>
+                <div class="obs-source-row"><input type="text" id="obs-timer-local-url" readonly><button id="btn-copy-timer-local" class="btn btn-sm btn-secondary">Kopieren</button></div>
+                <button id="btn-test-timer-overlay" class="btn btn-sm btn-secondary obs-test-btn">Im Browser testen</button>
+              </article>
             </div>
-          </div>
+          </section>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top: 20px;">
-            <button id="btn-test-overlay-browser" class="btn btn-secondary">🌐 Overlay im Browser testen</button>
+          <section class="obs-center-section streamer-view-section">
+            <div class="obs-center-section-heading">
+              <div><span class="obs-center-kicker">STREAMER-ANSICHTEN</span><h4>Nur für Marvins Bildschirm</h4></div>
+              <span class="obs-not-source-badge">Keine OBS-Quelle</span>
+            </div>
+            <article class="obs-center-card obs-prompter-card" data-overlay-card="prompter">
+              <div class="obs-center-card-title"><span>🖥️</span><div><strong>Q&amp;A-Prompter</strong><small>Große, ruhige Ansicht der aktuellen Frage für den Streamer.</small></div></div>
+              <div class="obs-source-row"><input type="text" id="obs-qna-prompter-url" readonly><button id="btn-copy-qna-prompter" class="btn btn-sm btn-secondary">Kopieren</button><button id="btn-test-qna-prompter" class="btn btn-sm btn-secondary">Öffnen</button></div>
+            </article>
+          </section>
+
+          <div class="obs-center-footer">
+            <span>Die lokale Variante funktioniert, wenn Tool und OBS auf demselben PC laufen.</span>
             <button id="btn-close-obs" class="btn btn-primary">Schließen</button>
           </div>
         </div>
@@ -2019,6 +2340,25 @@
             <button id="btn-cancel-custom-yt" class="btn btn-secondary">Abbrechen</button>
             <button id="btn-save-custom-yt" class="btn btn-primary">Video speichern</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- First launch release notes -->
+    <div id="release-notes-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="release-notes-title">
+      <div class="modal-card release-notes-card">
+        <div class="modal-header release-notes-header">
+          <div class="release-notes-heading">
+            <span class="release-notes-spark">✨</span>
+            <div>
+              <h3 id="release-notes-title">Neu in dieser Version</h3>
+              <p id="release-notes-intro" class="qa-subtitle"></p>
+            </div>
+          </div>
+          <button id="btn-close-release-notes" class="btn-icon" type="button" title="Versionshinweise schließen" aria-label="Versionshinweise schließen">✕</button>
+        </div>
+        <div class="modal-body release-notes-body">
+          <div id="release-notes-list" class="release-notes-list"></div>
         </div>
       </div>
     </div>
@@ -2124,6 +2464,31 @@
           <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
             <button id="btn-cancel-manual-qna" class="btn btn-secondary">Abbrechen</button>
             <button id="btn-save-manual-qna" class="btn btn-primary">➕ Frage anlegen</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Q&A Punishments & Challenges Modal -->
+    <div id="modal-qna-bestrafungen" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 680px; width: 95%;">
+        <div class="modal-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:1.4rem;">🎡</span>
+            <div>
+              <h3 style="margin:0;">Bestrafungen &amp; Challenges</h3>
+              <p style="margin:3px 0 0; color:var(--text-secondary); font-size:0.78rem;">Pool für das Glücksrad bei nicht beantworteten Fragen</p>
+            </div>
+          </div>
+          <button id="btn-close-qna-bestrafungen" class="btn-icon" title="Schließen">✕</button>
+        </div>
+        <div class="modal-body" style="padding:20px;">
+          <div class="input-action-row" style="margin-bottom:14px;">
+            <input type="text" id="input-new-bestrafung" placeholder="Neue Bestrafung (z. B. 10 Liegestütze)..." style="font-size:0.85rem;">
+            <button id="btn-add-bestrafung" class="btn btn-primary btn-sm" style="white-space:nowrap;">➕ Hinzufügen</button>
+          </div>
+          <div id="bestrafungen-list-container" class="bestrafungen-list-container" style="max-height:420px;">
+            <div class="bestrafungen-empty">Keine Bestrafungen angelegt.</div>
           </div>
         </div>
       </div>
@@ -2356,6 +2721,16 @@
                   </div>
                 </div>
 
+                <div class="config-section-card">
+                  <div class="config-section-title">Chats im Mod-HQ</div>
+                  <label class="checkbox-label"><input id="hq-profile-twitch" type="checkbox"> Twitch-Livechat anzeigen</label>
+                  <label class="checkbox-label"><input id="hq-profile-youtube" type="checkbox"> YouTube-Chat anbieten (im Browser)</label>
+                  <label for="hq-profile-default">Standard-Reiter</label>
+                  <select id="hq-profile-default"><option value="twitch">Twitch</option><option value="youtube">YouTube</option></select>
+                  <label for="hq-profile-live-url">Aktueller YouTube-Livestream (optional)</label>
+                  <input id="hq-profile-live-url" type="url" placeholder="https://www.youtube.com/watch?v=…">
+                  <small>Mit Livestream-Link wird der Chat direkt geöffnet. Sonst öffnet sich die Live-Seite des ersten YouTube-Kanals.</small>
+                </div>
                 <!-- Multiple YouTube Channels -->
                 <div class="config-section-card">
                   <div class="config-section-title">🎥 YouTube-Kanäle &amp; Handles (mehrere möglich)</div>
@@ -2487,6 +2862,51 @@
       </div>
     </div>
 
+    <!-- Modal: Change Request / Feedback (Spec #1) -->
+    <div id="change-request-modal" class="modal-overlay hidden">
+      <div class="modal-card" style="max-width: 540px; border-top: 3px solid #ffca28;">
+        <div class="modal-header">
+          <h3>💡 Change Request / Feedback</h3>
+          <button type="button" class="btn-icon" id="btn-close-change-request-modal" title="Schließen" style="font-size: 1.1rem; width: 32px; height: 32px;">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex; flex-direction:column; gap:14px; padding: 20px;">
+          <p style="font-size:0.85rem; color:var(--text-secondary); margin:0; line-height:1.4;">
+            Hier kannst du Wünsche, Ideen, UI-Anpassungen oder Fehler direkt an Bastian übermitteln. Dein Feedback landet automatisch auf seinem Trello-Board!
+          </p>
+
+          <!-- Automatic Context Preview Tag -->
+          <div class="cr-context-preview" style="font-size:0.75rem; color:var(--text-muted); background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+            <span>📍 <strong>Bereich:</strong> <span id="cr-preview-view" style="color:var(--text-primary);">-</span></span>
+            <span>👤 <strong>Mod:</strong> <span id="cr-preview-user" style="color:var(--text-primary);">-</span></span>
+            <span>🏷️ <strong>Version:</strong> <span id="cr-preview-ver" style="color:var(--text-primary);">v8.0.0</span></span>
+          </div>
+
+          <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+            <label for="cr-category" style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">Kategorie</label>
+            <select id="cr-category" class="input-field" style="padding:8px 12px; border-radius:6px; background:var(--bg-input, #1e1e28); color:var(--text-primary); border:1px solid var(--border-color, #333);">
+              <option value="Wunsch">💡 Wunsch / Feature</option>
+              <option value="Fehler">🐛 Fehler / Bug</option>
+              <option value="UI">🎨 UI / Design</option>
+              <option value="Inhalt & Daten">📦 Inhalt &amp; Tabakdaten</option>
+              <option value="Sonstiges">💬 Sonstiges</option>
+            </select>
+          </div>
+          <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+            <label for="cr-title" style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">Titel / Zusammenfassung *</label>
+            <input type="text" id="cr-title" class="input-field" placeholder="z. B. Neuer Tabakhersteller fehlt oder Timer-Anzeige..." maxlength="100" style="padding:8px 12px; border-radius:6px; background:var(--bg-input, #1e1e28); color:var(--text-primary); border:1px solid var(--border-color, #333);">
+          </div>
+          <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">
+            <label for="cr-details" style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">Beschreibung / Details *</label>
+            <textarea id="cr-details" class="input-field" rows="4" placeholder="Was soll geändert werden und wie soll es sich verhalten?" style="padding:8px 12px; border-radius:6px; background:var(--bg-input, #1e1e28); color:var(--text-primary); border:1px solid var(--border-color, #333); resize:vertical; font-family:inherit;"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; padding:14px 20px; border-top:1px solid var(--border-color, #282836);">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-change-request">Abbrechen</button>
+          <button type="button" class="btn btn-primary" id="btn-submit-change-request" style="background:#ffca28; color:#121218; font-weight:700; border:none; padding:8px 18px;">📤 Wunsch absenden</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Datalists for Auto-Complete -->
     <datalist id="list-pipes"></datalist>
     <datalist id="list-bowls"></datalist>
@@ -2499,8 +2919,28 @@
     <datalist id="list-tastings"></datalist>
     <datalist id="list-promos"></datalist>
 
+    <!-- Floating Change Request Action Button (Spec #1 - FAB) -->
+    <button id="btn-open-change-request" class="fab-change-request" title="Feature-Wunsch, Feedback oder Bug melden">
+      <span class="fab-icon">💡</span>
+      <span class="fab-label">Feedback &amp; Wünsche</span>
+    </button>
+
   </div>
 
+  <script src="fuzzy.js"></script>
   <script src="renderer.js"></script>
+  <script src="workspace.js"></script>
+  <script src="glass.js"></script>
+  <script src="mod-hq-workspace.js"></script>
+  <script src="stream-actions.js"></script>
+  <script src="liquid-motion.js"></script>
+  <script src="liquid-selection.js"></script>
+  <script src="liquid-controls.js"></script>
+  <script src="disclosure-motion.js"></script>
+  <script src="startup-presentation.js"></script>
+  <script src="toggle-motion.js"></script>
 </body>
 </html>
+
+
+

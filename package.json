@@ -1,6 +1,6 @@
 {
   "name": "shishawg-mod-setup-tool",
-  "version": "7.0.8",
+  "version": "8.0.0",
   "description": "Moderator Tool für ShishaWG zum Erstellen und Senden des Stream-Setups im Twitch-Chat",
   "main": "src/main/main.js",
   "author": "ShishaWG Mod Team",
@@ -9,8 +9,14 @@
     "start": "electron .",
     "build": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:test": "electron-builder --win portable",
-    "test": "node --test test/*.test.js"
+    "dist:test": "node scripts/build-portable.cjs",
+    "test": "node --test test/*.test.js",
+    "build:renderer": "node scripts/build-renderer.cjs",
+    "prestart": "npm run build:renderer",
+    "prebuild": "npm run build:renderer",
+    "predist": "npm run build:renderer",
+    "predist:test": "npm run build:renderer",
+    "pretest": "npm run build:renderer"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
@@ -31,7 +37,10 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "build/icon.ico",
+      "build/icon.png",
+      "docs/**/*"
     ],
     "publish": {
       "provider": "github",

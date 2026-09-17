@@ -1,12 +1,21 @@
-const { app, BrowserWindow, ipcMain, clipboard, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard, shell, dialog, Notification } = require('electron');
+const { startupOptions, revealWhenReady } = require('./startup-window');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const runtime = require('./runtime');
+runtime.configure(app);
+app.commandLine.appendSwitch('enable-features', 'OverlayScrollbar,FluentOverlayScrollbar');
+const SimpleStore = require('./settings-store');
+const { configureWindowSecurity, openWebLink } = require('./window-security');
 const TwitchService = require('./twitchService');
 const DatabaseService = require('./dbService');
 const supabaseService = require('./supabaseService');
+const trelloService = require('./trelloService');
+const { resolveReleaseNotes } = require('./release-notes');
+const releaseNotes = require('../shared/release-notes.json');
 
 // State for Live OBS Overlay
 let latestLiveSetup = {
@@ -18,78 +27,49 @@ let latestLiveSetup = {
 };
 let obsServer = null;
 
-// Simple File Store fallback for settings
-class SimpleStore {
-  constructor() {
-    this.path = path.join(app.getPath('userData'), 'app_settings.json');
-    this.data = {};
-    this.load();
-  }
-
-  load() {
-    try {
-      if (fs.existsSync(this.path)) {
-        this.data = JSON.parse(fs.readFileSync(this.path, 'utf-8'));
-      }
-    } catch(e) {
-      this.data = {};
-    }
-  }
-
-  save() {
-    try {
-      fs.writeFileSync(this.path, JSON.stringify(this.data, null, 2), 'utf-8');
-    } catch(e) {}
-  }
-
-  get(key, defaultValue) {
-    return this.data[key] !== undefined ? this.data[key] : defaultValue;
-  }
-
-  set(key, value) {
-    this.data[key] = value;
-    this.save();
-  }
-
-  delete(key) {
-    delete this.data[key];
-    this.save();
-  }
-}
-
 let mainWindow = null;
 let store = null;
 let twitchService = null;
 let dbService = null;
+const activeNativeNotifications = new Set();
 
 function createWindow() {
-  store = new SimpleStore();
+  store = new SimpleStore(path.join(app.getPath('userData'), 'app_settings.json'));
   dbService = new DatabaseService();
 
   const iconPath = path.join(__dirname, '../../build/icon.ico');
   const iconExists = fs.existsSync(iconPath);
 
   mainWindow = new BrowserWindow({
-    width: 1240,
-    height: 940,
+    width: 1440,
+    height: 960,
     minWidth: 960,
     minHeight: 700,
     title: 'ShishaWG Mod Setup Tool',
     icon: iconExists ? iconPath : undefined,
-    backgroundColor: '#0b0f17',
+    ...startupOptions,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true
     },
     autoHideMenuBar: true
   });
 
+  configureWindowSecurity(mainWindow, shell);
   supabaseService.setMainWindow(mainWindow);
   supabaseService.initRealtimeListeners();
 
   twitchService = new TwitchService(mainWindow, store);
 
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  const openingWindow=mainWindow;
+  revealWhenReady(openingWindow).catch(error=>{
+    if(openingWindow.isDestroyed())return;
+    dialog.showErrorBox('Start des ShishaWG Mod Setup Tools fehlgeschlagen', error.message);
+    openingWindow.close();
+  });
+  openingWindow.loadFile(path.join(__dirname, '../renderer/index.html')).catch(()=>{});
 
   mainWindow.on('focus', () => {
     if (mainWindow) mainWindow.flashFrame(false);
@@ -211,6 +191,20 @@ ipcMain.handle('twitch:set-channel', async (event, channel) => {
 
 ipcMain.handle('twitch:send-chat', async (event, payload) => {
   try {
+    if (payload && typeof payload === 'object' && payload.action) {
+      if (payload.action === 'delete') {
+        const res = await twitchService.deleteChatMessage(payload.messageId, payload.channel);
+        return { success: true, res };
+      }
+      if (payload.action === 'timeout') {
+        const res = await twitchService.timeoutUser(payload.userId, payload.duration, payload.reason, payload.channel);
+        return { success: true, res };
+      }
+      if (payload.action === 'ban') {
+        const res = await twitchService.banUser(payload.userId, payload.reason, payload.channel);
+        return { success: true, res };
+      }
+    }
     const message = typeof payload === 'string' ? payload : (payload && payload.message);
     const channel = typeof payload === 'object' ? payload.channel : undefined;
     const res = await twitchService.sendChatMessage(message, channel);
@@ -222,6 +216,20 @@ ipcMain.handle('twitch:send-chat', async (event, payload) => {
 
 ipcMain.handle('twitch:send-chat-message', async (event, payload) => {
   try {
+    if (payload && typeof payload === 'object' && payload.action) {
+      if (payload.action === 'delete') {
+        const res = await twitchService.deleteChatMessage(payload.messageId, payload.channel);
+        return { success: true, res };
+      }
+      if (payload.action === 'timeout') {
+        const res = await twitchService.timeoutUser(payload.userId, payload.duration, payload.reason, payload.channel);
+        return { success: true, res };
+      }
+      if (payload.action === 'ban') {
+        const res = await twitchService.banUser(payload.userId, payload.reason, payload.channel);
+        return { success: true, res };
+      }
+    }
     const message = typeof payload === 'string' ? payload : (payload && payload.message);
     const channel = typeof payload === 'object' ? payload.channel : undefined;
     const res = await twitchService.sendChatMessage(message, channel);
@@ -348,8 +356,8 @@ const DEFAULT_STREAMER_PROFILES = [
     defaultPersons: ['Marvin', 'Hasty', 'Kai'],
     youtubeChannels: ['@shishawg', '@marvocado'],
     promoCodes: [
-      { shop: 'HookahFloW', code: 'SHISHAWG10', desc: '10% Rabatt' },
-      { shop: 'Moze', code: 'SHISHAWG', desc: 'Rabattcode' }
+      { shop: 'Holy', code: 'SWG10', desc: '10% Rabatt auf Deine Holy-Bestellung.' },
+      { shop: 'Moze', code: 'SWG', desc: 'Zusätzliches Zubehör!' }
     ],
     telegram: {
       botToken: '',
@@ -360,9 +368,40 @@ const DEFAULT_STREAMER_PROFILES = [
   }
 ];
 
+function migrateLegacyMarvinPromoCodes(profiles) {
+  let changed = false;
+  for (const profile of profiles) {
+    if (profile.id !== 'prof_shishawg' || !Array.isArray(profile.promoCodes) || profile.promoCodes.length !== 2) continue;
+    const [first, second] = profile.promoCodes;
+    const isOriginalLegacyDefault = first?.shop === 'HookahFloW'
+      && first?.code === 'SHISHAWG10'
+      && first?.desc === '10% Rabatt'
+      && second?.shop === 'Moze'
+      && second?.code === 'SHISHAWG'
+      && second?.desc === 'Rabattcode';
+    const isPreviousDefault = first?.shop === ''
+      && first?.code === 'SWG10'
+      && first?.desc === '10% Rabatt'
+      && second?.shop === ''
+      && second?.code === 'SWG'
+      && second?.desc === 'SWG5';
+    const isLegacyDefault = isOriginalLegacyDefault || isPreviousDefault;
+    if (!isLegacyDefault) continue;
+    profile.promoCodes = [
+      { shop: 'Holy', code: 'SWG10', desc: '10% Rabatt auf Deine Holy-Bestellung.' },
+      { shop: 'Moze', code: 'SWG', desc: 'Zusätzliches Zubehör!' }
+    ];
+    changed = true;
+  }
+  return changed;
+}
+
 ipcMain.handle('profiles:get-all', async () => {
   try {
     let profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+    if (migrateLegacyMarvinPromoCodes(profiles)) {
+      store.set('streamer_profiles', profiles);
+    }
     const activeId = store.get('active_profile_id', profiles[0]?.id || 'prof_shishawg');
 
     // Auto-fetch Telegram config from Supabase / Store if empty
@@ -502,12 +541,31 @@ ipcMain.handle('youtube:search', async (event, payload) => {
                   for (const item of itemSection) {
                     if (item.videoRenderer) {
                       const vr = item.videoRenderer;
+                      const canonicalUrl = vr.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl
+                        || vr.longBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl
+                        || vr.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.canonicalBaseUrl
+                        || '';
+                      const extractedHandle = canonicalUrl.replace(/^(\/)?@/, '').toLowerCase().trim();
+                      const rawOwner = (vr.ownerText?.runs?.[0]?.text || vr.longBylineText?.runs?.[0]?.text || vr.shortBylineText?.runs?.[0]?.text || '').trim();
+                      const normalizedOwner = rawOwner.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                      const isAllowed = channelHandles.length === 0 || channelHandles.some(handle => {
+                        const cleanHandle = handle.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9]/g, '').trim();
+                        if (!cleanHandle) return false;
+                        return (
+                          extractedHandle === cleanHandle ||
+                          normalizedOwner === cleanHandle ||
+                          extractedHandle.includes(cleanHandle) ||
+                          normalizedOwner.includes(cleanHandle)
+                        );
+                      });
+
+                      if (!isAllowed) continue;
+
                       const videoId = vr.videoId;
                       const title = vr.title?.runs?.[0]?.text || '';
                       const desc = vr.detailedMetadataSnippets?.[0]?.snippetText?.runs?.map(r => r.text).join('') || vr.descriptionSnippet?.runs?.map(r => r.text).join('') || '';
-                      const channelName = vr.ownerText?.runs?.[0]?.text
-                        || vr.longBylineText?.runs?.[0]?.text
-                        || vr.shortBylineText?.runs?.[0]?.text
+                      const channelName = rawOwner
                         || channelBadge
                         || 'YouTube';
                       const lengthText = vr.lengthText?.simpleText || '';
@@ -608,11 +666,124 @@ ipcMain.handle('modchat:clear-messages', async () => {
   }
 });
 
-ipcMain.handle('app:notify-background', async () => {
-  if (mainWindow && !mainWindow.isFocused()) {
-    mainWindow.flashFrame(true);
+// 7TV Emotes Cache & IPC Handler
+let sevenTvCache = {
+  timestamp: 0,
+  channel: '',
+  emotes: []
+};
+
+ipcMain.handle('seventv:get-emotes', async (event, channelLogin = '') => {
+  const cleanChan = (channelLogin || '').trim().toLowerCase();
+  const now = Date.now();
+  if (sevenTvCache.emotes.length > 0 && sevenTvCache.channel === cleanChan && (now - sevenTvCache.timestamp < 30 * 60 * 1000)) {
+    return { success: true, emotes: sevenTvCache.emotes, cached: true };
   }
-  return true;
+
+  const emoteMap = new Map();
+
+  const addEmote = (raw) => {
+    if (!raw || !raw.name || !raw.id) return;
+    const name = raw.name.trim();
+    const url = `https://cdn.7tv.app/emote/${raw.id}/1x.webp`;
+    emoteMap.set(name, { id: raw.id, name, url });
+  };
+
+  try {
+    // 1. Fetch Global 7TV Emotes
+    try {
+      const gRes = await fetch('https://7tv.io/v3/emote-sets/global', {
+        headers: { 'User-Agent': 'ShishaWG-Mod-Tool' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        if (Array.isArray(gData?.emotes)) {
+          gData.emotes.forEach(addEmote);
+        }
+      }
+    } catch(e) {
+      console.warn('[7TV] Global emotes fetch failed:', e.message);
+    }
+
+    // 2. Fetch Channel 7TV Emotes
+    if (cleanChan) {
+      try {
+        let twitchUserId = null;
+        if (twitchService && typeof twitchService.getUserInfo === 'function') {
+          const uInfo = await twitchService.getUserInfo(cleanChan);
+          twitchUserId = uInfo?.user?.id || uInfo?.id;
+        }
+
+        if (twitchUserId) {
+          const cRes = await fetch(`https://7tv.io/v3/users/twitch/${twitchUserId}`, {
+            headers: { 'User-Agent': 'ShishaWG-Mod-Tool' },
+            signal: AbortSignal.timeout(6000)
+          });
+          if (cRes.ok) {
+            const cData = await cRes.json();
+            const setEmotes = cData?.emote_set?.emotes;
+            if (Array.isArray(setEmotes)) {
+              setEmotes.forEach(addEmote);
+            }
+          }
+        }
+      } catch(e) {
+        console.warn(`[7TV] Channel emotes fetch for ${cleanChan} failed:`, e.message);
+      }
+    }
+
+    const emoteList = Array.from(emoteMap.values());
+    if (emoteList.length > 0) {
+      sevenTvCache = {
+        timestamp: now,
+        channel: cleanChan,
+        emotes: emoteList
+      };
+      return { success: true, emotes: emoteList };
+    } else if (sevenTvCache.emotes.length > 0) {
+      return { success: true, emotes: sevenTvCache.emotes, fallback: true };
+    }
+    return { success: false, emotes: [], error: 'Keine 7TV Emotes geladen' };
+  } catch(err) {
+    if (sevenTvCache.emotes.length > 0) {
+      return { success: true, emotes: sevenTvCache.emotes, fallback: true };
+    }
+    return { success: false, emotes: [], error: err.message };
+  }
+});
+
+ipcMain.handle('app:notify-background', async (event, payload = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { success: false };
+  if (!mainWindow.isFocused()) mainWindow.flashFrame(true);
+
+  const message = payload && payload.kind === 'modchat' && payload.message
+    ? {
+        id: String(payload.message.id || '').slice(0, 160),
+        senderName: String(payload.message.senderName || 'Mod').replace(/[\r\n]/g, ' ').slice(0, 80),
+        text: String(payload.message.text || '').slice(0, 1000),
+        timestamp: Number(payload.message.timestamp) || Date.now()
+      }
+    : null;
+
+  if (message && Notification.isSupported()) {
+    const notification = new Notification({
+      title: `Neue Mod-Chat-Nachricht von ${message.senderName}`,
+      body: message.text,
+      silent: true
+    });
+    activeNativeNotifications.add(notification);
+    notification.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('modchat:notification-clicked', message);
+    });
+    notification.on('close', () => activeNativeNotifications.delete(notification));
+    notification.show();
+  }
+  return { success: true };
 });
 
 // Watchlist IPC Handlers
@@ -1073,7 +1244,7 @@ ipcMain.handle('stats:get-sessions', async (event, channel) => {
 
 ipcMain.handle('stats:save-session', async (event, session) => {
   try {
-    const savedSupabase = await supabaseService.saveShishaSession(session);
+    const cloudResult = await supabaseService.saveShishaSession(session);
     const localSessions = await dbService.getShishaSessions();
     const idx = localSessions.findIndex(s => s.id === session.id);
     if (idx >= 0) {
@@ -1082,7 +1253,15 @@ ipcMain.handle('stats:save-session', async (event, session) => {
       localSessions.unshift(session);
     }
     await dbService.saveShishaSessions(localSessions);
-    return { success: true, session: savedSupabase };
+    if (!cloudResult || !cloudResult.success) {
+      return {
+        success: false,
+        localSaved: true,
+        cloudSynced: false,
+        error: `Online-Datenbank konnte nicht aktualisiert werden: ${cloudResult?.error || 'Unbekannter Fehler'}`
+      };
+    }
+    return { success: true, session: cloudResult.session, localSaved: true, cloudSynced: true };
   } catch(e) {
     return { success: false, error: e.message };
   }
@@ -1198,7 +1377,7 @@ ipcMain.handle('db:edit-item', async (event, { category, oldItem, newItem }) => 
 
 ipcMain.handle('db:auto-learn', async (event, setupData) => {
   const res = dbService.autoLearnSetup(setupData);
-  if (res && res.learned && supabaseService) {
+  if (res && res.addedCount > 0 && supabaseService) {
     try {
       const catalog = dbService.getCatalog();
       for (const cat of ['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'persons']) {
@@ -1247,7 +1426,7 @@ ipcMain.handle('updater:check', async () => {
   } catch (err) {
     const errMsg = err ? (err.message || String(err)) : '';
     if (errMsg.includes('app-update.yml') || errMsg.includes('ENOENT')) {
-      return { success: false, error: 'Keine Update-Konfiguration im Test/Portable-Modus' };
+      return { success: false, error: 'Keine Update-Konfiguration verfügbar' };
     }
     return { success: false, error: errMsg };
   }
@@ -1271,20 +1450,46 @@ ipcMain.handle('app:get-version', () => {
   return app.getVersion();
 });
 
+ipcMain.handle('app:get-release-notes', () => {
+  const version = app.getVersion();
+  const lastSeenVersion = store ? store.get('last_seen_release_notes_version', '') : '';
+  return resolveReleaseNotes(version, releaseNotes, lastSeenVersion);
+});
+
+ipcMain.handle('app:mark-release-notes-seen', (event, version) => {
+  const currentVersion = app.getVersion();
+  if (!store || version !== currentVersion) {
+    return { success: false, error: 'Ungültige Versionsangabe.' };
+  }
+  try {
+    store.set('last_seen_release_notes_version', currentVersion);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('app:copy-clipboard', async (event, text) => {
   clipboard.writeText(text);
   return { success: true };
 });
 
 ipcMain.handle('app:open-external', async (event, url) => {
-  shell.openExternal(url);
-  return { success: true };
+  return openWebLink(shell, url);
+});
+
+ipcMain.handle('app:send-trello-card', async (event, payload) => {
+  try {
+    return await trelloService.createChangeRequestCard(payload);
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 // OBS Overlay Server & Export
 function startObsServer() {
   if (obsServer) return;
-  const PORT = 18942;
+  const PORT = runtime.obsPort;
 
   obsServer = http.createServer((req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -1355,7 +1560,7 @@ function startObsServer() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('app:notify', {
           type: 'error',
-          message: '⚠️ OBS-Server konnte Port 18942 nicht belegen. ' +
+          message: '⚠️ OBS-Server konnte Port ' + runtime.obsPort + ' nicht belegen. ' +
                    'Läuft das Tool bereits? OBS-Overlay nicht verfügbar.'
         });
       }
@@ -1487,7 +1692,7 @@ ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
 
   return {
     success: true,
-    localUrl: 'http://localhost:18942/overlay',
+    localUrl: `http://localhost:${runtime.obsPort}/overlay`,
     textFilePath
   };
 });
@@ -1495,8 +1700,7 @@ ipcMain.handle('obs:publish-setup', async (event, setupPayload) => {
 ipcMain.handle('obs:get-info', async () => {
   const textFilePath = path.join(app.getPath('userData'), 'current_setup.txt');
   return {
-    localUrl: 'http://localhost:18942/overlay',
+    localUrl: `http://localhost:${runtime.obsPort}/overlay`,
     textFilePath
   };
 });
-

@@ -798,7 +798,7 @@
         <div class="obs-timer-title" id="obs-timer-tobacco">Nameless - Black Nana</div>
         <div class="obs-timer-clocks">
           <span>⏱️ <strong id="obs-timer-session">00:00:00</strong></span>
-          <span>🪵 <strong id="obs-timer-coal" style="color:#a78bfa;">00:00</strong></span>
+          <span><span id="obs-timer-secondary-icon">🪵</span> <strong id="obs-timer-coal" style="color:#a78bfa;">00:00</strong></span>
         </div>
       </div>
     </div>
@@ -1556,6 +1556,16 @@
               coalSecs = Math.floor((now - ts.coalStartTime) / 1000);
             }
 
+            const activeSetup = ts.activeSetup || {};
+            const electricHaystack = [activeSetup.electricDevice, activeSetup.electric_device, activeSetup.bowl, activeSetup.hmd, activeSetup.pipe]
+              .filter(Boolean).join(' ').toLowerCase();
+            const isElectric = activeSetup.isElectric === true || activeSetup.is_electric === true ||
+              ['xkah', 'elektr', 'e-kopf', 'imoto'].some(marker => electricHaystack.includes(marker));
+            if (isElectric) {
+              coalSecs = Math.max(0, (8 * 60) - sessionSecs);
+              sessionSecs = Math.max(0, sessionSecs - (8 * 60));
+            }
+
             const headNum = ts.headCountToday || 1;
             const tob = (ts.activeSetup && ts.activeSetup.tobacco) ? ts.activeSetup.tobacco : 'Aktueller Kopf';
 
@@ -1563,6 +1573,7 @@
             const elTob = document.getElementById('obs-timer-tobacco');
             const elSession = document.getElementById('obs-timer-session');
             const elCoal = document.getElementById('obs-timer-coal');
+            const elSecondaryIcon = document.getElementById('obs-timer-secondary-icon');
 
             if (elHead) elHead.textContent = `🥣 Kopf #${headNum}`;
             if (elTob) elTob.textContent = tob;
@@ -1581,6 +1592,7 @@
 
             if (elSession) elSession.textContent = formatHms(sessionSecs);
             if (elCoal) elCoal.textContent = formatMs(coalSecs);
+            if (elSecondaryIcon) elSecondaryIcon.textContent = isElectric ? '⚡' : '🪵';
           }
         }
       } catch(e) {}

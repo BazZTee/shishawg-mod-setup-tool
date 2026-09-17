@@ -1,0 +1,754 @@
+#view-modchat [hidden] { display: none !important; }
+
+/* Two equal chat columns, followed by the shared pinboard and tool drawers */
+#view-modchat .modhq-grid-container {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 18px;
+  align-items: start;
+}
+
+#view-modchat .modhq-chat-panel,
+#view-modchat .hq-public.modhq-chat-panel {
+  width: 100%;
+  height: clamp(560px, calc(100dvh - 260px), 760px) !important;
+  min-height: 560px;
+}
+
+/* Surface containers with soft glass background */
+#view-modchat .hq-public,
+#view-modchat .hq-agreements,
+#view-modchat .hq-fold {
+  border: 1px solid #aac8ef29;
+  border-radius: 17px;
+  background: linear-gradient(140deg, #a6caff12, #15223a55);
+}
+
+/* Mod Team-Chat header actions */
+#view-modchat .chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#view-modchat #btn-clear-mod-chat {
+  padding: 5px 12px;
+  font-size: 11.5px;
+  height: 30px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Pinned Team Agreement section */
+#view-modchat .hq-agreements {
+  grid-column: 1 / -1;
+  padding: 18px 22px;
+  margin: 0;
+}
+
+#view-modchat .hq-agreements-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+#view-modchat .hq-agreements-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2edff;
+}
+
+#view-modchat .hq-agreements-desc {
+  font-size: 12px;
+  color: #9bb0ce;
+  line-height: 1.4;
+}
+
+#view-modchat .hq-agreements > p.hq-agreement-text {
+  margin: 10px 0 10px;
+  font-size: 13px;
+  color: #b8cce8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #08122460;
+  border: 1px solid #acc9f018;
+  box-sizing: border-box;
+}
+
+#view-modchat .hq-agreements > p.has-active-agreement {
+  color: #f0f6ff;
+  font-weight: 500;
+  border-color: #acc9f035;
+}
+
+#view-modchat .hq-btn-del-agreement {
+  font-size: 11px;
+  padding: 4px 12px;
+  height: 28px;
+  border-radius: 7px;
+  color: #ff9b9b;
+  border: 1px solid #ff555540;
+  background: #ff444415;
+  cursor: pointer;
+  margin-bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all .15s ease;
+}
+
+#view-modchat .hq-btn-del-agreement:hover {
+  background: #ff444430;
+  border-color: #ff555580;
+  color: #ffffff;
+}
+
+#view-modchat .hq-agreement-edit summary {
+  font-size: 12px;
+  color: #a8c1e4;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+  transition: color .15s ease;
+}
+
+#view-modchat .hq-agreement-edit summary:hover {
+  color: #dbe8fb;
+}
+
+#view-modchat .hq-agreement-textarea {
+  width: 100%;
+  height: 60px;
+  min-height: 60px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 10px;
+  background-color: #09142699;
+  border: 1px solid #a2bde92b;
+  color: #e6efff;
+  outline: none;
+  box-sizing: border-box;
+  resize: vertical;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+#view-modchat .hq-agreement-textarea:focus {
+  border-color: #98c4ff;
+  box-shadow: 0 0 0 3px #74aeff19;
+}
+
+#view-modchat .hq-agreement-edit button {
+  height: 36px;
+  padding: 6px 16px;
+  font-size: 12px;
+  border-radius: 9px;
+}
+
+/* Public Chats Panel */
+#view-modchat .hq-public {
+  padding: 0;
+  min-width: 0;
+}
+
+#view-modchat .hq-heading {
+  flex: 0 0 auto;
+}
+
+#view-modchat .hq-heading .chat-header-info {
+  min-width: 0;
+}
+
+#view-modchat .hq-heading h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2edff;
+}
+
+#view-modchat .hq-chat-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: #08122470;
+  border: 1px solid #acc9f018;
+  width: fit-content;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+#view-modchat .hq-chat-tabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #a4bad6;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+
+#view-modchat .hq-chat-tabs button.active {
+  background: #92bafa28;
+  border: 1px solid #b9d7ff55;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+#view-modchat .hq-status {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #08122450;
+  border: 1px solid #acc9f012;
+  font-size: 12px;
+  color: #b1c3dd;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#view-modchat .hq-twitch {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px;
+}
+
+#view-modchat .mod-chat-messages {
+  min-height: 0;
+  max-height: none;
+}
+
+/* Search and Filter Row - matches Setup Manager field height and style */
+#view-modchat .hq-filter {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+#view-modchat .hq-filter input {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  border-radius: 10px;
+  background-color: #09142699;
+  border: 1px solid #a2bde92b;
+  color: #e6efff;
+  outline: none;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+#view-modchat .hq-filter input:focus {
+  border-color: #98c4ff;
+  box-shadow: 0 0 0 3px #74aeff19;
+}
+
+#view-modchat .hq-filter input::placeholder {
+  color: #8fa5c4;
+}
+
+#view-modchat .hq-filter button {
+  height: 38px;
+  min-height: 38px;
+  padding: 8px 14px;
+  font-size: 12px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  transition: background .18s ease;
+}
+
+#view-modchat .hq-filter button[aria-pressed=true] {
+  background: #91bafa38;
+  border-color: #9dc5ff60;
+  color: #ffffff;
+}
+
+/* Message List */
+#view-modchat .hq-message-list {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  overflow-anchor: none;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #08122475;
+  border: 1px solid #acc9f018;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#view-modchat .hq-public-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+#view-modchat .hq-public-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 58px;
+  max-height: 104px;
+  padding: 9px 14px;
+  border: 1px solid #a2bde92b;
+  border-radius: 10px;
+  background: #09142699;
+  color: #e6efff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: hidden;
+  outline: none;
+  box-sizing: border-box;
+}
+
+#view-modchat .hq-public-input:focus {
+  border-color: #98c4ff;
+  box-shadow: 0 0 0 3px #74aeff19;
+}
+
+#view-modchat .hq-public-send {
+  height: 40px;
+  min-height: 40px;
+  flex: 0 0 auto;
+}
+
+#view-modchat .hq-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #0b182e40;
+  border: 1px solid #acc9f010;
+  font-size: 12.5px;
+}
+
+#view-modchat .hq-msg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+#view-modchat .hq-msg-header strong {
+  color: #9bc2f7;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#view-modchat .hq-chatter-clickable {
+  color: #9bc2f7;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: all .15s ease;
+  user-select: none;
+  white-space: nowrap !important;
+  width: auto !important;
+  max-width: 65%;
+  flex-shrink: 0;
+}
+
+#view-modchat .hq-chatter-clickable:hover,
+#view-modchat .hq-chatter-clickable:focus-visible {
+  background: rgba(155, 194, 247, 0.16);
+  color: #ffffff;
+  outline: none;
+}
+
+#view-modchat .hq-chatter-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap !important;
+  width: auto !important;
+  font-weight: 600;
+  color: inherit;
+}
+
+#view-modchat .hq-mod-shield-icon {
+  font-size: 11px;
+  opacity: 0.85;
+  white-space: nowrap !important;
+  width: auto !important;
+  flex-shrink: 0;
+}
+
+/* Moderation Popover */
+.hq-mod-popover {
+  position: absolute;
+  z-index: 99999;
+  background: #0f1c33;
+  border: 1px solid #74aeff40;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 0 16px rgba(116, 174, 255, 0.15);
+  padding: 12px;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 12px;
+  box-sizing: border-box;
+  animation: hqPopFadeIn 0.15s ease-out;
+}
+
+@keyframes hqPopFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hq-pop-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 6px;
+}
+
+.hq-pop-title {
+  color: #74aeff;
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hq-pop-close-btn {
+  background: transparent;
+  border: none;
+  color: #8fa5c4;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.hq-pop-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.hq-pop-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hq-pop-btn {
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #182845;
+  color: #e2edff;
+  cursor: pointer;
+  transition: all .15s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hq-pop-btn:hover {
+  background: #233b66;
+  border-color: rgba(116, 174, 255, 0.4);
+  color: #ffffff;
+}
+
+.hq-pop-del-btn:hover {
+  background: rgba(255, 68, 68, 0.18);
+  border-color: rgba(255, 85, 85, 0.5);
+  color: #ff9b9b;
+}
+
+.hq-pop-ban-btn {
+  color: #ff9b9b;
+}
+
+.hq-pop-ban-btn:hover {
+  background: rgba(255, 68, 68, 0.22);
+  border-color: rgba(255, 85, 85, 0.6);
+  color: #ffffff;
+}
+
+.hq-pop-section-label {
+  font-size: 11px;
+  color: #9bb0ce;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.hq-pop-timeout-row {
+  display: flex;
+  gap: 4px;
+  justify-content: space-between;
+}
+
+.hq-pop-chip {
+  flex: 1;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  border-radius: 6px;
+  background: #1c3154;
+  border: 1px solid rgba(116, 174, 255, 0.25);
+  color: #bde0fe;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.hq-pop-chip:hover {
+  background: #2f5490;
+  border-color: #74aeff;
+  color: #ffffff;
+}
+
+#view-modchat .hq-msg-header button {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap !important;
+  flex-shrink: 0;
+}
+
+#view-modchat .hq-message span.hq-msg-body {
+  width: 100%;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: #e2edff;
+  line-height: 1.45;
+  font-size: 12.5px;
+  margin-top: 2px;
+}
+
+#view-modchat .hq-msg-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+#view-modchat .hq-msg-deleted-badge {
+  font-size: 9.5px;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap !important;
+  user-select: none;
+}
+
+#view-modchat .hq-message.is-deleted {
+  opacity: 0.55;
+  background: rgba(15, 23, 42, 0.28);
+  border-color: rgba(255, 85, 85, 0.2);
+}
+
+#view-modchat .hq-message span.hq-msg-body.is-deleted {
+  text-decoration: line-through;
+  color: #8fa5c4;
+}
+
+#view-modchat .hq-help {
+  font-size: 12.5px;
+  color: #a4bad6;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* YouTube Tab */
+#view-modchat .hq-youtube {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 6px 0 10px;
+}
+
+#view-modchat .hq-youtube h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2edff;
+}
+
+#view-modchat .hq-youtube p.hq-help {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: #a4bad6;
+}
+
+#view-modchat .hq-youtube button {
+  width: fit-content;
+  padding: 8px 18px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+#view-modchat .hq-tip-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #08122460;
+  border: 1px solid #acc9f018;
+  margin-top: 4px;
+}
+
+/* Accordion sections (identical to sa-fold in Stream Aktionen) */
+#view-modchat .hq-fold {
+  margin-top: 0;
+}
+
+#view-modchat .hq-tools-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+#view-modchat .hq-fold-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 17px;
+  background: transparent;
+  color: #e2edff;
+  text-align: left;
+  cursor: pointer;
+}
+
+#view-modchat .hq-fold-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+#view-modchat .hq-fold-label strong {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e2edff;
+}
+
+#view-modchat .hq-fold-description {
+  color: #9fb5d4;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#view-modchat .hq-chevron {
+  font-size: 14px;
+  color: #8fa5c4;
+  transition: transform .22s ease;
+  line-height: 1;
+}
+
+#view-modchat .hq-fold.is-open .hq-chevron {
+  transform: rotate(180deg);
+}
+
+#view-modchat .hq-fold-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows .25s ease, opacity .2s ease;
+}
+
+#view-modchat .hq-fold.is-open .hq-fold-panel {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+#view-modchat .hq-fold-inner {
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 18px 18px;
+}
+
+#view-modchat .hq-fold.is-open .hq-fold-inner {
+  overflow: visible;
+}
+
+#view-modchat .hq-fold .modhq-card {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+#view-modchat .hq-fold .modhq-card-header {
+  padding: 0 0 8px;
+  background: transparent;
+  border: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+#view-modchat .hq-fold .qa-title-group {
+  display: none;
+}
+
+@media(prefers-reduced-motion: reduce) {
+  #view-modchat .hq-fold-panel { transition: none !important; }
+  #view-modchat .hq-chevron { transition: none !important; }
+}
+.ws-reduced-motion #view-modchat .hq-fold-panel { transition: none !important; }
+.ws-reduced-motion #view-modchat .hq-chevron { transition: none !important; }
+
+@media (max-width: 1050px) {
+  #view-modchat .modhq-grid-container,
+  #view-modchat .hq-tools-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  #view-modchat .modhq-chat-panel,
+  #view-modchat .hq-public.modhq-chat-panel {
+    height: 560px !important;
+  }
+
+  #view-modchat .hq-agreements,
+  #view-modchat .hq-tools-grid {
+    grid-column: 1;
+  }
+}

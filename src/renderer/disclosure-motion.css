@@ -1,0 +1,28 @@
+/* Layout transitions retain the original state classes and hit targets. */
+.swg-glass .app-container { transition: grid-template-columns .25s cubic-bezier(.22,.72,.2,1); }
+.swg-glass .live-session-bottom-bar { transition: left .25s cubic-bezier(.22,.72,.2,1); }
+.swg-glass .workspace-sidebar { overflow-x: hidden; transition: padding .25s ease; }
+.swg-glass .ws-brand-slot { transition: margin .25s ease; }
+.swg-glass .ws-nav-item { transition: padding .25s ease, gap .25s ease, color .16s ease; }
+@media (min-width:1101px) {
+  .swg-glass .workspace-sidebar :is(.ws-nav-text,.brand-text) {
+    display: block; min-width: 0; max-width: 200px; overflow: hidden; white-space: nowrap;
+    opacity: 1; transition: opacity .16s ease, max-width .25s ease;
+  }
+  .swg-glass.ws-collapsed .workspace-sidebar :is(.ws-nav-text,.brand-text) {
+    display: block; max-width: 0; opacity: 0;
+  }
+  .swg-glass .workspace-sidebar .ws-nav-item { justify-content: flex-start; }
+  .swg-glass.ws-collapsed .workspace-sidebar .ws-nav-item { gap: 0; }
+
+}
+.swg-glass :is(.optional-fields-collapsible,.promo-block-collapsible) { max-height: none; transition: none; }
+.swg-glass :is(.optional-fields-collapsible,.promo-block-collapsible).collapsed { height: 0; max-height: none; }
+.swg-glass .disclosure-animating { min-height: 0 !important; flex: none !important; overflow: hidden !important; box-sizing: border-box; }
+.swg-glass .disclosure-closing.hidden { display: var(--disclosure-display,flex) !important; pointer-events: none; }
+.swg-glass .disclosure-widget-closing.is-collapsed .custom-widget-body { display: flex !important; pointer-events: none; }
+.swg-glass .disclosure-animating :is(.optional-fields-collapsible,.promo-block-collapsible) { overflow: hidden; }
+.swg-glass.ws-reduced-motion .app-container { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .swg-glass .app-container { transition: none; }
+}

@@ -3,6 +3,7 @@ const url = require('url');
 const WebSocket = require('ws');
 const { shell } = require('electron');
 const supabaseService = require('./supabaseService');
+const { prioritizeExactCategory } = require('../shared/categorySearch');
 
 class TwitchService {
   constructor(mainWindow, store) {
@@ -491,7 +492,7 @@ class TwitchService {
       });
 
       this.authServer.listen(port, () => {
-        const scopes = encodeURIComponent('chat:read chat:edit channel:moderate moderation:read user:read:email clips:edit channel:manage:broadcast channel:manage:polls channel:read:polls');
+        const scopes = encodeURIComponent('chat:read chat:edit channel:moderate moderation:read moderator:manage:chat_messages moderator:manage:banned_users user:read:email clips:edit channel:manage:broadcast channel:manage:polls channel:read:polls');
         const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scopes}`;
         shell.openExternal(authUrl);
         resolve(authUrl);
@@ -633,7 +634,7 @@ class TwitchService {
     if (!query || query.trim().length < 2) return [];
     if (!this.accessToken || !this.clientId) return [];
     try {
-      const res = await fetch(`https://api.twitch.tv/helix/search/categories?query=${encodeURIComponent(query.trim())}`, {
+      const res = await fetch(`https://api.twitch.tv/helix/search/categories?query=${encodeURIComponent(query.trim())}&first=100`, {
         headers: {
           'Authorization': `Bearer ${this.accessToken}`,
           'Client-Id': this.clientId
@@ -642,11 +643,12 @@ class TwitchService {
       if (res.ok) {
         const data = await res.json();
         if (data.data) {
-          return data.data.map(cat => ({
+          const categories = data.data.map(cat => ({
             id: cat.id,
             name: cat.name,
             box_art_url: (cat.box_art_url || '').replace('{width}', '100').replace('{height}', '133')
           }));
+          return prioritizeExactCategory(categories, query);
         }
       }
     } catch(e) {
@@ -827,6 +829,98 @@ class TwitchService {
 
   async sendMessage(message, channel = this.targetChannel) {
     return this.sendChatMessage(message, channel);
+  }
+
+  async deleteChatMessage(messageId, channel = this.targetChannel) {
+    if (!this.accessToken || !this.user) {
+      throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
+    }
+    const cleanName = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId) throw new Error('Kanal nicht gefunden.');
+
+    const res = await fetch(`https://api.twitch.tv/helix/moderation/chat?broadcaster_id=${broadcasterId}&moderator_id=${this.user.id}&message_id=${encodeURIComponent(messageId)}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId
+      }
+    });
+    if (res.ok || res.status === 204) {
+      return { success: true };
+    }
+    const errText = await res.text();
+    throw new Error(this.formatHelixError(errText, res.status, 'Nachricht konnte nicht gelöscht werden'));
+  }
+
+  formatHelixError(errText, status, defaultMsg) {
+    if (errText && (errText.includes('Missing scope') || errText.includes('Unauthorized') || status === 401 || status === 403)) {
+      return 'Twitch-Berechtigung fehlt: Bitte einmal kurz oben rechts bei Twitch abmelden (✕) und neu anmelden, um die neuen Moderationsrechte zu aktivieren.';
+    }
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed.message) return `${defaultMsg}: ${parsed.message}`;
+    } catch {}
+    return `${defaultMsg}: ${errText || status}`;
+  }
+
+  async timeoutUser(targetUserId, duration = 600, reason = '', channel = this.targetChannel) {
+    if (!this.accessToken || !this.user) {
+      throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
+    }
+    const cleanName = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId) throw new Error('Kanal nicht gefunden.');
+
+    const res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${broadcasterId}&moderator_id=${this.user.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: {
+          user_id: String(targetUserId),
+          duration: Math.max(1, Math.min(1209600, Number(duration) || 600)),
+          reason: reason || 'Timeout via Mod-HQ'
+        }
+      })
+    });
+    if (res.ok) {
+      return { success: true };
+    }
+    const errText = await res.text();
+    throw new Error(this.formatHelixError(errText, res.status, 'Timeout fehlgeschlagen'));
+  }
+
+  async banUser(targetUserId, reason = '', channel = this.targetChannel) {
+    if (!this.accessToken || !this.user) {
+      throw new Error('Nicht mit Twitch verbunden. Bitte erst einloggen.');
+    }
+    const cleanName = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const broadcasterId = await this.getBroadcasterId(cleanName);
+    if (!broadcasterId) throw new Error('Kanal nicht gefunden.');
+
+    const res = await fetch(`https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${broadcasterId}&moderator_id=${this.user.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Client-Id': this.clientId,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        data: {
+          user_id: String(targetUserId),
+          reason: reason || 'Banned via Mod-HQ'
+        }
+      })
+    });
+    if (res.ok) {
+      return { success: true };
+    }
+    const errText = await res.text();
+    throw new Error(this.formatHelixError(errText, res.status, 'Ban fehlgeschlagen'));
   }
 
   async fetchSetupFromChat(channel = this.targetChannel) {

@@ -1,0 +1,116 @@
+/* Hover fades locally; the selected surface travels only on route changes. */
+.swg-glass .workspace-sidebar { position: relative; isolation: isolate; }
+.swg-glass .workspace-sidebar > :not(.liquid-selection-lens) { position: relative; z-index: 1; }
+.swg-glass .liquid-selection-lens {
+  position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none;
+  box-sizing: border-box; border-radius: 13px; border: 1px solid #d2e7ff78;
+  background: radial-gradient(ellipse at 40% 0%, #e1efff42, transparent 65%),
+    linear-gradient(155deg, #b9d9ff28, #77a8ed29 55%, #c2ddff22);
+  backdrop-filter: blur(9px) saturate(145%) brightness(1.15);
+  box-shadow: inset 0 1px 0 #f0f8ff80, inset 0 -1px 0 #aacdff33, 0 4px 15px #0211272b;
+}
+.swg-glass .liquid-selection-lens[hidden] { display: none; }
+.swg-glass .workspace-sidebar.liquid-selection-travel .ws-nav-item.is-active::before { opacity: 0; transition: none; }
+.swg-glass .liquid-navigation:not(.liquid-selection-travel) .ws-nav-item.is-active::before { transition: none; }
+.swg-glass .liquid-navigation .ws-nav-item { isolation: isolate; }
+.swg-glass .liquid-navigation .ws-nav-item::before {
+  content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px;
+  width: min(calc(100% + 2px), var(--liquid-item-width, 100%));
+  box-sizing: border-box; z-index: -1; pointer-events: none; border-radius: inherit;
+  border: 1px solid #d2e7ff78;
+  background: radial-gradient(ellipse at 40% 0%, #e1efff42, transparent 65%),
+    linear-gradient(155deg, #b9d9ff28, #77a8ed29 55%, #c2ddff22);
+  backdrop-filter: blur(9px) saturate(145%) brightness(1.15);
+  box-shadow: inset 0 1px 0 #f0f8ff80, inset 0 -1px 0 #aacdff33, 0 4px 15px #0211272b;
+  opacity: 0; transition: opacity .16s ease;
+}
+.swg-glass .liquid-navigation .ws-nav-item:is(:hover,:focus-visible)::before { opacity: .42; }
+.swg-glass .liquid-navigation .ws-nav-item.is-active::before { opacity: 1; }
+.swg-glass .liquid-navigation .ws-nav-item:is(.is-active,:hover) {
+  background: transparent; box-shadow: none; border-color: transparent;
+}
+.swg-glass .liquid-navigation .ws-nav-item.is-active .ws-icon { color: #e1efff; }
+.swg-glass.ws-collapsed .liquid-navigation .ws-nav-item::before { width: calc(100% + 2px); }
+@media (max-width:1100px) {
+  .swg-glass .liquid-navigation .ws-nav-item::before { width: calc(100% + 2px); }
+}
+.swg-glass .liquid-surface { position: relative; }
+.swg-glass .liquid-card-optics {
+  --liquid-x: 50%; --liquid-y: 50%; --liquid-angle: 135deg;
+  display: block; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  overflow: hidden; border-radius: inherit; opacity: 0; contain: paint;
+  background: transparent;
+}
+.swg-glass .liquid-card-optics::before {
+  content: none;
+}
+.swg-glass .liquid-card-optics::after {
+  content: ''; position: absolute; inset: 0; padding: 1px; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(ellipse 250px 160px at var(--liquid-x) var(--liquid-y), #e3f1ffd9, #91c3ff57 45%, transparent 80%),
+    linear-gradient(var(--liquid-angle), #bad9ff24, transparent 44%, #bddcff35);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+/* The sheen provides motion without moving labels, controls or dropdown anchors. */
+.swg-glass.liquid-motion-ready .hub-tile-card:hover,
+.swg-glass.liquid-motion-ready .hub-tile-card.locked:hover { transform: none; }
+/* Segmented controls share one glass thumb that follows the existing selection. */
+.swg-glass .liquid-control-group { position: relative; isolation: isolate; }
+.swg-glass .liquid-control-group > button { position: relative; z-index: 1; }
+.swg-glass .liquid-control-group > button.active {
+  background: transparent; box-shadow: none; border-color: transparent; color: #eff7ff;
+}
+.swg-glass .liquid-control-lens {
+  display: block; position: absolute; top: 0; left: 0; z-index: 0; pointer-events: none;
+  border-radius: 999px; border: 1px solid #d1e8ff80;
+  background: radial-gradient(ellipse at 35% 0%, #eff8ff47, transparent 70%), linear-gradient(145deg,#c7e0ff25,#79a9eb30);
+  backdrop-filter: blur(8px) saturate(140%);
+  box-shadow: inset 0 1px 0 #f4faff8c, inset 0 -1px 0 #bad8ff28, 0 3px 10px #00102530;
+  transition: transform .17s cubic-bezier(.2,.8,.2,1), width .17s cubic-bezier(.2,.8,.2,1), height .17s ease;
+}
+.swg-glass .liquid-control-lens[hidden] { display: none; }
+.swg-glass .liquid-control-lens.liquid-control-instant { transition: none; }
+.swg-glass .qna-filter-tabs .liquid-control-lens { border-radius: 9px; }
+.swg-glass :is(.db-tab.active, .cw-qa-tab.active) {
+  color: #eff7ff; border-color: #d1e8ff65;
+  background: radial-gradient(ellipse at 35% 0%,#eff8ff38,transparent 70%), linear-gradient(145deg,#c7e0ff20,#79a9eb30);
+  box-shadow: inset 0 1px 0 #f4faff70, inset 0 -1px 0 #bad8ff28, 0 2px 8px #00102524;
+}
+/* Switches keep their original hit areas, sizes, state and thumb travel. */
+.swg-glass .toggle-slider,
+.swg-glass .checkbox-label:not(:has(.toggle-slider))::before,
+.swg-glass .gw-checkbox-label:not(:has(.toggle-slider))::before {
+  background: linear-gradient(150deg,#bedbff20,#6888ae16); border-color: #bed9ff42;
+  box-shadow: inset 0 1px 0 #eff7ff26, inset 0 -1px 3px #030f2729;
+}
+.swg-glass input[type=checkbox]:checked + .toggle-slider,
+.swg-glass input[type=checkbox]:checked ~ .toggle-slider,
+.swg-glass .checkbox-label:has(input[type=checkbox]:checked):not(:has(.toggle-slider))::before,
+.swg-glass .gw-checkbox-label:has(input[type=checkbox]:checked):not(:has(.toggle-slider))::before {
+  background: radial-gradient(ellipse at 35% 0%,#d9ffe966,transparent 80%), linear-gradient(145deg,#83e6ac88,#22a861b8);
+  border-color: #b0f5cb88; box-shadow: inset 0 1px 0 #effff466, 0 1px 6px #14965229;
+}
+.swg-glass .toggle-slider::before,
+.swg-glass .checkbox-label:not(:has(.toggle-slider))::after,
+.swg-glass .gw-checkbox-label:not(:has(.toggle-slider))::after {
+  background: radial-gradient(circle at 35% 22%,#ffffffeb, #d2e7ff94 48%, #85b5f178);
+  border: 1px solid #eff8ffc9; box-shadow: inset 0 1px 1px #ffffffb3, inset 0 -1px 2px #749cda61, 0 1px 4px #020d2861;
+  transition: transform .17s cubic-bezier(.2,.8,.2,1), background-color .17s ease;
+}
+.swg-glass input:focus-visible + .toggle-slider,
+.swg-glass .checkbox-label:has(input:focus-visible):not(:has(.toggle-slider))::before {
+  outline: 2px solid #bedfff; outline-offset: 3px;
+}
+.swg-glass .toggle-slider.liquid-toggle-resume::before {
+  transform: var(--liquid-toggle-from) !important;
+  transition: none !important;
+}
+.swg-glass.ws-reduced-motion .liquid-card-optics { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .swg-glass .liquid-card-optics { display: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .swg-glass .liquid-navigation .ws-nav-item::before { backdrop-filter: none; background: #304e77; }
+  .swg-glass .liquid-card-optics { display: none; }
+}

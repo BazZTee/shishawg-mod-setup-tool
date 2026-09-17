@@ -1,0 +1,310 @@
+/* Consistent shell geometry. Collapsing reveals less text, not a new icon layout. */
+.swg-glass .app-container .workspace-sidebar { padding-inline: 13px; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
+.swg-glass .app-container .workspace-sidebar::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.swg-glass .workspace-sidebar .ws-brand-slot { margin-inline: 3px; }
+.swg-glass .workspace-sidebar .app-logo { flex: 0 0 42px; }
+.swg-glass .workspace-sidebar .ws-nav-item { justify-content: flex-start; padding-inline: 14px; }
+.swg-glass .workspace-sidebar .ws-nav-item .ws-icon { flex: 0 0 18px; }
+.swg-glass .workspace-sidebar .ws-tools { padding: 0; margin: 0; border-top: 0; }
+.swg-glass .workspace-sidebar .ws-nav-label {
+  display: block; flex: 0 0 13.5px; height: 13.5px; max-height: none;
+  margin-bottom: 10px; white-space: nowrap; visibility: visible; opacity: 1;
+  transition: color .16s ease;
+}
+.swg-glass .workspace-sidebar .ws-tools-label { margin-top: 25px; }
+.swg-glass .workspace-sidebar .ws-nav-label::after {
+  content: ''; position: absolute; left: 12px; right: 12px; top: 50%; height: 1px;
+  background: #a9c8f34a; opacity: 0; transition: opacity .16s ease;
+}
+.swg-glass .workspace-sidebar .ws-stream-slot { display: block; flex: 0 0 29px; height: 29px; max-height: none; }
+.swg-glass .workspace-sidebar .ws-version-slot { display: block; flex: 0 0 21px; height: 21px; max-height: none; }
+.swg-glass .workspace-sidebar .ws-build { justify-content: flex-start; height: 13.5px; flex-shrink: 0; }
+.swg-glass .workspace-sidebar .ws-sidebar-bottom { flex-shrink: 0; }
+.swg-glass.ws-collapsed .workspace-sidebar .ws-nav-label { color: transparent; }
+.swg-glass.ws-collapsed .workspace-sidebar .ws-nav-label::after { opacity: 1; }
+.swg-glass.ws-collapsed .workspace-sidebar .ws-version-slot { opacity: 0; pointer-events: none; }
+@media (max-width:1100px) {
+  .swg-glass .workspace-sidebar .ws-nav-label { color: transparent; }
+  .swg-glass .workspace-sidebar .ws-nav-label::after { opacity: 1; }
+  .swg-glass .workspace-sidebar .ws-version-slot { opacity: 0; pointer-events: none; }
+  .swg-glass .workspace-sidebar .ws-nav-item { gap: 0; }
+}
+/* The breadcrumb is the page title. Keep only genuine module actions below it. */
+.swg-glass :is(.ws-module-heading,.btn-back-hub,.tool-breadcrumb,.glass-navigation-only,.ws-status-strip) { display: none !important; }
+.swg-glass .hub-view-pane {
+  padding-top: 12px;
+  padding-bottom: 16px;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-y: overlay;
+  scrollbar-width: thin;
+  scrollbar-color: #526989 transparent;
+}
+.swg-glass .hub-view-pane::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.swg-glass #view-setup { padding-bottom: 20px; gap: 14px; }
+.swg-glass #view-setup :is(.glass-masthead, .tool-sub-header) { display: none !important; }
+.swg-glass #view-setup .toolbar { padding: 8px 16px; gap: 8px; }
+.swg-glass .glass-setup-layout { gap: 20px; align-items: stretch; }
+.swg-glass .glass-setup-editor { display: flex; flex-direction: column; align-self: start; }
+.swg-glass .glass-setup-companion { gap: 16px; display: flex; flex-direction: column; }
+.swg-glass [data-glass-section]::before { padding: 18px 24px 0; }
+.swg-glass #view-setup .card-header { padding: 8px 24px 12px; }
+.swg-glass #view-setup .persons-grid { padding: 0 24px 22px; gap: 18px; }
+.swg-glass #view-setup .persons-grid > .person-card { padding: 18px 20px; gap: 14px; }
+.swg-glass .person-card-header { padding: 4px 0 10px; gap: 8px; }
+.swg-glass .input-row { gap: 16px; }
+.swg-glass .input-group { gap: 7px; }
+.swg-glass .input-group label { font-size: 12px; }
+.swg-glass #view-setup .extras-grid-v2 { padding: 6px 24px 24px; gap: 18px; }
+.swg-glass #view-setup .generator-header { padding: 10px 24px 16px; gap: 16px; }
+.swg-glass .generator-header-actions { gap: 12px !important; }
+.swg-glass .generator-sticky-body { padding: 0 24px 22px; gap: 16px; }
+.swg-glass .twitch-chat-preview { padding: 16px 18px; gap: 10px; }
+.swg-glass #preview-chat-text { font-size: 13px; line-height: 1.7; max-height: 160px; }
+.swg-glass .generator-actions { gap: 8px; }
+.swg-glass #btn-send-chat { min-height: 42px; }
+.swg-glass #notes-card .notes-header { padding: 10px 20px 6px; }
+.swg-glass #view-landing { padding-top: 8px; gap: 18px; }
+.swg-glass .landing-hero { padding: 0; }
+.swg-glass .landing-hero .ws-eyebrow { margin-bottom: 10px; }
+.swg-glass .landing-hero .ws-date { top: 0; }
+/* Profile selection, account state and search share one height and material. */
+.swg-glass .app-header { --header-control-height: 38px; gap: 14px; }
+.swg-glass .app-header :is(.ws-search-trigger,.header-profile-widget,.user-badge,.btn-twitch) {
+  height: var(--header-control-height); min-height: var(--header-control-height); box-sizing: border-box;
+  border: 1px solid var(--glass-edge); border-radius: 12px;
+  background: linear-gradient(150deg,#b0cfff16,#709acc0b); box-shadow: var(--glass-shine);
+}
+.swg-glass .app-header .header-actions { gap: 10px; align-items: center; }
+.swg-glass .app-header .header-profile-widget { padding: 0; gap: 0; flex-shrink: 0; }
+.swg-glass .app-header .header-profile-select-wrapper { flex: 0 0 auto; }
+.swg-glass .app-header .header-select-profile {
+  width: 250px; max-width: 260px; height: 36px; min-height: 0; padding: 0 12px;
+  border: 0; border-radius: 11px; background: transparent; box-shadow: none; font-size: 12px;
+}
+.swg-glass .app-header .btn-header-profile-settings {
+  display: none !important;
+}
+.swg-glass .app-header .user-badge { padding: 0 9px; gap: 8px; }
+.swg-glass .app-header .user-avatar { width: 26px; height: 26px; }
+.swg-glass .app-header .user-info { gap: 0; line-height: 1.2; min-width: 0; }
+.swg-glass .app-header .user-name { max-width: 130px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.swg-glass .app-header .user-status { font-size: 9px; line-height: 1.2; }
+.swg-glass .app-header #btn-twitch-logout { width: 24px; height: 24px; min-height: 0; padding: 3px; display: grid; place-items: center; }
+.swg-glass .app-header #btn-twitch-logout .ws-icon { width: 15px; height: 15px; }
+.swg-glass .app-header .btn-twitch { padding: 0 12px; }
+.swg-glass .ws-breadcrumb > span:first-child,.swg-glass .ws-breadcrumb-divider { display: inline; }
+@media (max-width:1340px) {
+  .swg-glass .app-header .header-select-profile { width: 220px; max-width: 220px; }
+  .swg-glass .landing-hero .ws-date { position: absolute; margin-top: 0; }
+}
+@media (max-width:1100px) {
+  .swg-glass .app-header { gap: 10px; }
+  .swg-glass .app-header .header-actions { gap: 8px; }
+  .swg-glass .app-header .header-select-profile { width: 210px; max-width: 210px; }
+  .swg-glass .ws-search-trigger kbd { display: none; }
+  .swg-glass .app-header .user-name { max-width: 85px; }
+}
+
+
+/* Footer indicators stay on the icon axis; only their text folds away. */
+.swg-glass .workspace-sidebar .ws-build { padding-inline: 21.5px 0; }
+.swg-glass .workspace-sidebar .ws-stream-slot { visibility: visible; opacity: 1; min-width: 0; overflow: hidden; }
+.swg-glass .workspace-sidebar .stream-status-pill {
+  width: 100%; height: 29px; min-width: 0; box-sizing: border-box;
+  padding: 0 0 0 20px; white-space: nowrap; overflow: hidden;
+  gap: 8px; transition: gap .25s ease;
+}
+.swg-glass .workspace-sidebar .stream-status-text {
+  display: block; min-width: 0; max-width: 200px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; opacity: 1;
+  transition: opacity .16s ease, max-width .25s ease;
+}
+.swg-glass.ws-collapsed .workspace-sidebar .stream-status-pill { gap: 0; }
+.swg-glass.ws-collapsed .workspace-sidebar .stream-status-text { max-width: 0; opacity: 0; }
+@media (max-width:1100px) {
+  .swg-glass .workspace-sidebar .stream-status-pill { gap: 0; }
+  .swg-glass .workspace-sidebar .stream-status-text { max-width: 0; opacity: 0; }
+}
+
+/* Align the version with navigation captions and fade it with the rail text. */
+.swg-glass .workspace-sidebar .ws-version-slot {
+  padding-left: 21.5px; min-width: 0; overflow: hidden;
+  transition: opacity .16s ease;
+}
+.swg-glass .workspace-sidebar .ws-version-slot .btn-version-tag {
+  display: block; padding: 0; margin: 0; min-width: 0; max-width: 200px;
+  white-space: nowrap; overflow: hidden; transition: max-width .25s ease;
+}
+.swg-glass.ws-collapsed .workspace-sidebar .ws-version-slot .btn-version-tag { max-width: 0; }
+@media (max-width:1100px) {
+  .swg-glass .workspace-sidebar .ws-version-slot .btn-version-tag { max-width: 0; }
+}
+
+
+/* Settings replaces the redundant setup menu; original actions stay wired. */
+.swg-glass :is(#btn-show-onboarding, #onboarding-hint, .hotkey-bulb-wrapper),
+.swg-glass .dropdown-wrapper:has(> #btn-hamburger-menu) { display: none !important; }
+.swg-glass #ws-preferences h4 { margin: 0 0 12px; }
+.swg-glass #ws-preferences .ws-setting-row h4 { margin-bottom: 6px; }
+.swg-glass #view-setup .persons-grid > .person-card {
+  padding: 18px; border: 1px solid #a7c6f024; border-radius: 16px;
+  background: linear-gradient(140deg, var(--person-tint, #7ba4de13), transparent 90%);
+}
+.swg-glass #view-setup .persons-grid > .person-card:nth-child(4n+2) { --person-tint: #79c69a20; border-color: #91d3b32b; }
+.swg-glass #view-setup .persons-grid > .person-card:nth-child(4n+3) { --person-tint: #d790a020; border-color: #d9a1b02b; }
+.swg-glass #view-setup .persons-grid > .person-card:nth-child(4n+4) { --person-tint: #b39cdd20; border-color: #bdabdf2b; }
+
+/* Translucent sticky-note surface with ink-like, readable text. */
+.swg-glass #notes-card {
+  background: linear-gradient(140deg, #eee5b4, #e2d9aa);
+  border-color: #fff4c466;
+  box-shadow: inset 0 1px 0 #fffbe059, 0 8px 24px #080e2026;
+}
+.swg-glass #notes-card :is(h4, .btn-icon) { color: #4c4224; }
+.swg-glass #notes-card textarea { color: #3b341f; caret-color: #3b341f; background: transparent; }
+.swg-glass #notes-card textarea::placeholder { color: #40391f; opacity: 1; }
+.swg-glass #notes-card textarea:focus { background: #fff8cc24; outline-color: #88763e; }
+.swg-glass #notes-card .btn-icon:hover { color: #302914; background: #76612618; }
+
+.swg-glass #notes-card #btn-clear-notes { color: #493b16; opacity: 1; display: inline-flex; align-items: center; justify-content: center; }
+
+/* Setup Manager: Single-person companion stretches so Schnellnotizen is bottom-flush with left card */
+@media (min-width: 901px) {
+  .swg-glass .glass-setup-layout:has(.persons-grid > .person-card:only-child) {
+    align-items: stretch;
+  }
+  .swg-glass .glass-setup-layout:has(.persons-grid > .person-card:only-child) .glass-setup-companion {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    position: static;
+  }
+  .swg-glass .glass-setup-layout:has(.persons-grid > .person-card:only-child) #notes-card {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 130px;
+  }
+  .swg-glass .glass-setup-layout:has(.persons-grid > .person-card:only-child) #notes-card textarea {
+    flex: 1 1 auto;
+    width: 100%;
+    box-sizing: border-box;
+    height: 100%;
+    min-height: 90px;
+    padding: 10px 20px 18px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    resize: vertical;
+  }
+}
+
+/* Keep ink opaque; translucency belongs only to the softly tinted glass. */
+.swg-glass #notes-card :is(h4, textarea, .btn-icon, #btn-clear-notes),
+.swg-glass #notes-card .btn-icon:hover {
+  color: #000; opacity: 1;
+}
+.swg-glass #notes-card textarea { caret-color: #000; }
+.swg-glass #notes-card textarea::placeholder { color: #000; opacity: 1; }
+
+/* Shared switch column for every person; reserve the remove-button space. */
+.swg-glass .person-card .person-header-actions .btn-clear-person {
+  width: 24px; min-width: 24px; flex: 0 0 24px; padding-inline: 0;
+}
+.swg-glass .person-card .person-header-actions .toggle-switch,
+.swg-glass .person-card .tobacco-amount-switch-label {
+  width: 112px; min-width: 112px; flex: 0 0 112px;
+  justify-content: flex-start; gap: 8px;
+}
+.swg-glass .person-card .tobacco-amount-toggle-group { margin-right: 36px; }
+
+/* Right-align copy button flush with command preview box */
+.swg-glass .generator-header-actions > .btn-copy { margin-left: auto; }
+
+/* Global Toast Notifications: Top Center Pill */
+.toast,
+.swg-glass .toast,
+.swg-workspace .toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%) translateY(0);
+  z-index: 99999;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: min(580px, calc(100vw - 48px));
+  padding: 9px 22px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  color: #f0f6fc;
+  background: rgba(14, 23, 38, 0.94);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(175, 209, 255, 0.28);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: opacity 0.26s cubic-bezier(0.16, 1, 0.3, 1), transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+  text-align: center;
+}
+
+.toast.hidden,
+.swg-glass .toast.hidden,
+.swg-workspace .toast.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-24px);
+  pointer-events: none;
+}
+
+.toast.success,
+.swg-glass .toast.success,
+.swg-workspace .toast.success {
+  border-color: rgba(72, 213, 151, 0.5);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(72, 213, 151, 0.2), inset 0 1px 0 rgba(72, 213, 151, 0.3);
+}
+
+.toast.error,
+.swg-glass .toast.error,
+.swg-workspace .toast.error {
+  border-color: rgba(255, 92, 92, 0.55);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(255, 92, 92, 0.2), inset 0 1px 0 rgba(255, 92, 92, 0.3);
+}
+
+.toast.warning,
+.swg-glass .toast.warning,
+.swg-workspace .toast.warning {
+  border-color: rgba(245, 158, 11, 0.55);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 24px rgba(245, 158, 11, 0.2), inset 0 1px 0 rgba(245, 158, 11, 0.3);
+}
+
+.toast.info,
+.swg-glass .toast.info,
+.swg-workspace .toast.info {
+  border-color: rgba(147, 197, 253, 0.4);
+}
+
+.toast.toast-actionable,
+.swg-glass .toast.toast-actionable,
+.swg-workspace .toast.toast-actionable {
+  cursor: pointer;
+  border-color: rgba(142, 184, 242, 0.68);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 0 22px rgba(111, 167, 240, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.toast.toast-actionable:hover,
+.toast.toast-actionable:focus-visible,
+.swg-glass .toast.toast-actionable:hover,
+.swg-glass .toast.toast-actionable:focus-visible,
+.swg-workspace .toast.toast-actionable:hover,
+.swg-workspace .toast.toast-actionable:focus-visible {
+  background: rgba(26, 43, 69, 0.98);
+  border-color: rgba(167, 205, 255, 0.9);
+  outline: none;
+}

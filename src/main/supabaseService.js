@@ -387,15 +387,18 @@ class SupabaseService {
 
   async saveCatalogCategory(category, items) {
     try {
-      await this.client
+      const { error } = await this.client
         .from('shishawg_catalog')
         .upsert({
           category,
           items: Array.isArray(items) ? items : [],
           updated_at: new Date().toISOString()
         }, { onConflict: 'category' });
+      if (error) throw error;
+      return true;
     } catch(err) {
       console.error('Supabase saveCatalogCategory error:', err.message);
+      return false;
     }
   }
 
@@ -894,9 +897,12 @@ class SupabaseService {
         channel: cleanChan,
         head_num: session.headNum || 1,
         tobacco: session.tobacco || '',
+        tobacco_items: Array.isArray(session.tobaccoItems) ? session.tobaccoItems : [],
         bowl: session.bowl || '',
         pipe: session.pipe || '',
         hmd: session.hmd || '',
+        electric_device: session.electricDevice || '',
+        is_electric: !!session.isElectric,
         person: session.person || 'Marvin',
         duration_minutes: session.durationMinutes || 0,
         coal_rotations: session.coalRotations || 0,
@@ -906,15 +912,32 @@ class SupabaseService {
         ended_at: session.endedAt ? new Date(session.endedAt).toISOString() : new Date().toISOString(),
         created_at: new Date().toISOString()
       };
-      const { data, error } = await this.client
+      let { data, error } = await this.client
         .from('shisha_sessions')
         .upsert(row)
         .select();
+      if (error) {
+        // Keep releases compatible until the optional stats migration has been applied.
+        const legacyRow = { ...row };
+        delete legacyRow.tobacco_items;
+        delete legacyRow.electric_device;
+        delete legacyRow.is_electric;
+        const legacyResult = await this.client.from('shisha_sessions').upsert(legacyRow).select();
+        data = legacyResult.data;
+        error = legacyResult.error;
+      }
       if (error) throw error;
-      return data && data[0] ? data[0] : row;
+      return {
+        success: true,
+        session: data && data[0] ? data[0] : row
+      };
     } catch(err) {
       console.error('Supabase saveShishaSession error:', err.message);
-      return session;
+      return {
+        success: false,
+        session,
+        error: err.message || 'Unbekannter Datenbankfehler'
+      };
     }
   }
 

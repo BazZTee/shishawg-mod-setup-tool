@@ -1,0 +1,214 @@
+function generateCommandString() {
+  let promoText = (inputGlobalPromo ? inputGlobalPromo.value : '').trim();
+  const promoTarget = (selectPromoTarget ? selectPromoTarget.value : 'kohle');
+  const includeDesc = chkIncludePromoDesc ? chkIncludePromoDesc.checked : true;
+
+  if (promoText) {
+    const match = promoText.match(/^([^\s(]+)(?:\s*\((.+)\))?$/);
+    if (match) {
+      let code = match[1].trim();
+      if (!code.startsWith('!')) code = `!${code}`;
+      const desc = match[2] ? match[2].trim() : '';
+
+      if (desc && includeDesc) {
+        promoText = `(${code} - ${desc})`;
+      } else {
+        promoText = code;
+      }
+    } else {
+      if (!promoText.startsWith('!')) promoText = `!${promoText}`;
+    }
+  }
+
+  const hasNonElectricPerson = state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return !p.isElectric && !bName.includes('xkah') && !bName.includes('elektr') && !bName.includes('imoto') && !bName.includes('e-kopf');
+  });
+
+  const isMixedSetup = state.personCount > 1 && state.persons.slice(0, state.personCount).some(p => {
+    if (!p) return false;
+    const bName = (p.bowl || '').toLowerCase();
+    return p.isElectric || bName.includes('xkah') || bName.includes('elektr') || bName.includes('imoto') || bName.includes('e-kopf');
+  }) && hasNonElectricPerson;
+
+  let kohle = hasNonElectricPerson ? (inputGlobalKohle ? inputGlobalKohle.value : '').trim() : '';
+  let extra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim();
+
+  if (promoText) {
+    if (promoTarget === 'kohle') {
+      kohle = kohle ? `${kohle} ${promoText}` : promoText;
+    } else if (promoTarget === 'extra') {
+      extra = extra ? `${extra} ${promoText}` : promoText;
+    }
+  }
+
+  const buildCandidateCommand = (withFlavors) => {
+    const parts = [];
+
+    for (let i = 0; i < state.personCount; i++) {
+      const p = state.persons[i];
+      if (!p) continue;
+
+      const personSegments = [];
+      const pName = (p.name || '').trim();
+
+      let pipeVal = (p.pipe || '').trim();
+      const vesselVal = (p.vessel || '').trim();
+      const vesselColorVal = (p.vesselColor || '').trim();
+
+      if (pipeVal) {
+        if (vesselVal && vesselColorVal) {
+          pipeVal = `${pipeVal} auf einer ${vesselVal} in ${vesselColorVal}`;
+        } else if (vesselVal) {
+          pipeVal = `${pipeVal} auf einer ${vesselVal}`;
+        } else if (vesselColorVal) {
+          pipeVal = `${pipeVal} in ${vesselColorVal}`;
+        }
+      }
+
+      let bowlVal = (p.bowl || '').trim();
+      let hmdVal = (p.hmd || '').trim();
+      const isElec = !!p.isElectric || bowlVal.toLowerCase().includes('xkah') || bowlVal.toLowerCase().includes('elektr') || bowlVal.toLowerCase().includes('imoto') || bowlVal.toLowerCase().includes('e-kopf');
+
+      if (promoText) {
+        if (promoTarget === 'pipe' && pipeVal) pipeVal = `${pipeVal} ${promoText}`;
+        if (promoTarget === 'bowl' && bowlVal) bowlVal = `${bowlVal} ${promoText}`;
+        if (promoTarget === 'hmd' && hmdVal && !isElec) hmdVal = `${hmdVal} ${promoText}`;
+      }
+
+      if (pipeVal && bowlVal) {
+        const pNorm = pipeVal.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const bNorm = bowlVal.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (pNorm === bNorm || (pNorm.includes('shii') && bNorm.includes('shii'))) {
+          personSegments.push(bowlVal);
+        } else {
+          personSegments.push(pipeVal);
+          personSegments.push(bowlVal);
+        }
+      } else if (pipeVal) {
+        personSegments.push(pipeVal);
+      } else if (bowlVal) {
+        personSegments.push(bowlVal);
+      }
+      if (hmdVal && !isElec) personSegments.push(hmdVal);
+
+      // Kohle (Magic Charcoal) placed directly behind HMD!
+      if (!isElec && kohle) {
+        personSegments.push(kohle);
+      }
+
+      const tobaccos = [];
+      const rawTobaccos = p.tobaccos || [];
+      const rawAmounts = p.tobaccoAmounts || [];
+      const showAmt = !!p.showTobaccoAmounts;
+      const unit = p.tobaccoUnit || 'g';
+
+      for (let tIdx = 0; tIdx < rawTobaccos.length; tIdx++) {
+        let tVal = (rawTobaccos[tIdx] || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+        if (!tVal) continue;
+        const amtVal = (rawAmounts[tIdx] || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+        const flavor = withFlavors ? findTobaccoFlavor(tVal) : null;
+
+        if (showAmt && amtVal && flavor) {
+          const cleanAmt = amtVal.replace(/[^0-9.,]/g, '').trim();
+          tVal = `${tVal} (${cleanAmt ? cleanAmt + unit : amtVal}, ${flavor})`;
+        } else if (showAmt && amtVal) {
+          const cleanAmt = amtVal.replace(/[^0-9.,]/g, '').trim();
+          if (cleanAmt) {
+            tVal = `${tVal} (${cleanAmt}${unit})`;
+          } else {
+            tVal = `${tVal} (${amtVal})`;
+          }
+        } else if (flavor) {
+          tVal = `${tVal} (${flavor})`;
+        }
+        tobaccos.push(tVal);
+      }
+
+      if (tobaccos.length > 0) {
+        let tobStr = '';
+        if (tobaccos.length === 1) {
+          tobStr = tobaccos[0];
+        } else if (tobaccos.length === 2) {
+          tobStr = `${tobaccos[0]} und ${tobaccos[1]}`;
+        } else {
+          const last = tobaccos.pop();
+          tobStr = `${tobaccos.join(', ')} und ${last}`;
+        }
+        personSegments.push(tobStr);
+      }
+
+      if (personSegments.length > 0 || pName) {
+        let personStr = '';
+        if (state.personCount > 1 && pName) {
+          personStr = `${pName}: ${personSegments.join(' // ')}`;
+        } else {
+          personStr = personSegments.join(' // ');
+        }
+        parts.push(personStr);
+      }
+    }
+
+    let fullCommand = `!editsetup ${parts.join(' // ')}`;
+
+    const globalParts = [];
+    if (extra) globalParts.push(extra);
+
+    if (globalParts.length > 0) {
+      fullCommand += ` // ${globalParts.join(' // ')} //`;
+    } else if (parts.length > 0) {
+      fullCommand += ' //';
+    }
+
+    return (parts.length > 0 || globalParts.length > 0) ? fullCommand.trim() : '';
+  };
+
+  const commandWithoutFlavors = buildCandidateCommand(false);
+  let generatedCommand = commandWithoutFlavors;
+
+  const shouldIncludeFlavors = chkIncludeFlavors ? chkIncludeFlavors.checked : true;
+  if (shouldIncludeFlavors) {
+    const commandWithFlavors = buildCandidateCommand(true);
+    if (commandWithFlavors && commandWithFlavors.length <= MAX_COMMAND_LEN_WITH_FLAVORS) {
+      generatedCommand = commandWithFlavors;
+    }
+  }
+
+  const isCommandValid = !!(generatedCommand && generatedCommand.length > 0 && generatedCommand !== '!editsetup');
+
+  if (isCommandValid) {
+    commandIsReady = true;
+    if (commandOutput) commandOutput.value = generatedCommand;
+    if (previewChatText) previewChatText.textContent = generatedCommand;
+    const sendBtn = document.getElementById('btn-send-chat');
+    if (sendBtn) sendBtn.removeAttribute('disabled');
+  } else {
+    commandIsReady = false;
+    if (commandOutput) commandOutput.value = '';
+    if (previewChatText) previewChatText.textContent = 'Noch kein Setup konfiguriert...';
+    const sendBtn = document.getElementById('btn-send-chat');
+    if (sendBtn) sendBtn.setAttribute('disabled', 'true');
+  }
+
+  // Update Authentic Twitch-Chat Primary Output Box
+  const previewModName = document.getElementById('preview-mod-name');
+  if (previewModName) {
+    const name = state.twitchUser?.display_name || state.twitchUser?.login || 'Mod';
+    previewModName.textContent = `${name}:`;
+    const color = localStorage.getItem('swg_user_color') || (state.twitchUser?.color ?? '#FF7F00');
+    if (previewModName.style) previewModName.style.color = color;
+  }
+
+  const len = isCommandValid ? generatedCommand.length : 0;
+  if (commandLengthBadge) {
+    if (len > 500) {
+      commandLengthBadge.classList.add('warning');
+      commandLengthBadge.textContent = `⚠️ ${len} / 500 (Zu lang!)`;
+    } else {
+      commandLengthBadge.classList.remove('warning');
+      commandLengthBadge.textContent = `${len} / 500`;
+    }
+  }
+}
+

@@ -27,6 +27,11 @@
       "icon": "👥",
       "title": "Mod-Anwesenheit im Team-Chat",
       "description": "Der Mod-Chat zeigt pro Streamer-Kanal alle bisher angemeldeten Mods. Aktive Nutzer stehen alphabetisch oben mit grünem Statuspunkt, derzeit abwesende Nutzer werden rot markiert."
+    },
+    {
+      "icon": "🧩",
+      "title": "Dashboard-Module individuell zusammenstellen",
+      "description": "Beim Hinzufügen oder Bearbeiten eines Dashboard-Moduls kann jetzt zwischen dem gesamten Modul und gezielt ausgewählten Einzelfunktionen gewählt werden."
     }
   ]
 }

@@ -12,28 +12,56 @@ const CUSTOM_DASHBOARD_CATALOG = [
     title: 'Setup-Schnellgenerator',
     icon: '💨',
     desc: 'Pfeife, Kopf, Tabak, Kohle & 1-Klick !editsetup Twitch-Chat',
-    defaultColSpan: 6
+    defaultColSpan: 6,
+    features: [
+      { id: 'identity', label: 'Person & E-Gerät' },
+      { id: 'hardware', label: 'Pfeife, Kopf, HMD & Kohle' },
+      { id: 'tobacco', label: 'Tabaksorten' },
+      { id: 'preview', label: 'Befehlsvorschau' },
+      { id: 'actions', label: 'Kopieren & an Twitch senden' }
+    ],
+    compactDefaults: ['hardware', 'tobacco', 'actions']
   },
   {
     id: 'widget-quickactions',
     title: 'Stream Quick-Actions & YouTube-Finder',
     icon: '⚡',
     desc: 'Befehle (!dc, !setup, !tabak), ShishaWG YouTube-Suche & Marker',
-    defaultColSpan: 6
+    defaultColSpan: 6,
+    features: [
+      { id: 'youtube', label: 'YouTube-Finder' },
+      { id: 'commands', label: 'Chat-Befehle' },
+      { id: 'streaminfo', label: 'Stream-Titel & Kategorie' },
+      { id: 'clipping', label: 'Clip-Tool' },
+      { id: 'raid', label: 'Raid-Steuerung' }
+    ],
+    compactDefaults: ['commands', 'streaminfo']
   },
   {
     id: 'widget-modchat',
     title: 'Mod-HQ Live-Chat',
     icon: '💬',
     desc: 'Team-Chat für Moderatoren mit 7TV-Emotes & Schnelleingabe',
-    defaultColSpan: 12
+    defaultColSpan: 12,
+    features: [
+      { id: 'messages', label: 'Nachrichtenverlauf' },
+      { id: 'composer', label: 'Nachrichten schreiben & 7TV' }
+    ],
+    compactDefaults: ['messages']
   },
   {
     id: 'widget-giveaways',
     title: 'Giveaways & Gewinner',
     icon: '🎁',
     desc: 'Giveaway starten, Teilnehmer überwachen und Gewinner auslosen',
-    defaultColSpan: 6
+    defaultColSpan: 6,
+    features: [
+      { id: 'overview', label: 'Status & Gewinner' },
+      { id: 'configuration', label: 'Gewinn & Teilnahmeart' },
+      { id: 'controls', label: 'Start, Stopp & Auslosung' },
+      { id: 'participants', label: 'Teilnehmerliste' }
+    ],
+    compactDefaults: ['overview', 'controls']
   },
   {
     id: 'widget-qna',
@@ -54,14 +82,27 @@ const CUSTOM_DASHBOARD_CATALOG = [
     title: 'Live Kohle- & Session-Timer',
     icon: '⏱️',
     desc: 'Laufender Kopf, Restzeit, Kohle-Wenden & Schnellstart',
-    defaultColSpan: 6
+    defaultColSpan: 6,
+    features: [
+      { id: 'status', label: 'Setup, Zeit & Kohlezähler' },
+      { id: 'progress', label: 'Fortschrittsbalken' },
+      { id: 'controls', label: 'Timer- und Kohle-Aktionen' }
+    ],
+    compactDefaults: ['status', 'controls']
   },
   {
     id: 'widget-stats',
     title: 'Stream-Statistik KPIs',
     icon: '📊',
     desc: 'Köpfe heute & getrennte Ø Rauchdauer (Kohle vs. E-Kopf)',
-    defaultColSpan: 6
+    defaultColSpan: 6,
+    features: [
+      { id: 'heads', label: 'Köpfe heute' },
+      { id: 'coal', label: 'Ø Rauchdauer Kohle' },
+      { id: 'electric', label: 'Ø Rauchdauer E-Kopf' },
+      { id: 'details', label: 'Link zu allen Statistiken' }
+    ],
+    compactDefaults: ['heads', 'coal', 'electric']
   }
 ];
 
@@ -291,6 +332,23 @@ function updateCustomDashboardWidget(widgetId, updates) {
   Object.assign(widget, updates);
   saveCustomDashboardLayout(layout);
   return true;
+}
+
+function getDashboardWidgetFeatures(widgetConfig, catalogItem) {
+  if (!Array.isArray(widgetConfig?.features)) return null;
+  const allowed = new Set((catalogItem?.features || []).map(feature => feature.id));
+  return widgetConfig.features.filter(featureId => allowed.has(featureId));
+}
+
+function applyDashboardFeatureSelection(widgetConfig, container) {
+  const catalogItem = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === widgetConfig?.id);
+  const selected = getDashboardWidgetFeatures(widgetConfig, catalogItem);
+  if (!selected) return;
+  const enabled = new Set(selected);
+  container.querySelectorAll('[data-dashboard-feature]').forEach(element => {
+    const featureIds = String(element.dataset.dashboardFeature || '').split(/\s+/).filter(Boolean);
+    element.classList.toggle('dashboard-feature-hidden', featureIds.length > 0 && !featureIds.some(featureId => enabled.has(featureId)));
+  });
 }
 
 function saveCustomDashboardLayout(layout) {
@@ -791,7 +849,7 @@ function renderWidgetContent(widgetObj, container) {
       const coalsStr = isElectricSetup(activeSetup) ? 'E-Kopf' : `${statsState?.coalRotations || 0}x`;
 
       container.innerHTML = `
-        <div class="cw-timer-summary">
+        <div class="cw-timer-summary" data-dashboard-feature="status">
           <div class="cw-timer-details">
             <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">
               ${isRunning ? `Kopf #${headNum} (Läuft)` : 'Bereit'}
@@ -813,11 +871,11 @@ function renderWidgetContent(widgetObj, container) {
           </div>
         </div>
 
-        <div style="width:100%; background:rgba(255,255,255,0.06); height:5px; border-radius:4px; overflow:hidden; margin-top:6px;">
+        <div data-dashboard-feature="progress" style="width:100%; background:rgba(255,255,255,0.06); height:5px; border-radius:4px; overflow:hidden; margin-top:6px;">
           <div id="custom-timer-progress-bar" style="height:100%; width:0%; background:linear-gradient(90deg, #ffca28, #ff8f00); transition:width 0.4s;"></div>
         </div>
 
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+        <div data-dashboard-feature="controls" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
           ${isRunning ? `
             <button type="button" class="btn btn-sm btn-secondary" id="custom-widget-btn-rotate-coals" style="flex:1; min-width:120px;">
               🔥 Kohle gewendet (+1)
@@ -886,7 +944,7 @@ function renderWidgetContent(widgetObj, container) {
       container.innerHTML = `
         <div class="cw-setup-wrapper" style="display:flex; flex-direction:column; gap:10px;">
           <!-- Person & E-Gerät Header Row -->
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+          <div data-dashboard-feature="identity" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
             <div style="flex:1; display:flex; align-items:center; gap:6px;">
               <label style="font-size:0.75rem; color:var(--text-muted); font-weight:700; white-space:nowrap;">👤 Name:</label>
               <input type="text" id="cw-setup-name" class="input-field" style="padding:4px 8px; font-size:0.82rem; flex:1;" value="${escapeHtml(p1.name || '')}" placeholder="z. B. Marvin">
@@ -899,7 +957,7 @@ function renderWidgetContent(widgetObj, container) {
           </div>
 
           <!-- Hardware Grid (Pfeife, Kopf, HMD, Kohle) -->
-          <div id="cw-setup-hardware-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+          <div id="cw-setup-hardware-grid" data-dashboard-feature="hardware" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
             <div>
               <label style="font-size:0.73rem; color:var(--text-muted); font-weight:600; display:block; margin-bottom:2px;">Pfeife</label>
               <input type="text" id="cw-setup-pipe" class="input-field" list="list-pipes" style="width:100%; padding:5px 8px; font-size:0.82rem;" value="${escapeHtml(p1.pipe || '')}" placeholder="z. B. Amotion Futr">
@@ -919,7 +977,7 @@ function renderWidgetContent(widgetObj, container) {
           </div>
 
           <!-- Multi-Tobacco Section -->
-          <div class="cw-setup-tobacco-section" style="border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
+          <div class="cw-setup-tobacco-section" data-dashboard-feature="tobacco" style="border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
               <label style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">📦 Tabaksorte(n):</label>
               <button type="button" class="btn btn-xs btn-secondary" id="cw-setup-btn-add-tob" style="font-size:0.72rem; padding:2px 8px;">
@@ -932,7 +990,7 @@ function renderWidgetContent(widgetObj, container) {
           </div>
 
           <!-- Live Command Preview Box -->
-          <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 10px;">
+          <div data-dashboard-feature="preview" style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 10px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
               <span style="font-size:0.7rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">Vorschau (!editsetup)</span>
               <span id="cw-setup-char-count" style="font-size:0.7rem; font-family:'JetBrains Mono',monospace; color:var(--text-muted);">0 / 500</span>
@@ -943,7 +1001,7 @@ function renderWidgetContent(widgetObj, container) {
           </div>
 
           <!-- Action Buttons Row -->
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <div data-dashboard-feature="actions" style="display:flex; gap:8px; flex-wrap:wrap;">
             <button type="button" class="btn btn-sm btn-secondary" id="cw-setup-btn-copy" style="flex:1; min-width:110px;">
               📋 Befehl kopieren
             </button>
@@ -1171,10 +1229,10 @@ function renderWidgetContent(widgetObj, container) {
     case 'widget-modchat': {
       container.innerHTML = `
         <div class="cw-modchat-container" style="position:relative;">
-          <div id="cw-modchat-messages" class="cw-modchat-messages">
+          <div id="cw-modchat-messages" class="cw-modchat-messages" data-dashboard-feature="messages">
             <div style="color:var(--text-muted); font-size:0.8rem; text-align:center; padding:35px 10px;">Lade Nachrichten...</div>
           </div>
-          <div id="cw-modchat-7tv-popover" class="cw-modchat-7tv-popover hidden">
+          <div id="cw-modchat-7tv-popover" class="cw-modchat-7tv-popover hidden" data-dashboard-feature="composer">
             <div class="cw-modchat-7tv-header">
               <strong>7TV Emotes</strong>
               <input type="text" id="cw-modchat-7tv-search" class="input-field" placeholder="Emote suchen…" autocomplete="off">
@@ -1184,7 +1242,7 @@ function renderWidgetContent(widgetObj, container) {
               <div class="popover-7tv-status">Lade 7TV Emotes…</div>
             </div>
           </div>
-          <div class="cw-chat-input-row">
+          <div class="cw-chat-input-row" data-dashboard-feature="composer">
             <textarea id="cw-modchat-input" class="cw-chat-input" placeholder="Nachricht an Moderatoren (Enter zum Senden, Umschalt+Enter für neue Zeile)..." maxlength="300" rows="1"></textarea>
             <button type="button" class="btn btn-secondary btn-sm" id="cw-modchat-btn-emotes" title="7TV Emotes einfügen" style="padding:7px 10px;">😀</button>
             <button type="button" class="btn btn-primary btn-sm" id="cw-modchat-send" style="background:#ffca28; color:#121218; font-weight:700; border:none; padding:7px 14px;">
@@ -1264,11 +1322,11 @@ function renderWidgetContent(widgetObj, container) {
       const isActive = Boolean(giveawayState?.isActive);
       container.innerHTML = `
         <div id="cw-giveaway-widget" class="cw-giveaway-widget">
-          <div class="cw-giveaway-summary">
+          <div class="cw-giveaway-summary" data-dashboard-feature="overview">
             <span id="cw-giveaway-status" class="cw-giveaway-status ${isActive ? 'is-live' : 'is-ready'}">${isActive ? '● Registrierung läuft' : 'Bereit'}</span>
             <span><strong id="cw-giveaway-count">0</strong> Teilnehmer</span>
           </div>
-          <div class="cw-giveaway-form">
+          <div class="cw-giveaway-form" data-dashboard-feature="configuration">
             <input type="text" id="cw-giveaway-prize" class="input-field" value="${escapeHtml(giveawayState?.prize || inputGiveawayPrize?.value || '')}" placeholder="Gewinnpreis eingeben …" ${isActive ? 'disabled' : ''}>
             <select id="cw-giveaway-mode" class="gw-select" ${isActive ? 'disabled' : ''}>
               <option value="keyword" ${giveawayState?.mode !== 'chatters' ? 'selected' : ''}>Chat-Keyword</option>
@@ -1276,14 +1334,14 @@ function renderWidgetContent(widgetObj, container) {
             </select>
             <input type="text" id="cw-giveaway-keyword" class="input-field" value="${escapeHtml(giveawayState?.keyword || '!join')}" placeholder="!join" ${isActive || giveawayState?.mode === 'chatters' ? 'disabled' : ''}>
           </div>
-          <div class="cw-giveaway-actions">
+          <div class="cw-giveaway-actions" data-dashboard-feature="controls">
             <button type="button" id="cw-giveaway-start" class="btn btn-sm btn-success ${isActive ? 'hidden' : ''}">▶ Giveaway starten</button>
             <button type="button" id="cw-giveaway-stop" class="btn btn-sm btn-danger ${isActive ? '' : 'hidden'}">■ Registrierung stoppen</button>
             <button type="button" id="cw-giveaway-draw" class="btn btn-sm btn-primary">🎲 Gewinner auslosen</button>
             <button type="button" id="cw-giveaway-clear" class="btn btn-sm btn-secondary" title="Teilnehmerliste leeren">🧹 Pool leeren</button>
           </div>
-          <div id="cw-giveaway-winner" class="cw-giveaway-winner"><span>🏆 Noch kein Gewinner ausgelost</span></div>
-          <div id="cw-giveaway-participants" class="cw-giveaway-participants"></div>
+          <div id="cw-giveaway-winner" class="cw-giveaway-winner" data-dashboard-feature="overview"><span>🏆 Noch kein Gewinner ausgelost</span></div>
+          <div id="cw-giveaway-participants" class="cw-giveaway-participants" data-dashboard-feature="participants"></div>
         </div>
       `;
 
@@ -1333,15 +1391,18 @@ function renderWidgetContent(widgetObj, container) {
     }
 
     case 'widget-quickactions': {
-      const activeTool = wConfig.subTool || 'youtube';
+      const quickActionCatalog = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === 'widget-quickactions');
+      const selectedTools = getDashboardWidgetFeatures(wConfig, quickActionCatalog);
+      const availableTools = selectedTools?.length ? selectedTools : ['youtube', 'commands', 'streaminfo', 'clipping', 'raid'];
+      const activeTool = availableTools.includes(wConfig.subTool) ? wConfig.subTool : availableTools[0];
 
       container.innerHTML = `
         <div class="cw-qa-tabs">
-          <button type="button" class="cw-qa-tab ${activeTool === 'youtube' ? 'active' : ''}" data-tool="youtube">🎥 YouTube-Finder</button>
-          <button type="button" class="cw-qa-tab ${activeTool === 'commands' ? 'active' : ''}" data-tool="commands">⚡ Chat-Befehle</button>
-          <button type="button" class="cw-qa-tab ${activeTool === 'streaminfo' ? 'active' : ''}" data-tool="streaminfo">🎮 Stream-Titel</button>
-          <button type="button" class="cw-qa-tab ${activeTool === 'clipping' ? 'active' : ''}" data-tool="clipping">🎬 Clip-Tool</button>
-          <button type="button" class="cw-qa-tab ${activeTool === 'raid' ? 'active' : ''}" data-tool="raid">🚀 Raid</button>
+          <button type="button" class="cw-qa-tab ${activeTool === 'youtube' ? 'active' : ''}" data-tool="youtube" data-dashboard-feature="youtube">🎥 YouTube-Finder</button>
+          <button type="button" class="cw-qa-tab ${activeTool === 'commands' ? 'active' : ''}" data-tool="commands" data-dashboard-feature="commands">⚡ Chat-Befehle</button>
+          <button type="button" class="cw-qa-tab ${activeTool === 'streaminfo' ? 'active' : ''}" data-tool="streaminfo" data-dashboard-feature="streaminfo">🎮 Stream-Titel</button>
+          <button type="button" class="cw-qa-tab ${activeTool === 'clipping' ? 'active' : ''}" data-tool="clipping" data-dashboard-feature="clipping">🎬 Clip-Tool</button>
+          <button type="button" class="cw-qa-tab ${activeTool === 'raid' ? 'active' : ''}" data-tool="raid" data-dashboard-feature="raid">🚀 Raid</button>
         </div>
         <div id="cw-qa-tool-content" style="flex:1;"></div>
       `;
@@ -1756,21 +1817,21 @@ function renderWidgetContent(widgetObj, container) {
       const countToday = statsState?.headCountToday || 0;
 
       container.innerHTML = `
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; text-align:center;">
-          <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:8px 4px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:8px; text-align:center;">
+          <div data-dashboard-feature="heads" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:8px 4px;">
             <div style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">Köpfe heute</div>
             <div style="font-size:1.15rem; font-weight:800; color:#ffca28; margin-top:2px;">${countToday}</div>
           </div>
-          <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:8px 4px;">
+          <div data-dashboard-feature="coal" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:8px 4px;">
             <div style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">🪵 Ø Kohle</div>
             <div style="font-size:1.15rem; font-weight:800; color:#4fc3f7; margin-top:2px;">${coalAvg}</div>
           </div>
-          <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:8px 4px;">
+          <div data-dashboard-feature="electric" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; padding:8px 4px;">
             <div style="font-size:0.7rem; color:var(--text-muted); font-weight:600;">⚡ Ø E-Kopf</div>
             <div style="font-size:1.15rem; font-weight:800; color:#81c784; margin-top:2px;">${elecAvg}</div>
           </div>
         </div>
-        <button type="button" class="btn btn-sm btn-secondary" id="cw-btn-open-stats" style="margin-top:6px; width:100%;">
+        <button type="button" class="btn btn-sm btn-secondary" id="cw-btn-open-stats" data-dashboard-feature="details" style="margin-top:6px; width:100%;">
           📊 Detaillierte Statistiken öffnen ➔
         </button>
       `;
@@ -1783,6 +1844,7 @@ function renderWidgetContent(widgetObj, container) {
     default:
       container.innerHTML = `<div style="color:var(--text-muted); font-size:0.85rem;">Modul nicht gefunden</div>`;
   }
+  applyDashboardFeatureSelection(wConfig, container);
 }
 
 function openAddWidgetModal() {
@@ -1801,32 +1863,77 @@ function openAddWidgetModal() {
   list.innerHTML = '';
   CUSTOM_DASHBOARD_CATALOG.forEach(cat => {
     const isAdded = activeIds.has(cat.id);
-    const item = document.createElement('div');
+    const existingWidget = currentWidgets.find(widget => widget.id === cat.id);
+    const selectedFeatures = getDashboardWidgetFeatures(existingWidget, cat);
+    const isCompact = Array.isArray(selectedFeatures);
+    const initialFeatures = isCompact ? selectedFeatures : (cat.compactDefaults || cat.features?.map(feature => feature.id) || []);
+    const item = document.createElement('details');
     item.className = `catalog-widget-item${isAdded ? ' already-added' : ''}`;
     item.innerHTML = `
-      <div class="catalog-widget-info">
-        <div class="catalog-widget-icon">${cat.icon}</div>
-        <div>
-          <div class="catalog-widget-title">${cat.title}</div>
-          <p class="catalog-widget-desc">${cat.desc}</p>
-        </div>
-      </div>
-      <div>
-        <button type="button" class="btn btn-sm ${isAdded ? 'btn-secondary' : 'btn-primary'}" style="${isAdded ? '' : 'background:#ffca28; color:#121218; font-weight:700; border:none;'}">
-          ${isAdded ? '✓ Bereits aktiv' : '➕ Hinzufügen'}
+      <summary class="catalog-widget-summary">
+        <span class="catalog-widget-info">
+          <span class="catalog-widget-icon">${cat.icon}</span>
+          <span>
+            <span class="catalog-widget-title">${escapeHtml(cat.title)}</span>
+            <span class="catalog-widget-desc">${escapeHtml(cat.desc)}</span>
+          </span>
+        </span>
+        <span class="catalog-widget-state">${isAdded ? '✓ Aktiv' : 'Konfigurieren'} <span class="catalog-widget-chevron">⌄</span></span>
+      </summary>
+      <div class="catalog-widget-options">
+        <label class="catalog-widget-mode">
+          <input type="radio" name="dashboard-mode-${cat.id}" value="full" ${isCompact ? '' : 'checked'}>
+          <span><strong>Gesamtes Modul</strong><small>Alle Funktionen anzeigen</small></span>
+        </label>
+        ${cat.features?.length ? `
+          <label class="catalog-widget-mode">
+            <input type="radio" name="dashboard-mode-${cat.id}" value="compact" ${isCompact ? 'checked' : ''}>
+            <span><strong>Ausgewählte Funktionen</strong><small>Nur das anzeigen, was du wirklich brauchst</small></span>
+          </label>
+          <div class="catalog-widget-features">
+            ${cat.features.map(feature => `
+              <label>
+                <input type="checkbox" value="${escapeHtml(feature.id)}" ${initialFeatures.includes(feature.id) ? 'checked' : ''} ${isCompact ? '' : 'disabled'}>
+                <span>${escapeHtml(feature.label)}</span>
+              </label>`).join('')}
+          </div>` : ''}
+        <button type="button" class="btn btn-sm btn-primary catalog-widget-save">
+          ${isAdded ? 'Auswahl speichern' : '➕ Modul hinzufügen'}
         </button>
       </div>
     `;
 
-    const btn = item.querySelector('button');
+    const modeInputs = [...item.querySelectorAll(`input[name="dashboard-mode-${cat.id}"]`)];
+    const featureInputs = [...item.querySelectorAll('.catalog-widget-features input[type="checkbox"]')];
+    const syncFeatureInputs = () => {
+      const compact = modeInputs.find(input => input.checked)?.value === 'compact';
+      featureInputs.forEach(input => { input.disabled = !compact; });
+    };
+    modeInputs.forEach(input => input.addEventListener('change', syncFeatureInputs));
+
+    const btn = item.querySelector('.catalog-widget-save');
     btn.addEventListener('click', () => {
       if (isCustomDashboardLocked()) {
         modal.classList.add('hidden');
         showToast('🔒 Layout entsperren, um ein Modul hinzuzufügen.', 'info');
         return;
       }
-      if (isAdded) {
-        showToast(`„${cat.title}“ ist bereits auf deinem Dashboard aktiv.`, 'info');
+      const mode = modeInputs.find(input => input.checked)?.value || 'full';
+      const features = featureInputs.filter(input => input.checked).map(input => input.value);
+      if (mode === 'compact' && features.length === 0) {
+        showToast('Bitte wähle mindestens eine Funktion aus.', 'warning');
+        return;
+      }
+      if (isAdded && existingWidget) {
+        if (mode === 'compact') existingWidget.features = features;
+        else delete existingWidget.features;
+        if (cat.id === 'widget-quickactions' && Array.isArray(existingWidget.features) && !existingWidget.features.includes(existingWidget.subTool)) {
+          existingWidget.subTool = existingWidget.features[0];
+        }
+        saveCustomDashboardLayout(layout);
+        modal.classList.add('hidden');
+        renderCustomDashboard();
+        showToast(`✅ Auswahl für „${cat.title}“ gespeichert.`, 'success');
         return;
       }
       const newWidget = {
@@ -1834,6 +1941,8 @@ function openAddWidgetModal() {
         colSpan: cat.defaultColSpan || 6,
         collapsed: false
       };
+      if (mode === 'compact') newWidget.features = features;
+      if (cat.id === 'widget-quickactions' && Array.isArray(newWidget.features)) newWidget.subTool = newWidget.features[0];
       const newPanel = makeDashboardPanel(newWidget);
       layout.root = layout.root ? makeDashboardSplit('row', layout.root, newPanel, 0.7) : newPanel;
       saveCustomDashboardLayout(layout);

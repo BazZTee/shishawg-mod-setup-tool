@@ -6,6 +6,7 @@ const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const dashboardCode = fs.readFileSync(path.join(root, 'src/renderer/modules/11-dashboard.js'), 'utf8');
+const dashboardStyles = fs.readFileSync(path.join(root, 'src/renderer/styles.css'), 'utf8');
 
 function extractFunction(name) {
   const match = dashboardCode.match(new RegExp(`function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, 'm'));
@@ -105,4 +106,18 @@ test('saved command changes refresh only Quick-Actions and keep its selected sub
   assert.match(refresh, /renderWidgetContent\(configuredWidgets\.get\(widgetId\) \|\| widgetId, container\)/);
   assert.match(commandChangeHandler, /refreshDashboardWidgets\('widget-quickactions'\)/);
   assert.doesNotMatch(commandChangeHandler, /renderCustomDashboard\(\)/);
+});
+
+test('timer summary adapts to narrow dashboard panels without overlap', () => {
+  const timerCase = dashboardCode.match(/case 'widget-timer': \{[\s\S]*?case 'widget-setup'/)?.[0] || '';
+
+  assert.match(timerCase, /class="cw-timer-summary"/);
+  assert.match(timerCase, /class="cw-timer-details"/);
+  assert.match(timerCase, /class="cw-timer-metrics"/);
+  assert.match(timerCase, /class="cw-timer-duration"/);
+  assert.match(dashboardStyles, /\.dashboard-panel > \.custom-widget-body[\s\S]*?container-type: inline-size/);
+  assert.match(dashboardStyles, /\.cw-timer-summary[\s\S]*?grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(dashboardStyles, /@container \(max-width: 285px\)[\s\S]*?\.cw-timer-summary[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(dashboardStyles, /\.cw-timer-setup-name[\s\S]*?text-overflow: ellipsis/);
+  assert.match(dashboardStyles, /\.cw-timer-duration[\s\S]*?font-variant-numeric: tabular-nums/);
 });

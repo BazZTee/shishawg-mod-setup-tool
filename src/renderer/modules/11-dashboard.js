@@ -791,23 +791,23 @@ function renderWidgetContent(widgetObj, container) {
       const coalsStr = isElectricSetup(activeSetup) ? 'E-Kopf' : `${statsState?.coalRotations || 0}x`;
 
       container.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:10px 14px; border-radius:8px; border:1px solid var(--border-color);">
-          <div>
+        <div class="cw-timer-summary">
+          <div class="cw-timer-details">
             <div style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; font-weight:700;">
               ${isRunning ? `Kopf #${headNum} (Läuft)` : 'Bereit'}
             </div>
-            <div style="font-size:0.95rem; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px;">
+            <div class="cw-timer-setup-name" title="${escapeHtml(tobaccoName)}">
               ${escapeHtml(tobaccoName)}
             </div>
             <div id="custom-timer-phase-label" style="font-size:0.72rem; color:#ffca28; margin-top:2px;">
               ${isRunning ? 'Phase: Läuft' : 'Timer gestoppt'}
             </div>
           </div>
-          <div style="text-align:right;">
-            <div id="custom-timer-duration-display" style="font-family:'JetBrains Mono', monospace; font-size:1.35rem; font-weight:800; color:#ffca28;">
+          <div class="cw-timer-metrics">
+            <div id="custom-timer-duration-display" class="cw-timer-duration">
               ${durationStr}
             </div>
-            <div style="font-size:0.75rem; color:var(--text-muted);">
+            <div class="cw-timer-coals">
               🪵 Kohle: <strong style="color:#fff;" id="custom-timer-coals-display">${coalsStr}</strong>
             </div>
           </div>

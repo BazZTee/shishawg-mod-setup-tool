@@ -6793,6 +6793,69 @@ input#qa-yt-search-input:focus {
   min-height: 0;
   overflow: auto;
   padding: 12px;
+  container-type: inline-size;
+}
+
+.cw-timer-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cw-timer-details { min-width: 0; }
+
+.cw-timer-setup-name {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cw-timer-metrics {
+  min-width: max-content;
+  text-align: right;
+}
+
+.cw-timer-duration {
+  color: #ffca28;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(1rem, 7cqi, 1.35rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.cw-timer-coals {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+@container (max-width: 285px) {
+  .cw-timer-summary {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .cw-timer-metrics {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .cw-timer-duration { font-size: 1rem; }
 }
 
 .dashboard-dock-overlay {

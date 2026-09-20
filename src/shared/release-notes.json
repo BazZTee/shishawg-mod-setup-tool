@@ -12,6 +12,11 @@
       "icon": "🔒",
       "title": "Persönliches Dashboard bleibt stabil",
       "description": "Beim Wechsel zwischen YouTube-Finder, Chat-Befehlen und den weiteren Quick-Actions bleiben angedockte Tabs, Aufteilungen, Größen und Eingaben in anderen Modulen erhalten. Die Layout-Sperre schützt außerdem vor dem Hinzufügen, Entfernen und Zurücksetzen von Modulen."
+    },
+    {
+      "icon": "⏱️",
+      "title": "Timer passt sich an die Modulbreite an",
+      "description": "Setup-Name, Laufzeit und Kohlezähler bleiben beim Verkleinern oder Verschieben des Timer-Moduls lesbar und überlappen sich nicht mehr."
     }
   ]
 }

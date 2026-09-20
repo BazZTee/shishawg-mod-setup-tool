@@ -100,6 +100,8 @@ function setCustomDashboardLocked(locked) {
 function updateDashboardLockUI() {
   const locked = isCustomDashboardLocked();
   const btnLock = document.getElementById('btn-custom-dashboard-lock');
+  const btnAdd = document.getElementById('btn-custom-dashboard-add-widget');
+  const btnReset = document.getElementById('btn-custom-dashboard-reset-layout');
   const grid = document.getElementById('custom-dashboard-grid');
   const layoutHint = document.getElementById('custom-dashboard-layout-hint');
 
@@ -122,6 +124,12 @@ function updateDashboardLockUI() {
 
   if (layoutHint) layoutHint.classList.toggle('hidden', locked);
 
+  [btnAdd, btnReset].forEach(button => {
+    if (!button) return;
+    button.disabled = locked;
+    button.setAttribute('aria-disabled', String(locked));
+  });
+
   document.querySelectorAll('.custom-widget-card').forEach(card => {
     card.setAttribute('draggable', locked ? 'false' : 'true');
     const handle = card.querySelector('.widget-drag-handle');
@@ -129,6 +137,11 @@ function updateDashboardLockUI() {
   });
   document.querySelectorAll('.dashboard-panel-tab').forEach(tab => {
     tab.setAttribute('draggable', locked ? 'false' : 'true');
+  });
+  document.querySelectorAll('.btn-widget-remove').forEach(button => {
+    button.disabled = locked;
+    button.setAttribute('aria-disabled', String(locked));
+    button.title = locked ? 'Layout entsperren, um das Modul zu entfernen' : 'Modul entfernen';
   });
 }
 
@@ -485,6 +498,10 @@ function renderCustomDashboard() {
       if (targetView) showView(targetView);
     });
     actions.querySelector('.btn-widget-remove').addEventListener('click', () => {
+      if (isCustomDashboardLocked()) {
+        showToast('🔒 Layout entsperren, um ein Modul zu entfernen.', 'info');
+        return;
+      }
       layout.root = removeDashboardWidget(layout.root, active.id);
       saveCustomDashboardLayout(layout);
       renderCustomDashboard();
@@ -750,10 +767,13 @@ function updateDashboardGiveawayWidget() {
 function refreshDashboardWidgets(widgetIds) {
   if (currentActiveView !== 'view-custom-dashboard') return;
   const requested = new Set(Array.isArray(widgetIds) ? widgetIds : [widgetIds]);
+  const configuredWidgets = new Map(
+    flattenDashboardWidgets(getCustomDashboardLayout().root).map(widget => [widget.id, widget])
+  );
   document.querySelectorAll('.custom-widget-body[data-widget-id]').forEach(container => {
     const widgetId = container.dataset.widgetId;
     if (!requested.has(widgetId) || container.classList.contains('hidden')) return;
-    renderWidgetContent(widgetId, container);
+    renderWidgetContent(configuredWidgets.get(widgetId) || widgetId, container);
   });
 }
 
@@ -1332,8 +1352,9 @@ function renderWidgetContent(widgetObj, container) {
         tabBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           const targetTool = tabBtn.getAttribute('data-tool');
-          updateCustomDashboardWidget('widget-quickactions', { subTool: targetTool });
-          renderCustomDashboard();
+          if (!updateCustomDashboardWidget('widget-quickactions', { subTool: targetTool })) return;
+          wConfig.subTool = targetTool;
+          renderWidgetContent(wConfig, container);
         });
       });
 
@@ -1423,11 +1444,6 @@ function renderWidgetContent(widgetObj, container) {
             }, 200);
           });
 
-          document.addEventListener('click', (e) => {
-            if (!e.target.closest('.cw-yt-search-wrapper')) {
-              ytSuggestions.classList.add('hidden');
-            }
-          });
         }
       } else if (activeTool === 'commands') {
         const dashboardCommands = Array.isArray(quickCommands) && quickCommands.length
@@ -1770,6 +1786,10 @@ function renderWidgetContent(widgetObj, container) {
 }
 
 function openAddWidgetModal() {
+  if (isCustomDashboardLocked()) {
+    showToast('🔒 Layout entsperren, um ein Modul hinzuzufügen.', 'info');
+    return;
+  }
   const modal = document.getElementById('modal-add-dashboard-widget');
   const list = document.getElementById('add-widget-catalog-list');
   if (!modal || !list) return;
@@ -1800,6 +1820,11 @@ function openAddWidgetModal() {
 
     const btn = item.querySelector('button');
     btn.addEventListener('click', () => {
+      if (isCustomDashboardLocked()) {
+        modal.classList.add('hidden');
+        showToast('🔒 Layout entsperren, um ein Modul hinzuzufügen.', 'info');
+        return;
+      }
       if (isAdded) {
         showToast(`„${cat.title}“ ist bereits auf deinem Dashboard aktiv.`, 'info');
         return;
@@ -1839,8 +1864,14 @@ function setupCustomDashboardListeners() {
   }
 
   if (btnAdd) btnAdd.addEventListener('click', openAddWidgetModal);
+  document.addEventListener('click', (event) => {
+    const suggestions = document.getElementById('cw-yt-suggestions');
+    if (suggestions && !event.target.closest('.cw-yt-search-wrapper')) {
+      suggestions.classList.add('hidden');
+    }
+  });
   window.addEventListener('swg:quick-commands-changed', () => {
-    if (currentActiveView === 'view-custom-dashboard') renderCustomDashboard();
+    refreshDashboardWidgets('widget-quickactions');
   });
   if (btnCloseModal && modalAdd) {
     btnCloseModal.addEventListener('click', () => modalAdd.classList.add('hidden'));
@@ -1851,6 +1882,10 @@ function setupCustomDashboardListeners() {
 
   if (btnReset) {
     btnReset.addEventListener('click', () => {
+      if (isCustomDashboardLocked()) {
+        showToast('🔒 Layout entsperren, um es zurückzusetzen.', 'info');
+        return;
+      }
       saveCustomDashboardLayout(createDefaultDashboardLayout());
       renderCustomDashboard();
       showToast('📐 Layout auf das Standard-Cockpit zurückgesetzt!', 'info');

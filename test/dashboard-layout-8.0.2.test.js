@@ -66,5 +66,43 @@ test('changing a Quick-Actions subtool preserves the complete dock layout', () =
 test('Quick-Actions tabs never use the legacy flat config save path', () => {
   const quickActionsCase = dashboardCode.match(/case 'widget-quickactions': \{[\s\S]*?case 'widget-/)?.[0] || '';
   assert.match(quickActionsCase, /updateCustomDashboardWidget\('widget-quickactions', \{ subTool: targetTool \}\)/);
+  assert.match(quickActionsCase, /renderWidgetContent\(wConfig, container\)/);
   assert.doesNotMatch(quickActionsCase, /saveCustomDashboardConfig\(/);
+  assert.doesNotMatch(quickActionsCase, /renderCustomDashboard\(\)/);
+});
+
+test('locked dashboards block structural actions but keep collapse available', () => {
+  const lockUi = extractFunction('updateDashboardLockUI');
+  const addModal = extractFunction('openAddWidgetModal');
+  const listeners = extractFunction('setupCustomDashboardListeners');
+
+  assert.match(lockUi, /\[btnAdd, btnReset\][\s\S]*?button\.disabled = locked/);
+  assert.match(lockUi, /querySelectorAll\('\.btn-widget-remove'\)[\s\S]*?button\.disabled = locked/);
+  assert.match(addModal, /if \(isCustomDashboardLocked\(\)\)/);
+  assert.match(listeners, /Layout entsperren, um es zurückzusetzen/);
+
+  const removeHandler = dashboardCode.match(/actions\.querySelector\('\.btn-widget-remove'\)\.addEventListener\('click',[\s\S]*?^    \}\);/m)?.[0] || '';
+  const collapseHandler = dashboardCode.match(/actions\.querySelector\('\.btn-widget-collapse'\)\.addEventListener\('click',[\s\S]*?^    \}\);/m)?.[0] || '';
+  assert.match(removeHandler, /isCustomDashboardLocked\(\)/);
+  assert.doesNotMatch(collapseHandler, /isCustomDashboardLocked\(\)/);
+});
+
+test('YouTube outside-click handling is registered once outside widget rendering', () => {
+  const quickActionsCase = dashboardCode.match(/case 'widget-quickactions': \{[\s\S]*?case 'widget-/)?.[0] || '';
+  const listeners = extractFunction('setupCustomDashboardListeners');
+
+  assert.doesNotMatch(quickActionsCase, /document\.addEventListener\('click'/);
+  assert.match(listeners, /document\.addEventListener\('click'/);
+  assert.match(listeners, /document\.getElementById\('cw-yt-suggestions'\)/);
+});
+
+test('saved command changes refresh only Quick-Actions and keep its selected subtool', () => {
+  const refresh = extractFunction('refreshDashboardWidgets');
+  const listeners = extractFunction('setupCustomDashboardListeners');
+  const commandChangeHandler = listeners.match(/window\.addEventListener\('swg:quick-commands-changed',[\s\S]*?^  \}\);/m)?.[0] || '';
+
+  assert.match(refresh, /flattenDashboardWidgets\(getCustomDashboardLayout\(\)\.root\)/);
+  assert.match(refresh, /renderWidgetContent\(configuredWidgets\.get\(widgetId\) \|\| widgetId, container\)/);
+  assert.match(commandChangeHandler, /refreshDashboardWidgets\('widget-quickactions'\)/);
+  assert.doesNotMatch(commandChangeHandler, /renderCustomDashboard\(\)/);
 });

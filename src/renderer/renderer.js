@@ -116,10 +116,10 @@ function setupReleaseNotes() {
   });
 }
 
-async function showReleaseNotesOnce() {
+async function showReleaseNotes(forceShow = false) {
   if (!releaseNotesModal || !releaseNotesList) return;
   try {
-    const result = await ipcRenderer.invoke('app:get-release-notes');
+    const result = await ipcRenderer.invoke('app:get-release-notes', forceShow === true);
     if (!result?.success || !result.shouldShow || !result.release) return;
     const release = result.release;
     pendingReleaseNotesVersion = release.version;
@@ -142,6 +142,10 @@ async function showReleaseNotesOnce() {
   } catch (error) {
     console.error('Error loading release notes:', error);
   }
+}
+
+async function showReleaseNotesOnce() {
+  await showReleaseNotes(false);
 }
 
 // Live Stream Status & Hub Nav Elements
@@ -3370,11 +3374,7 @@ function setupEventListeners() {
 function setupUpdaterEvents() {
   if (btnCheckUpdates) {
     btnCheckUpdates.addEventListener('click', async () => {
-      showToast('Prüfe auf Updates von GitHub...', 'info');
-      const res = await ipcRenderer.invoke('updater:check');
-      if (!res.success) {
-        showToast(`Keine Verbindung zum GitHub-Update-Server (${res.error})`, 'info');
-      }
+      await showReleaseNotes(true);
     });
   }
 

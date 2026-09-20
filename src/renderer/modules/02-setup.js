@@ -2460,11 +2460,7 @@ function setupEventListeners() {
 function setupUpdaterEvents() {
   if (btnCheckUpdates) {
     btnCheckUpdates.addEventListener('click', async () => {
-      showToast('Prüfe auf Updates von GitHub...', 'info');
-      const res = await ipcRenderer.invoke('updater:check');
-      if (!res.success) {
-        showToast(`Keine Verbindung zum GitHub-Update-Server (${res.error})`, 'info');
-      }
+      await showReleaseNotes(true);
     });
   }
 

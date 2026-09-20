@@ -1512,10 +1512,14 @@ ipcMain.handle('app:get-version', () => {
   return app.getVersion();
 });
 
-ipcMain.handle('app:get-release-notes', () => {
+ipcMain.handle('app:get-release-notes', (event, forceShow = false) => {
   const version = app.getVersion();
   const lastSeenVersion = store ? store.get('last_seen_release_notes_version', '') : '';
-  return resolveReleaseNotes(version, releaseNotes, lastSeenVersion);
+  const result = resolveReleaseNotes(version, releaseNotes, lastSeenVersion);
+  if (forceShow === true && result.release) {
+    return { ...result, shouldShow: true };
+  }
+  return result;
 });
 
 ipcMain.handle('app:mark-release-notes-seen', (event, version) => {

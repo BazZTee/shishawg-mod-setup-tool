@@ -28,9 +28,17 @@ test('release notes popup is closed only with its top-right X and persists the s
   const modal = indexHtml.match(/<div id="release-notes-modal"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/)?.[0] || '';
   assert.match(modal, /id="btn-close-release-notes"/);
   assert.doesNotMatch(modal, /modal-footer|Bestätigen|Weiter/);
-  assert.match(renderer, /ipcRenderer\.invoke\('app:get-release-notes'\)/);
+  assert.match(renderer, /ipcRenderer\.invoke\('app:get-release-notes', forceShow === true\)/);
   assert.match(renderer, /ipcRenderer\.invoke\('app:mark-release-notes-seen', pendingReleaseNotesVersion\)/);
   assert.match(main, /last_seen_release_notes_version/);
   assert.ok(contract.invoke.includes('app:get-release-notes'));
   assert.ok(contract.invoke.includes('app:mark-release-notes-seen'));
+});
+
+test('clicking the version reopens release notes while startup keeps checking for updates', () => {
+  assert.match(indexHtml, /id="btn-check-updates"[^>]*title="Neuigkeiten dieser Version anzeigen"/);
+  assert.match(renderer, /btnCheckUpdates\.addEventListener\('click',[\s\S]*?showReleaseNotes\(true\)/);
+  assert.match(renderer, /ipcRenderer\.invoke\('app:get-release-notes', forceShow === true\)/);
+  assert.match(main, /forceShow === true && result\.release[\s\S]*?shouldShow: true/);
+  assert.match(renderer, /setTimeout\(\(\) => \{\s*ipcRenderer\.invoke\('updater:check'\)/);
 });

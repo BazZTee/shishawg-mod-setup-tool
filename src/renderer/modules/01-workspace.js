@@ -115,10 +115,10 @@ function setupReleaseNotes() {
   });
 }
 
-async function showReleaseNotesOnce() {
+async function showReleaseNotes(forceShow = false) {
   if (!releaseNotesModal || !releaseNotesList) return;
   try {
-    const result = await ipcRenderer.invoke('app:get-release-notes');
+    const result = await ipcRenderer.invoke('app:get-release-notes', forceShow === true);
     if (!result?.success || !result.shouldShow || !result.release) return;
     const release = result.release;
     pendingReleaseNotesVersion = release.version;
@@ -141,6 +141,10 @@ async function showReleaseNotesOnce() {
   } catch (error) {
     console.error('Error loading release notes:', error);
   }
+}
+
+async function showReleaseNotesOnce() {
+  await showReleaseNotes(false);
 }
 
 // Live Stream Status & Hub Nav Elements

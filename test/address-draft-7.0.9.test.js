@@ -19,12 +19,12 @@ test('address edits are protected from live refreshes until saved or discarded',
   assert.match(index, /id="btn-discard-winner-address"[^>]*disabled/);
 });
 
-test('release version is 8.0.1', () => {
+test('release version is 8.0.2', () => {
   const pkg = JSON.parse(read('package.json'));
   const lock = JSON.parse(read('package-lock.json'));
-  assert.equal(pkg.version, '8.0.1');
-  assert.equal(lock.version, '8.0.1');
-  assert.equal(lock.packages[''].version, '8.0.1');
+  assert.equal(pkg.version, '8.0.2');
+  assert.equal(lock.version, '8.0.2');
+  assert.equal(lock.packages[''].version, '8.0.2');
 });
 
 test('repeat Telegram delivery is clearly marked as an address update', () => {

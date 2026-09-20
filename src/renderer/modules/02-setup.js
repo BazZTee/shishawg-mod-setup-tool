@@ -1486,6 +1486,7 @@ function matchNotesToForm(text) {
         const tok = tokens[i];
         if (tok.length < 2) continue;
         if (tok === 'dark' || tok === 'darkside') continue;
+        if (isGenericGearToken(tok)) continue;
 
         const syn = SHISHA_SYNONYMS[tok];
         if (syn) {

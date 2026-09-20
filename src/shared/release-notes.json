@@ -1,47 +1,12 @@
 {
-  "version": "8.0.1",
-  "title": "Neu in Version 8.0.1",
-  "intro": "Dieses Sicherheitsupdate trennt alle Arbeitsbereiche zuverlässig nach Twitch-Kanal und entfernt beim Profilwechsel sofort alle zuvor angezeigten Adressdaten.",
+  "version": "8.0.2",
+  "title": "Neu in Version 8.0.2",
+  "intro": "Dieses Update verbessert die Zuverlässigkeit des Setup-Managers und seiner Katalogerkennung.",
   "items": [
     {
-      "icon": "🧭",
-      "title": "Sichere Kanaltrennung",
-      "description": "Adressdaten, Mod-Chat, Watchlist, Q&A, Statistiken und weitere Cloud-Daten bleiben strikt beim jeweils berechtigten Twitch-Kanal. Auch die geöffnete Adress-Detailansicht wird beim Kanalwechsel vollständig geleert."
-    },
-    {
-      "icon": "🧩",
-      "title": "Geschützte Cloud-Zugriffe",
-      "description": "Interne Lese- und Schreibvorgänge laufen über eine serverseitige Twitch- und Moderatorprüfung statt über offene Datenbankrechte."
-    },
-    {
-      "icon": "💨",
-      "title": "Adressannahme abgesichert",
-      "description": "Gewinner müssen zum Gewinn passen; neue Adressen werden bereits vor der Speicherung in Supabase serverseitig verschlüsselt."
-    },
-    {
-      "icon": "💬",
-      "title": "Moderator-Erkennung verbessert",
-      "description": "Offizielle Twitch-Prüfung, kanalgebundene Chat-Erkennung und sichere Behandlung von Profilwechseln verhindern falsche Freischaltungen."
-    },
-    {
-      "icon": "🎁",
-      "title": "Polls und Vorhersagen bleiben erhalten",
-      "description": "Der notwendige Broadcaster-Token bleibt geschützt verfügbar und wird weiterhin für Twitch-Umfragen und Vorhersagen verwendet."
-    },
-    {
-      "icon": "📣",
-      "title": "Webseiten ebenfalls geschützt",
-      "description": "Claim-Portal und Q&A-Steuerung schreiben nicht mehr direkt in interne Tabellen, während öffentliche OBS-Anzeigen weiter funktionieren."
-    },
-    {
-      "icon": "👥",
-      "title": "Bestehende Daten übernommen",
-      "description": "Vorhandene Datensätze bleiben dem ursprünglichen Marved-Arbeitsbereich zugeordnet und lokale Ersatzdaten werden ebenfalls getrennt."
-    },
-    {
-      "icon": "🛡️",
-      "title": "Fehlerpfade abgesichert",
-      "description": "Auch bei Cloud-Ausfällen oder fehlender Berechtigung werden keine fremden lokalen Adress- oder Kanaldaten mehr ausgeliefert."
+      "icon": "📝",
+      "title": "Schnellnotizen erkennen aktualisierte Katalogdaten",
+      "description": "Geänderte Produktnamen wie ONMO Alu HMD werden korrekt aus dem aktuellen Katalog übernommen. Allgemeine Begriffe wie HMD wählen nicht mehr versehentlich ein anderes E-Gerät aus."
     }
   ]
 }

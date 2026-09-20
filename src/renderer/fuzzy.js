@@ -71,6 +71,18 @@ function getItemName(item) {
   return (item.name || '').trim();
 }
 
+// Category labels and material descriptions are not distinctive product names.
+// Matching them on their own can select an unrelated catalog entry such as an
+// electric device merely because both names contain "HMD".
+const GENERIC_GEAR_TOKENS = new Set([
+  'hmd', 'bowl', 'kopf', 'head', 'pipe', 'pfeife', 'shisha', 'hookah',
+  'alu', 'aluminium', 'edelstahl', 'stahl', 'glas', 'glass'
+]);
+
+function isGenericGearToken(token) {
+  return GENERIC_GEAR_TOKENS.has(String(token || '').toLowerCase().trim());
+}
+
 /**
  * Find the best matching item in a catalog array against a query string.
  * Uses full-string similarity + token matching.
@@ -272,9 +284,9 @@ const SHISHA_SYNONYMS = {
   'mumia': 'Voskurimsya Mumiya Bowl',
   'litbowl': 'Hookain LitBowl',
   'lit bowl': 'Hookain LitBowl',
-  'onmo': 'ONMO Edelstahl HMD',
-  'onmoi': 'ONMO Edelstahl HMD',
-  'onmoe': 'ONMO Edelstahl HMD',
+  'onmo': 'ONMO Alu HMD',
+  'onmoi': 'ONMO Alu HMD',
+  'onmoe': 'ONMO Alu HMD',
   'nagrani': 'Na Grani',
   'na grani': 'Na Grani',
   'kaloud': 'Kaloud Lotus I+ 2.0',
@@ -302,6 +314,7 @@ if (typeof module !== 'undefined' && module.exports) {
     fuzzyFilterList,
     checkDuplicateFuzzy,
     getItemName,
+    isGenericGearToken,
     SHISHA_SYNONYMS
   };
 }

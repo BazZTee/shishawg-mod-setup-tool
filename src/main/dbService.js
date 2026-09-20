@@ -228,8 +228,7 @@ class DatabaseService {
         'Crystal Drop Vase'
       ],
       hmds: [
-        'ONMO Edelstahl HMD',
-        'ONMO HMD',
+        'ONMO Alu HMD',
         'Na Grani',
         'Kaloud Lotus I+ 2.0',
         'AO HMD',

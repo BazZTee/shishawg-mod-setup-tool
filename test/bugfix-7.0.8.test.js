@@ -173,10 +173,10 @@ test('explicit reward type is persisted schema-compatibly for pending winners', 
   service.secureRequest = originalSecureRequest;
 });
 
-test('release metadata is bumped to 8.0.1', () => {
+test('release metadata is bumped to 8.0.2', () => {
   const pkg = JSON.parse(read('package.json'));
   const index = read('src/renderer/index.html');
 
-  assert.equal(pkg.version, '8.0.1');
-  assert.match(index, /id="app-version-tag">v8\.0\.1</);
+  assert.equal(pkg.version, '8.0.2');
+  assert.match(index, /id="app-version-tag">v8\.0\.2</);
 });

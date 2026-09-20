@@ -11017,6 +11017,15 @@ function flattenDashboardWidgets(node, result = []) {
   return result;
 }
 
+function updateCustomDashboardWidget(widgetId, updates) {
+  const layout = getCustomDashboardLayout();
+  const widget = flattenDashboardWidgets(layout.root).find(item => item.id === widgetId);
+  if (!widget) return false;
+  Object.assign(widget, updates);
+  saveCustomDashboardLayout(layout);
+  return true;
+}
+
 function saveCustomDashboardLayout(layout) {
   try {
     localStorage.setItem(CUSTOM_DASHBOARD_STORAGE_KEY, JSON.stringify(layout));
@@ -12063,16 +12072,13 @@ function renderWidgetContent(widgetObj, container) {
         <div id="cw-qa-tool-content" style="flex:1;"></div>
       `;
 
-      // Wire Tab Clicks
-      const allWidgets = getCustomDashboardConfig();
-      const currentObj = allWidgets.find(item => item.id === 'widget-quickactions') || wConfig;
-
+      // Persist only the selected subtool inside the existing dock layout.
+      // Saving a flattened widget list here would discard tab groups and splits.
       container.querySelectorAll('.cw-qa-tab').forEach(tabBtn => {
         tabBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           const targetTool = tabBtn.getAttribute('data-tool');
-          currentObj.subTool = targetTool;
-          saveCustomDashboardConfig(allWidgets);
+          updateCustomDashboardWidget('widget-quickactions', { subTool: targetTool });
           renderCustomDashboard();
         });
       });

@@ -1,12 +1,17 @@
 {
   "version": "8.0.2",
   "title": "Neu in Version 8.0.2",
-  "intro": "Dieses Update verbessert die Zuverlässigkeit des Setup-Managers und seiner Katalogerkennung.",
+  "intro": "Dieses Update verbessert die Zuverlässigkeit des Setup-Managers und des persönlichen Dashboards.",
   "items": [
     {
       "icon": "📝",
       "title": "Schnellnotizen erkennen aktualisierte Katalogdaten",
       "description": "Geänderte Produktnamen wie ONMO Alu HMD werden korrekt aus dem aktuellen Katalog übernommen. Allgemeine Begriffe wie HMD wählen nicht mehr versehentlich ein anderes E-Gerät aus."
+    },
+    {
+      "icon": "🔒",
+      "title": "Persönliches Dashboard bleibt stabil",
+      "description": "Beim Wechsel zwischen YouTube-Finder, Chat-Befehlen und den weiteren Quick-Actions bleiben angedockte Tabs, Aufteilungen und Größen erhalten – auch bei gesperrtem Layout."
     }
   ]
 }

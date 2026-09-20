@@ -1970,17 +1970,17 @@
       </div>
 
       <!-- Modal: Modul zum Dashboard hinzufügen (Spec #3) -->
-      <div id="modal-add-dashboard-widget" class="modal-overlay hidden">
-        <div class="modal-card" style="max-width: 580px;">
+      <div id="modal-add-dashboard-widget" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="add-dashboard-widget-title">
+        <div class="modal-card dashboard-widget-picker-modal">
           <div class="modal-header">
-            <h3>➕ Modul zum Dashboard hinzufügen</h3>
-            <button id="btn-close-add-widget-modal" class="btn-icon">✕</button>
+            <h3 id="add-dashboard-widget-title">➕ Modul zum Dashboard hinzufügen</h3>
+            <button id="btn-close-add-widget-modal" class="btn-icon" aria-label="Dialog schließen">✕</button>
           </div>
-          <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; padding:20px;">
-            <p style="font-size:0.85rem; color:var(--text-secondary); margin:0;">
+          <div class="modal-body dashboard-widget-picker-body">
+            <p class="dashboard-widget-picker-intro">
               Klappe ein Modul auf und wähle, ob du alle oder nur einzelne Funktionen auf deinem Dashboard sehen möchtest. Aktive Module kannst du hier später erneut anpassen.
             </p>
-            <div id="add-widget-catalog-list" style="display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:4px;">
+            <div id="add-widget-catalog-list" class="dashboard-widget-picker-list">
               <!-- Dynamically populated list of available modules -->
             </div>
           </div>

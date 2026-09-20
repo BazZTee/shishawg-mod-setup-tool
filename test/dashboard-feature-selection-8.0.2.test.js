@@ -37,3 +37,14 @@ test('a reduced Quick-Actions module opens an enabled tool and shows only select
   assert.match(dashboard, /data-dashboard-feature="commands"/);
   assert.match(dashboard, /newWidget\.subTool = newWidget\.features\[0\]/);
 });
+
+test('widget picker uses the available window and scrolls without shrinking open cards', () => {
+  const html = read('src/renderer/index.html');
+  const styles = read('src/renderer/styles.css');
+  assert.match(html, /dashboard-widget-picker-modal/);
+  assert.match(html, /dashboard-widget-picker-list/);
+  assert.match(styles, /\.dashboard-widget-picker-modal[\s\S]*?100dvh - 48px/);
+  assert.match(styles, /\.dashboard-widget-picker-list[\s\S]*?overflow-y: auto/);
+  assert.match(styles, /\.catalog-widget-item[\s\S]*?flex: 0 0 auto/);
+  assert.match(dashboard, /otherItem\.open = false/);
+});

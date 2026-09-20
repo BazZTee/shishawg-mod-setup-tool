@@ -1903,6 +1903,14 @@ function openAddWidgetModal() {
       </div>
     `;
 
+    item.addEventListener('toggle', () => {
+      if (!item.open) return;
+      list.querySelectorAll('details.catalog-widget-item[open]').forEach(otherItem => {
+        if (otherItem !== item) otherItem.open = false;
+      });
+      requestAnimationFrame(() => item.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    });
+
     const modeInputs = [...item.querySelectorAll(`input[name="dashboard-mode-${cat.id}"]`)];
     const featureInputs = [...item.querySelectorAll('.catalog-widget-features input[type="checkbox"]')];
     const syncFeatureInputs = () => {

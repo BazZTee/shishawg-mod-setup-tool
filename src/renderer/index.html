@@ -639,12 +639,28 @@
                 </div>
               </div>
               <div class="chat-header-actions">
+                <button id="btn-toggle-mod-presence" class="btn btn-secondary btn-sm mod-presence-toggle" type="button" aria-expanded="false" aria-controls="mod-presence-popover" title="Angemeldete Mods anzeigen">
+                  👥 Mods <span id="mod-presence-online-count" class="mod-presence-count">0</span>
+                </button>
                 <button id="btn-clear-mod-chat" class="btn btn-secondary btn-sm" title="Chat-Verlauf für alle leeren">🗑️ Leeren</button>
                 <div class="chat-user-indicator" id="chat-current-user-info" title="Dein Mod-Profil (Avatar, Name &amp; Chatfarbe)">
                   <img id="chat-logged-avatar" src="" alt="Avatar" class="chat-user-badge-avatar hidden">
                   <span class="chat-logged-as"><strong id="chat-logged-name">Mod</strong></span>
                   <button id="btn-edit-mod-name" class="btn-icon-xs" title="Namen/Farbe anpassen">✏️</button>
                 </div>
+              </div>
+            </div>
+
+            <div id="mod-presence-popover" class="mod-presence-popover hidden" role="dialog" aria-label="Angemeldete Mods">
+              <div class="mod-presence-heading">
+                <div>
+                  <strong>Angemeldete Mods</strong>
+                  <span>Online zuerst · nur für diesen Kanal</span>
+                </div>
+                <button id="btn-close-mod-presence" class="btn-icon-xs" type="button" title="Schließen" aria-label="Anwesenheitsliste schließen">✕</button>
+              </div>
+              <div id="mod-presence-list" class="mod-presence-list" aria-live="polite">
+                <div class="mod-presence-empty">Anwesenheit wird geladen …</div>
               </div>
             </div>
 

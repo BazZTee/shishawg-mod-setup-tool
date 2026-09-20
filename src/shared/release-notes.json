@@ -22,6 +22,11 @@
       "icon": "📷",
       "title": "Screenshots in Feedback und Fehlerberichten",
       "description": "Beim Erstellen einer Trello-Karte können jetzt bis zu vier Screenshots ausgewählt, vor dem Absenden geprüft und direkt als Anhänge hochgeladen werden."
+    },
+    {
+      "icon": "👥",
+      "title": "Mod-Anwesenheit im Team-Chat",
+      "description": "Der Mod-Chat zeigt pro Streamer-Kanal alle bisher angemeldeten Mods. Aktive Nutzer stehen alphabetisch oben mit grünem Statuspunkt, derzeit abwesende Nutzer werden rot markiert."
     }
   ]
 }

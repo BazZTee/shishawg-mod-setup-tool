@@ -535,6 +535,21 @@ class SupabaseService {
     }
   }
 
+  async heartbeatModPresence(user, channel = 'marved') {
+    const cleanChan = this.normalizeChannel(channel);
+    return this.secureRequest('presence.heartbeat', {
+      channel: cleanChan,
+      displayName: String(user?.display_name || user?.login || '').trim(),
+      avatarUrl: String(user?.profile_image_url || '').trim()
+    });
+  }
+
+  async getModPresence(channel = 'marved') {
+    const cleanChan = this.normalizeChannel(channel);
+    const data = await this.secureRequest('presence.list', { channel: cleanChan });
+    return Array.isArray(data) ? data : [];
+  }
+
   // --- Giveaway Winners CRUD ---
   async getGiveaways(channel = 'marved') {
     try {

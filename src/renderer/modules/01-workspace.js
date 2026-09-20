@@ -627,6 +627,7 @@ async function initApp() {
 
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
+  startModPresenceTracking();
 
   // Auto-start Channel Points (Kohle Stücke) listener
   ipcRenderer.invoke('channelpoints:start-listener', { channel: state.targetChannel }).catch(() => {});

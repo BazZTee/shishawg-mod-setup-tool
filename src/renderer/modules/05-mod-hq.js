@@ -18,6 +18,129 @@ const modChatQuickReplySender = document.getElementById('mod-chat-quick-reply-se
 const modChatQuickReplyOriginalText = document.getElementById('mod-chat-quick-reply-original-text');
 let pendingModChatQuickReplyMessage = null;
 
+// Channel-scoped moderator presence
+const btnToggleModPresence = document.getElementById('btn-toggle-mod-presence');
+const btnCloseModPresence = document.getElementById('btn-close-mod-presence');
+const modPresencePopover = document.getElementById('mod-presence-popover');
+const modPresenceList = document.getElementById('mod-presence-list');
+const modPresenceOnlineCount = document.getElementById('mod-presence-online-count');
+const MOD_PRESENCE_ONLINE_MS = 90 * 1000;
+let modPresenceHeartbeatInterval = null;
+let modPresenceRefreshInterval = null;
+
+function isModPresenceOnline(user, now = Date.now()) {
+  const lastSeen = new Date(user?.last_seen_at || 0).getTime();
+  return Number.isFinite(lastSeen) && now - lastSeen <= MOD_PRESENCE_ONLINE_MS;
+}
+
+function formatModPresenceLastSeen(value) {
+  const timestamp = new Date(value || 0).getTime();
+  if (!Number.isFinite(timestamp)) return 'Zuletzt gesehen: unbekannt';
+  const elapsedMinutes = Math.max(1, Math.round((Date.now() - timestamp) / 60000));
+  if (elapsedMinutes < 60) return `Zuletzt gesehen vor ${elapsedMinutes} Min.`;
+  return `Zuletzt gesehen ${new Date(timestamp).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}`;
+}
+
+function renderModPresence(users) {
+  if (!modPresenceList) return;
+  const now = Date.now();
+  const collator = new Intl.Collator('de', { sensitivity: 'base' });
+  const sorted = [...(Array.isArray(users) ? users : [])].sort((a, b) => {
+    const onlineDifference = Number(isModPresenceOnline(b, now)) - Number(isModPresenceOnline(a, now));
+    if (onlineDifference) return onlineDifference;
+    return collator.compare(a.display_name || a.login || '', b.display_name || b.login || '');
+  });
+  const onlineCount = sorted.filter(user => isModPresenceOnline(user, now)).length;
+  if (modPresenceOnlineCount) modPresenceOnlineCount.textContent = String(onlineCount);
+
+  if (sorted.length === 0) {
+    modPresenceList.innerHTML = '<div class="mod-presence-empty">Noch keine Mods für diesen Kanal erfasst.</div>';
+    return;
+  }
+
+  modPresenceList.innerHTML = sorted.map(user => {
+    const online = isModPresenceOnline(user, now);
+    const name = user.display_name || user.login || 'Unbekannt';
+    const login = user.login || '';
+    const fallback = getInitialsAvatarSvg(name, online ? '#22c55e' : '#64748b');
+    const avatar = user.avatar_url || fallback;
+    return `
+      <div class="mod-presence-user ${online ? 'is-online' : 'is-offline'}">
+        <img src="${escapeHtml(avatar)}" alt="" class="mod-presence-avatar" data-fallback="${escapeHtml(fallback)}">
+        <span class="mod-presence-status-dot" aria-label="${online ? 'Online' : 'Offline'}"></span>
+        <span class="mod-presence-user-text">
+          <strong>${escapeHtml(name)}</strong>
+          <small>${login ? `@${escapeHtml(login)} · ` : ''}${online ? 'Online' : escapeHtml(formatModPresenceLastSeen(user.last_seen_at))}</small>
+        </span>
+      </div>`;
+  }).join('');
+
+  modPresenceList.querySelectorAll('.mod-presence-avatar').forEach(image => {
+    image.addEventListener('error', () => {
+      image.src = image.dataset.fallback || '';
+      image.removeAttribute('data-fallback');
+    }, { once: true });
+  });
+}
+
+async function refreshModPresence() {
+  if (!state.twitchUser || !isCurrentUserModerator()) {
+    renderModPresence([]);
+    return;
+  }
+  try {
+    const result = await ipcRenderer.invoke('modchat:get-presence');
+    if (result?.success) renderModPresence(result.users);
+    else if (modPresenceList && !modPresencePopover?.classList.contains('hidden')) {
+      modPresenceList.innerHTML = '<div class="mod-presence-empty">Anwesenheit ist momentan nicht erreichbar.</div>';
+    }
+  } catch (_) {}
+}
+
+async function sendModPresenceHeartbeat() {
+  if (!state.twitchUser || !isCurrentUserModerator()) return;
+  try {
+    const result = await ipcRenderer.invoke('modchat:presence-heartbeat');
+    if (result?.success) await refreshModPresence();
+  } catch (_) {}
+}
+
+function closeModPresence() {
+  if (!modPresencePopover || !btnToggleModPresence) return;
+  modPresencePopover.classList.add('hidden');
+  btnToggleModPresence.setAttribute('aria-expanded', 'false');
+}
+
+function startModPresenceTracking() {
+  if (modPresenceHeartbeatInterval) clearInterval(modPresenceHeartbeatInterval);
+  if (modPresenceRefreshInterval) clearInterval(modPresenceRefreshInterval);
+  sendModPresenceHeartbeat();
+  modPresenceHeartbeatInterval = setInterval(sendModPresenceHeartbeat, 30000);
+  modPresenceRefreshInterval = setInterval(refreshModPresence, 15000);
+}
+
+btnToggleModPresence?.addEventListener('click', event => {
+  event.stopPropagation();
+  const opens = modPresencePopover?.classList.contains('hidden');
+  if (opens) {
+    modPresencePopover.classList.remove('hidden');
+    btnToggleModPresence.setAttribute('aria-expanded', 'true');
+    refreshModPresence();
+  } else {
+    closeModPresence();
+  }
+});
+btnCloseModPresence?.addEventListener('click', closeModPresence);
+document.addEventListener('click', event => {
+  if (!modPresencePopover?.classList.contains('hidden') && !modPresencePopover.contains(event.target) && !btnToggleModPresence?.contains(event.target)) {
+    closeModPresence();
+  }
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeModPresence();
+});
+window.addEventListener('swg:auth-changed', () => startModPresenceTracking());
+
 // 7TV Emote State & Elements
 const btnToggle7tvPicker = document.getElementById('btn-toggle-7tv-picker');
 const modChat7tvPopover = document.getElementById('mod-chat-7tv-popover');
@@ -207,6 +330,7 @@ async function submitModChatQuickReply() {
 
 function startModHQSync() {
   updateModHQUserInfo();
+  refreshModPresence();
   loadModChatMessages();
   loadStreamMarkers();
   loadWatchlist();

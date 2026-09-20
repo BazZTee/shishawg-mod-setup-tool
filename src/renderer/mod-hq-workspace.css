@@ -14,6 +14,10 @@
   min-height: 560px;
 }
 
+#view-modchat .modhq-chat-panel:first-child {
+  position: relative;
+}
+
 /* Surface containers with soft glass background */
 #view-modchat .hq-public,
 #view-modchat .hq-agreements,
@@ -38,6 +42,137 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+#view-modchat .mod-presence-toggle {
+  height: 30px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+#view-modchat .mod-presence-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #dcfce7;
+  background: #16a34a44;
+  border: 1px solid #4ade8066;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+#view-modchat .mod-presence-popover {
+  position: absolute;
+  z-index: 30;
+  top: 68px;
+  right: 12px;
+  width: min(360px, calc(100% - 24px));
+  max-height: min(520px, calc(100% - 92px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #8ebdf04a;
+  border-radius: 14px;
+  background: #0d192cfa;
+  box-shadow: 0 18px 45px #020617aa;
+}
+
+#view-modchat .mod-presence-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 15px 12px;
+  border-bottom: 1px solid #9fc5f229;
+}
+
+#view-modchat .mod-presence-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+#view-modchat .mod-presence-heading strong { color: #e8f2ff; font-size: 13px; }
+#view-modchat .mod-presence-heading span { color: #8da4c4; font-size: 11px; }
+
+#view-modchat .mod-presence-list {
+  overflow-y: auto;
+  padding: 8px;
+}
+
+#view-modchat .mod-presence-user {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 9px;
+  border-radius: 10px;
+}
+
+#view-modchat .mod-presence-user + .mod-presence-user { margin-top: 3px; }
+#view-modchat .mod-presence-user:hover { background: #9fc5f212; }
+
+#view-modchat .mod-presence-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1e293b;
+}
+
+#view-modchat .mod-presence-status-dot {
+  position: absolute;
+  left: 35px;
+  bottom: 9px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #0d192c;
+  border-radius: 50%;
+}
+
+#view-modchat .is-online .mod-presence-status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55ecc;
+}
+
+#view-modchat .is-offline .mod-presence-status-dot {
+  background: #ef4444;
+  box-shadow: 0 0 7px #ef444499;
+}
+
+#view-modchat .mod-presence-user-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#view-modchat .mod-presence-user-text strong,
+#view-modchat .mod-presence-user-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-modchat .mod-presence-user-text strong { color: #e6effd; font-size: 12.5px; }
+#view-modchat .mod-presence-user-text small { color: #879bb8; font-size: 10.5px; }
+#view-modchat .is-online .mod-presence-user-text small { color: #86efac; }
+
+#view-modchat .mod-presence-empty {
+  padding: 28px 16px;
+  color: #8da4c4;
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 1120px) {
+  #view-modchat .chat-header-actions { gap: 6px; }
+  #view-modchat .mod-presence-toggle { padding-inline: 8px; }
 }
 
 /* Pinned Team Agreement section */

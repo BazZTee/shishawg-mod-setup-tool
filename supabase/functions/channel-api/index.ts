@@ -179,6 +179,37 @@ async function upsertGiveaway(channel: string, winner: any) {
   return { ...data, address: decryptAddress(data.address) };
 }
 
+async function heartbeatPresence(channel: string, twitchUser: any, body: any) {
+  const twitchUserId = String(twitchUser.user_id || '').trim();
+  const login = cleanChannel(twitchUser.login);
+  if (!twitchUserId || !login) throw new Error('Twitch-Nutzer konnte nicht eindeutig erkannt werden.');
+
+  const now = new Date().toISOString();
+  const displayName = String(body.displayName || login).trim().slice(0, 80) || login;
+  const requestedAvatarUrl = String(body.avatarUrl || '').trim().slice(0, 600);
+  const avatarUrl = /^https:\/\//i.test(requestedAvatarUrl) ? requestedAvatarUrl : '';
+  const { data, error } = await admin.from('mod_presence').upsert({
+    channel,
+    twitch_user_id: twitchUserId,
+    login,
+    display_name: displayName,
+    avatar_url: avatarUrl,
+    last_seen_at: now,
+  }, { onConflict: 'channel,twitch_user_id' }).select('*').single();
+  if (error) throw error;
+  return data;
+}
+
+async function listPresence(channel: string) {
+  const { data, error } = await admin.from('mod_presence')
+    .select('twitch_user_id,login,display_name,avatar_url,first_seen_at,last_seen_at')
+    .eq('channel', channel)
+    .order('last_seen_at', { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return data || [];
+}
+
 async function submitClaim(body: any, twitchToken: string) {
   const user = await validateTwitchToken(twitchToken);
   const channel = cleanChannel(body.channel);
@@ -251,6 +282,8 @@ Deno.serve(async (request) => {
       if (error) throw error;
       return json(200, { data: true });
     }
+    if (body.action === 'presence.heartbeat') return json(200, { data: await heartbeatPresence(channel, twitchUser, body) });
+    if (body.action === 'presence.list') return json(200, { data: await listPresence(channel) });
     if (body.action === 'db') return json(200, { data: await runDatabaseAction(body, channel) });
     return json(400, { error: 'Unbekannte Aktion.' });
   } catch (error) {

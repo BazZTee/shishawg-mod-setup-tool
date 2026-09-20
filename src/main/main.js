@@ -689,6 +689,28 @@ ipcMain.handle('modchat:clear-messages', async () => {
   }
 });
 
+ipcMain.handle('modchat:presence-heartbeat', async () => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    const user = twitchService?.user;
+    if (!user?.id || !user?.login) throw new Error('Twitch-Nutzer ist nicht vollständig angemeldet.');
+    await supabaseService.heartbeatModPresence(user, chan);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:get-presence', async () => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    const users = await supabaseService.getModPresence(chan);
+    return { success: true, users };
+  } catch (e) {
+    return { success: false, users: [], error: e.message };
+  }
+});
+
 // 7TV Emotes Cache & IPC Handler
 let sevenTvCache = {
   timestamp: 0,

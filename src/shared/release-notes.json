@@ -17,6 +17,11 @@
       "icon": "⏱️",
       "title": "Timer passt sich an die Modulbreite an",
       "description": "Setup-Name, Laufzeit und Kohlezähler bleiben beim Verkleinern oder Verschieben des Timer-Moduls lesbar und überlappen sich nicht mehr."
+    },
+    {
+      "icon": "📷",
+      "title": "Screenshots in Feedback und Fehlerberichten",
+      "description": "Beim Erstellen einer Trello-Karte können jetzt bis zu vier Screenshots ausgewählt, vor dem Absenden geprüft und direkt als Anhänge hochgeladen werden."
     }
   ]
 }

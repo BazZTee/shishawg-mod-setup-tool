@@ -6619,6 +6619,86 @@ input#qa-yt-search-input:focus {
   transform: translateY(0) scale(0.96);
 }
 
+.cr-screenshot-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#change-request-modal .modal-card {
+  max-height: calc(100vh - 80px);
+}
+
+.cr-screenshot-field > label {
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.cr-screenshot-field > label span,
+.cr-screenshot-help {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+#cr-screenshots {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed var(--border-color, #3a465b);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+#cr-screenshots::file-selector-button {
+  margin-right: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(161, 199, 255, 0.18);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.cr-screenshot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cr-screenshot-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.cr-screenshot-name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cr-screenshot-size {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.cr-screenshot-remove {
+  width: 24px;
+  height: 24px;
+  color: #fda4af;
+}
+
 /* ============================================================
    Spec #3: Individuelles Mod-Dashboard (Grid, Drag & Resize)
    ============================================================ */

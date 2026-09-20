@@ -1,12 +1,12 @@
 {
   "version": "8.0.1",
   "title": "Neu in Version 8.0.1",
-  "intro": "Dieses Sicherheitsupdate trennt alle Arbeitsbereiche zuverlässig nach Twitch-Kanal und schützt interne Cloud-Daten durch eine serverseitige Berechtigungsprüfung.",
+  "intro": "Dieses Sicherheitsupdate trennt alle Arbeitsbereiche zuverlässig nach Twitch-Kanal und entfernt beim Profilwechsel sofort alle zuvor angezeigten Adressdaten.",
   "items": [
     {
       "icon": "🧭",
       "title": "Sichere Kanaltrennung",
-      "description": "Adressdaten, Mod-Chat, Watchlist, Q&A, Statistiken und weitere Cloud-Daten bleiben strikt beim jeweils berechtigten Twitch-Kanal."
+      "description": "Adressdaten, Mod-Chat, Watchlist, Q&A, Statistiken und weitere Cloud-Daten bleiben strikt beim jeweils berechtigten Twitch-Kanal. Auch die geöffnete Adress-Detailansicht wird beim Kanalwechsel vollständig geleert."
     },
     {
       "icon": "🧩",

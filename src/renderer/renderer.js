@@ -201,6 +201,12 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
   const prof = getActiveStreamerProfile();
   if (!prof) return;
 
+  // Immediately remove channel-scoped giveaway/address data from the UI. This
+  // also blocks in-flight refreshes from the previously active channel.
+  if (typeof beginGiveawayChannelTransition === 'function') {
+    beginGiveawayChannelTransition(prof.targetChannel);
+  }
+
   // 1. Update Target Channel & Bot in UI & state
   if (prof.targetChannel) {
     state.targetChannel = prof.targetChannel;
@@ -235,6 +241,12 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
   // 6. Persist the channel boundary before any channel-scoped data/listener requests.
   if (saveToBackend) {
     await ipcRenderer.invoke('profiles:set-active', activeProfileId);
+  }
+
+  // Only reload giveaway/address data after the main process has switched its
+  // channel boundary. Otherwise a timer could briefly fetch the old channel.
+  if (typeof completeGiveawayChannelTransition === 'function') {
+    await completeGiveawayChannelTransition(prof.targetChannel);
   }
 
   // 7. Re-bind Channel Points Listener
@@ -5856,7 +5868,10 @@ const giveawayState = {
   addressDraftWinnerId: null,
   latestAddressWinner: null,
   addressPrivacyRevealed: false,
-  revealedHistoryAddresses: new Set()
+  revealedHistoryAddresses: new Set(),
+  channelKey: '',
+  channelTransitioning: false,
+  historyRequestId: 0
 };
 
 // UI Elements
@@ -6369,9 +6384,53 @@ function isAddressDraftProtected() {
     giveawayState.addressDraftWinnerId === getWinnerIdentity(giveawayState.currentWinner);
 }
 
+function normalizeGiveawayChannel(channel) {
+  return String(channel || '').trim().replace(/^#/, '').toLowerCase();
+}
+
+function clearGiveawayChannelData() {
+  giveawayState.isActive = false;
+  giveawayState.participants.clear();
+  giveawayState.currentWinner = null;
+  giveawayState.winnersHistory = [];
+  giveawayState.latestAddressWinner = null;
+  giveawayState.addressPrivacyRevealed = false;
+  giveawayState.revealedHistoryAddresses.clear();
+  setAddressDraftDirty(false);
+  renderParticipantsPool();
+  renderWinnerHero(null);
+  renderAddressReview(null);
+  renderWinnersHistory([]);
+  updateGiveawayStatus('offline');
+}
+
+function beginGiveawayChannelTransition(channel) {
+  giveawayState.channelKey = normalizeGiveawayChannel(channel);
+  giveawayState.channelTransitioning = true;
+  giveawayState.historyRequestId += 1;
+  clearGiveawayChannelData();
+}
+
+async function completeGiveawayChannelTransition(channel) {
+  const channelKey = normalizeGiveawayChannel(channel);
+  if (channelKey !== giveawayState.channelKey) return;
+  giveawayState.channelTransitioning = false;
+  await loadGiveawayWinnersHistory();
+}
+
 async function loadGiveawayWinnersHistory() {
+  if (giveawayState.channelTransitioning) return;
+  const requestId = ++giveawayState.historyRequestId;
+  const channelKey = giveawayState.channelKey || normalizeGiveawayChannel(
+    (typeof state !== 'undefined' && state.targetChannel) || ''
+  );
   try {
     const res = await ipcRenderer.invoke('giveaway:get-winners');
+    if (
+      giveawayState.channelTransitioning ||
+      requestId !== giveawayState.historyRequestId ||
+      channelKey !== giveawayState.channelKey
+    ) return;
     if (res && res.success && Array.isArray(res.winners)) {
       giveawayState.winnersHistory = res.winners;
       renderWinnersHistory(res.winners);
@@ -6396,6 +6455,13 @@ async function loadGiveawayWinnersHistory() {
             playNotificationSound();
             showToast(`📥 Lieferadresse für @${updated.displayName || updated.username} eingegangen!`, 'success');
           }
+        } else {
+          // The selected entry does not belong to the active channel anymore.
+          giveawayState.currentWinner = null;
+          giveawayState.addressPrivacyRevealed = false;
+          setAddressDraftDirty(false);
+          renderWinnerHero(null);
+          renderAddressReview(null);
         }
       }
     }

@@ -200,6 +200,12 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
   const prof = getActiveStreamerProfile();
   if (!prof) return;
 
+  // Immediately remove channel-scoped giveaway/address data from the UI. This
+  // also blocks in-flight refreshes from the previously active channel.
+  if (typeof beginGiveawayChannelTransition === 'function') {
+    beginGiveawayChannelTransition(prof.targetChannel);
+  }
+
   // 1. Update Target Channel & Bot in UI & state
   if (prof.targetChannel) {
     state.targetChannel = prof.targetChannel;
@@ -234,6 +240,12 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
   // 6. Persist the channel boundary before any channel-scoped data/listener requests.
   if (saveToBackend) {
     await ipcRenderer.invoke('profiles:set-active', activeProfileId);
+  }
+
+  // Only reload giveaway/address data after the main process has switched its
+  // channel boundary. Otherwise a timer could briefly fetch the old channel.
+  if (typeof completeGiveawayChannelTransition === 'function') {
+    await completeGiveawayChannelTransition(prof.targetChannel);
   }
 
   // 7. Re-bind Channel Points Listener

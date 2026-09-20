@@ -232,13 +232,17 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
     renderQnAPersonsPillList(prof.defaultPersons);
   }
 
-  // 6. Re-bind Channel Points Listener
+  // 6. Persist the channel boundary before any channel-scoped data/listener requests.
+  if (saveToBackend) {
+    await ipcRenderer.invoke('profiles:set-active', activeProfileId);
+  }
+
+  // 7. Re-bind Channel Points Listener
   try {
     ipcRenderer.invoke('channelpoints:start-listener', { channel: prof.targetChannel }).catch(() => {});
   } catch(e) {}
 
   if (saveToBackend) {
-    await ipcRenderer.invoke('profiles:set-active', activeProfileId);
     showToast(`🎮 Aktiver Streamer: ${prof.name} (#${prof.targetChannel})`, 'success');
   }
   updateTwitchUI();
@@ -645,7 +649,7 @@ let globalModChatInterval = null;
 function isCurrentUserModerator() {
   if (!state.twitchUser) return false;
   const login = String(state.twitchUser.login || '').toLowerCase().trim();
-  const trusted = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg'];
+  const trusted = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg', 'ga_wo', 'zusaki', 'itzda_venom'];
   if (trusted.includes(login)) return true;
   const target = String(state.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
   if (login === target) return true;

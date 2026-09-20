@@ -33,6 +33,21 @@ let twitchService = null;
 let dbService = null;
 const activeNativeNotifications = new Set();
 
+function normalizeChannel(channel = 'marved') {
+  return String(channel || 'marved').toLowerCase().replace('#', '').trim();
+}
+
+function requireAuthorizedActiveChannel(requestedChannel = null) {
+  if (!twitchService || !twitchService.isUserAuthorizedMod()) {
+    throw new Error('Zugriff verweigert: Keine Moderator-Berechtigung für den aktiven Kanal.');
+  }
+  const activeChannel = normalizeChannel(twitchService.targetChannel);
+  if (requestedChannel && normalizeChannel(requestedChannel) !== activeChannel) {
+    throw new Error('Zugriff verweigert: Daten dürfen nur für den aktiven Kanal abgerufen oder geändert werden.');
+  }
+  return activeChannel;
+}
+
 function createWindow() {
   store = new SimpleStore(path.join(app.getPath('userData'), 'app_settings.json'));
   dbService = new DatabaseService();
@@ -58,10 +73,11 @@ function createWindow() {
   });
 
   configureWindowSecurity(mainWindow, shell);
-  supabaseService.setMainWindow(mainWindow);
-  supabaseService.initRealtimeListeners();
-
   twitchService = new TwitchService(mainWindow, store);
+  supabaseService.setMainWindow(mainWindow);
+  supabaseService.setTwitchTokenProvider(() => twitchService?.accessToken || store?.get('twitch_access_token', '') || '');
+  supabaseService.setActiveChannel(twitchService.targetChannel);
+  supabaseService.initRealtimeListeners();
 
   const openingWindow=mainWindow;
   revealWhenReady(openingWindow).catch(error=>{
@@ -186,6 +202,7 @@ ipcMain.handle('twitch:logout', async () => {
 
 ipcMain.handle('twitch:set-channel', async (event, channel) => {
   twitchService.setTargetChannel(channel);
+  supabaseService.setActiveChannel(twitchService.targetChannel);
   return { success: true, channel: twitchService.targetChannel };
 });
 
@@ -458,6 +475,7 @@ ipcMain.handle('profiles:save-all', async (event, { profiles, activeProfileId })
       if (activeProf) {
         if (activeProf.targetChannel && twitchService) {
           twitchService.setTargetChannel(activeProf.targetChannel);
+          supabaseService.setActiveChannel(twitchService.targetChannel);
         }
         if (activeProf.botName) {
           store.set('target_bot', activeProf.botName);
@@ -484,6 +502,7 @@ ipcMain.handle('profiles:set-active', async (event, profileId) => {
     store.set('active_profile_id', profileId);
     if (activeProf.targetChannel && twitchService) {
       twitchService.setTargetChannel(activeProf.targetChannel);
+      supabaseService.setActiveChannel(twitchService.targetChannel);
     }
     if (activeProf.botName) {
       store.set('target_bot', activeProf.botName);
@@ -630,11 +649,12 @@ ipcMain.handle('youtube:search', async (event, payload) => {
 // Mod-Chat IPC Handlers
 ipcMain.handle('modchat:get-messages', async () => {
   try {
+    const chan = requireAuthorizedActiveChannel();
     if (supabaseService) {
-      const msgs = await supabaseService.getModChat();
+      const msgs = await supabaseService.getModChat(chan);
       return { success: true, messages: msgs || [] };
     }
-    const msgs = await dbService.getModChatMessages();
+    const msgs = await dbService.getModChatMessages(chan);
     return { success: true, messages: msgs || [] };
   } catch(e) {
     return { success: false, messages: [], error: e.message };
@@ -643,11 +663,13 @@ ipcMain.handle('modchat:get-messages', async () => {
 
 ipcMain.handle('modchat:send-message', async (event, messageObj) => {
   try {
+    const chan = requireAuthorizedActiveChannel(messageObj && messageObj.channel);
+    const scopedMessage = { ...messageObj, channel: chan };
     if (supabaseService) {
-      const msgs = await supabaseService.sendModChatMessage(messageObj);
+      const msgs = await supabaseService.sendModChatMessage(scopedMessage, chan);
       return { success: true, messages: msgs || [] };
     }
-    const msgs = await dbService.sendModChatMessage(messageObj);
+    const msgs = await dbService.sendModChatMessage(scopedMessage, chan);
     return { success: true, messages: msgs || [] };
   } catch(e) {
     return { success: false, error: e.message };
@@ -656,10 +678,11 @@ ipcMain.handle('modchat:send-message', async (event, messageObj) => {
 
 ipcMain.handle('modchat:clear-messages', async () => {
   try {
+    const chan = requireAuthorizedActiveChannel();
     if (supabaseService) {
-      await supabaseService.clearModChat();
+      await supabaseService.clearModChat(chan);
     }
-    await dbService.clearModChatMessages();
+    await dbService.clearModChatMessages(chan);
     return { success: true, messages: [] };
   } catch(e) {
     return { success: false, error: e.message };
@@ -789,11 +812,12 @@ ipcMain.handle('app:notify-background', async (event, payload = {}) => {
 // Watchlist IPC Handlers
 ipcMain.handle('watchlist:get', async () => {
   try {
+    const chan = requireAuthorizedActiveChannel();
     if (supabaseService) {
-      const list = await supabaseService.getWatchlist();
+      const list = await supabaseService.getWatchlist(chan);
       return { success: true, list: list || [] };
     }
-    const list = await dbService.getWatchlist();
+    const list = await dbService.getWatchlist(chan);
     return { success: true, list: list || [] };
   } catch(e) {
     return { success: false, list: [] };
@@ -802,12 +826,13 @@ ipcMain.handle('watchlist:get', async () => {
 
 ipcMain.handle('watchlist:save', async (event, list) => {
   try {
+    const chan = requireAuthorizedActiveChannel();
     if (supabaseService && Array.isArray(list)) {
       for (const item of list) {
-        await supabaseService.addToWatchlist(item);
+        await supabaseService.addToWatchlist(item, chan);
       }
     }
-    await dbService.saveWatchlist(list);
+    await dbService.saveWatchlist(list, chan);
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };
@@ -835,10 +860,7 @@ ipcMain.handle('giveaway:stop-listener', async () => {
 
 ipcMain.handle('giveaway:get-winners', async () => {
   try {
-    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
-      return { success: false, winners: [], error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten und Adressen abrufen.' };
-    }
-    const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
+    const chan = requireAuthorizedActiveChannel();
     let winners = [];
     if (supabaseService) {
       const sbWinners = await supabaseService.getGiveaways(chan);
@@ -847,29 +869,23 @@ ipcMain.handle('giveaway:get-winners', async () => {
       }
     }
     if (winners.length === 0) {
-      winners = await dbService.getGiveawayWinners();
+      winners = await dbService.getGiveawayWinners(chan);
     }
     return { success: true, winners };
   } catch(e) {
-    try {
-      const fallback = await dbService.getGiveawayWinners();
-      return { success: true, winners: fallback };
-    } catch(err) {
-      return { success: false, winners: [], error: e.message };
-    }
+    // Never fall back to local address data when the authorization check failed.
+    return { success: false, winners: [], error: e.message };
   }
 });
 
 ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
   try {
-    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
-      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten speichern.' };
-    }
-    const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
+    const chan = requireAuthorizedActiveChannel(winnerObj && winnerObj.channel);
+    const scopedWinner = { ...winnerObj, channel: chan };
     if (supabaseService) {
-      await supabaseService.saveGiveawayWinner(winnerObj, winnerObj.channel || chan);
+      await supabaseService.saveGiveawayWinner(scopedWinner, chan);
     }
-    const winners = await dbService.saveGiveawayWinner(winnerObj);
+    const winners = await dbService.saveGiveawayWinner(scopedWinner, chan);
     return { success: true, winners };
   } catch(e) {
     return { success: false, error: e.message };
@@ -878,15 +894,12 @@ ipcMain.handle('giveaway:save-winner', async (event, winnerObj) => {
 
 ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
   try {
-    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
-      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten aktualisieren.' };
-    }
-    const chan = (twitchService ? twitchService.targetChannel : 'marved') || 'marved';
-    const winners = await dbService.updateGiveawayWinner(id, updates);
+    const chan = requireAuthorizedActiveChannel(updates && updates.channel);
+    const winners = await dbService.updateGiveawayWinner(id, { ...updates, channel: chan }, chan);
     if (supabaseService) {
       const updatedItem = (winners || []).find(w => w.id === id);
       if (updatedItem) {
-        await supabaseService.saveGiveawayWinner(updatedItem, updatedItem.channel || chan);
+        await supabaseService.saveGiveawayWinner(updatedItem, chan);
       }
     }
     return { success: true, winners };
@@ -897,13 +910,11 @@ ipcMain.handle('giveaway:update-winner', async (event, { id, updates }) => {
 
 ipcMain.handle('giveaway:delete-winner', async (event, id) => {
   try {
-    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
-      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Gewinnerdaten löschen.' };
-    }
+    const chan = requireAuthorizedActiveChannel();
     if (supabaseService) {
-      await supabaseService.deleteGiveawayWinner(id);
+      await supabaseService.deleteGiveawayWinner(id, chan);
     }
-    const winners = await dbService.deleteGiveawayWinner(id);
+    const winners = await dbService.deleteGiveawayWinner(id, chan);
     return { success: true, winners };
   } catch(e) {
     return { success: false, error: e.message };
@@ -912,25 +923,25 @@ ipcMain.handle('giveaway:delete-winner', async (event, id) => {
 
 ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId }) => {
   try {
-    if (!twitchService || !twitchService.isUserAuthorizedMod()) {
-      return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können Versanddaten per Telegram übermitteln.' };
-    }
+    const chan = requireAuthorizedActiveChannel();
     const activeProfileId = store.get('active_profile_id', 'prof_shishawg');
     const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
     const activeProf = profiles.find(p => p.id === activeProfileId) || profiles[0];
-    const chan = activeProf?.targetChannel || (twitchService ? twitchService.targetChannel : 'marved');
 
     let remoteCfg = null;
     if (supabaseService) {
       try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
     }
-    if (!remoteCfg && dbService) {
+    if (!remoteCfg && dbService && chan === 'marved') {
       try { remoteCfg = await dbService.getTelegramConfig(); } catch(e) {}
     }
 
-    const profTg = activeProf?.telegram || {};
-    const token = botToken || profTg.botToken || remoteCfg?.botToken || store.get('telegram_bot_token', '');
-    const chat = chatId || profTg.chatId || remoteCfg?.chatId || store.get('telegram_chat_id', '');
+    const profileMatchesChannel = normalizeChannel(activeProf?.targetChannel) === chan;
+    const profTg = profileMatchesChannel ? (activeProf?.telegram || {}) : {};
+    const legacyToken = chan === 'marved' ? store.get('telegram_bot_token', '') : '';
+    const legacyChat = chan === 'marved' ? store.get('telegram_chat_id', '') : '';
+    const token = botToken || profTg.botToken || remoteCfg?.botToken || legacyToken;
+    const chat = chatId || profTg.chatId || remoteCfg?.chatId || legacyChat;
 
     if (!token || !chat) {
       return { success: false, error: 'Telegram Bot Token oder Chat-ID fehlt. Bitte im Streamer-Profil hinterlegen.' };
@@ -942,31 +953,41 @@ ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId 
 });
 
 ipcMain.handle('giveaway:get-telegram-config', async () => {
+  let chan;
+  try {
+    chan = requireAuthorizedActiveChannel();
+  } catch (e) {
+    return { botToken: '', chatId: '', claimUrl: '', success: false, error: e.message };
+  }
   const activeProfileId = store.get('active_profile_id', 'prof_shishawg');
   const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
   const activeProf = profiles.find(p => p.id === activeProfileId) || profiles[0];
-  const chan = activeProf?.targetChannel || (twitchService ? twitchService.targetChannel : 'marved');
 
   let remoteCfg = null;
   if (supabaseService) {
     try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
   }
-  if (!remoteCfg && dbService) {
+  if (!remoteCfg && dbService && chan === 'marved') {
     try { remoteCfg = await dbService.getTelegramConfig(); } catch(e) {}
   }
 
-  const profTg = activeProf?.telegram || {};
-  const botToken = profTg.botToken || remoteCfg?.botToken || store.get('telegram_bot_token', '');
-  const chatId = profTg.chatId || remoteCfg?.chatId || store.get('telegram_chat_id', '');
-  const claimUrl = profTg.claimUrl || remoteCfg?.claimUrl || store.get('giveaway_claim_url', 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html');
+  const profileMatchesChannel = normalizeChannel(activeProf?.targetChannel) === chan;
+  const profTg = profileMatchesChannel ? (activeProf?.telegram || {}) : {};
+  const botToken = profTg.botToken || remoteCfg?.botToken || (chan === 'marved' ? store.get('telegram_bot_token', '') : '');
+  const chatId = profTg.chatId || remoteCfg?.chatId || (chan === 'marved' ? store.get('telegram_chat_id', '') : '');
+  const claimUrl = profTg.claimUrl || remoteCfg?.claimUrl || 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html';
 
   return { botToken, chatId, claimUrl };
 });
 
 // Channel Points (Kohle-Stücke) IPC Handlers
 ipcMain.handle('channelpoints:start-listener', async (event, { channel, autoChat } = {}) => {
-  const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
-  return twitchService.startChannelPointsListener(chan, autoChat !== false);
+  try {
+    const chan = requireAuthorizedActiveChannel(channel);
+    return twitchService.startChannelPointsListener(chan, autoChat !== false);
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('channelpoints:stop-listener', async () => {
@@ -974,16 +995,22 @@ ipcMain.handle('channelpoints:stop-listener', async () => {
 });
 
 ipcMain.handle('channelpoints:create-manual-link', async (event, { user, prize, type, channel, postToChat }) => {
-  if (!twitchService || !twitchService.isUserAuthorizedMod()) {
-    return { success: false, error: 'Zugriff verweigert: Nur verifizierte Moderatoren können manuelle Adresslinks erstellen.' };
+  try {
+    const chan = requireAuthorizedActiveChannel(channel);
+    return twitchService.createManualClaimLink(user, prize, chan, postToChat, type);
+  } catch (e) {
+    return { success: false, error: e.message };
   }
-  const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
-  return twitchService.createManualClaimLink(user, prize, chan, postToChat, type);
 });
 
 // Q&A Fragensammler IPC Handlers
 ipcMain.handle('qna:start-listener', async (event, channel) => {
-  return twitchService.startQnAListener(channel);
+  try {
+    const chan = requireAuthorizedActiveChannel(channel);
+    return twitchService.startQnAListener(chan);
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
 });
 
 ipcMain.handle('qna:stop-listener', async () => {
@@ -992,10 +1019,10 @@ ipcMain.handle('qna:stop-listener', async () => {
 
 ipcMain.handle('qna:get-questions', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     let questions = await supabaseService.getQnAQuestions(chan);
     if (!questions || questions.length === 0) {
-      questions = await dbService.getQnAQuestions();
+      questions = await dbService.getQnAQuestions(chan);
     }
     return { success: true, questions };
   } catch(e) {
@@ -1003,10 +1030,12 @@ ipcMain.handle('qna:get-questions', async (event, channel) => {
   }
 });
 
-ipcMain.handle('qna:save-questions', async (event, questions) => {
+ipcMain.handle('qna:save-questions', async (event, questions, channel) => {
   try {
-    await supabaseService.saveAllQnAQuestions(questions);
-    const saved = await dbService.saveQnAQuestions(questions);
+    const chan = requireAuthorizedActiveChannel(channel);
+    const scopedQuestions = (Array.isArray(questions) ? questions : []).map(q => ({ ...q, channel: chan }));
+    await supabaseService.saveAllQnAQuestions(scopedQuestions);
+    const saved = await dbService.saveQnAQuestions(scopedQuestions, chan);
     return { success: true, questions: saved };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1015,7 +1044,8 @@ ipcMain.handle('qna:save-questions', async (event, questions) => {
 
 ipcMain.handle('qna:upsert-question', async (event, question) => {
   try {
-    await supabaseService.upsertQnAQuestion(question);
+    const chan = requireAuthorizedActiveChannel(question && question.channel);
+    await supabaseService.upsertQnAQuestion({ ...question, channel: chan });
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1024,8 +1054,9 @@ ipcMain.handle('qna:upsert-question', async (event, question) => {
 
 ipcMain.handle('qna:delete-question', async (event, questionId) => {
   try {
-    await supabaseService.deleteQnAQuestion(questionId);
-    await dbService.deleteQnAQuestion(questionId);
+    const chan = requireAuthorizedActiveChannel();
+    await supabaseService.deleteQnAQuestion(questionId, chan);
+    await dbService.deleteQnAQuestion(questionId, chan);
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1034,7 +1065,7 @@ ipcMain.handle('qna:delete-question', async (event, questionId) => {
 
 ipcMain.handle('qna:delete-all-questions', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     await supabaseService.deleteAllQnAQuestions(chan);
     await dbService.deleteAllQnAQuestions(chan);
     return { success: true };
@@ -1045,7 +1076,7 @@ ipcMain.handle('qna:delete-all-questions', async (event, channel) => {
 
 ipcMain.handle('qna:clear-answered-questions', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     await supabaseService.deleteAnsweredQnAQuestions(chan);
     await dbService.deleteAnsweredQnAQuestions(chan);
     return { success: true };
@@ -1056,10 +1087,10 @@ ipcMain.handle('qna:clear-answered-questions', async (event, channel) => {
 
 ipcMain.handle('qna:get-active', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     let active = await supabaseService.getActiveQnAQuestion(chan);
     if (!active) {
-      active = await dbService.getActiveQnAQuestion();
+      active = await dbService.getActiveQnAQuestion(chan);
     }
     return { success: true, active };
   } catch(e) {
@@ -1069,9 +1100,9 @@ ipcMain.handle('qna:get-active', async (event, channel) => {
 
 ipcMain.handle('qna:set-active', async (event, activeObj, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     await supabaseService.setActiveQnAQuestion(chan, activeObj);
-    const active = await dbService.setActiveQnAQuestion(activeObj);
+    const active = await dbService.setActiveQnAQuestion(activeObj, chan);
     return { success: true, active };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1081,7 +1112,7 @@ ipcMain.handle('qna:set-active', async (event, activeObj, channel) => {
 // Q&A Settings (Persons list, Wheel toggle)
 ipcMain.handle('qna:get-settings', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     const settings = await supabaseService.getQnASettings(chan);
     return { success: true, settings };
   } catch(e) {
@@ -1091,7 +1122,7 @@ ipcMain.handle('qna:get-settings', async (event, channel) => {
 
 ipcMain.handle('qna:save-settings', async (event, channel, settings) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     const saved = await supabaseService.saveQnASettings(chan, settings);
     return { success: true, settings: saved };
   } catch(e) {
@@ -1102,7 +1133,8 @@ ipcMain.handle('qna:save-settings', async (event, channel, settings) => {
 // Bestrafungen (Punishments / Challenges)
 ipcMain.handle('bestrafungen:get', async () => {
   try {
-    const list = await supabaseService.getBestrafungen();
+    const chan = requireAuthorizedActiveChannel();
+    const list = await supabaseService.getBestrafungen(chan);
     return { success: true, bestrafungen: list };
   } catch(e) {
     return { success: false, error: e.message, bestrafungen: [] };
@@ -1111,7 +1143,8 @@ ipcMain.handle('bestrafungen:get', async () => {
 
 ipcMain.handle('bestrafungen:save', async (event, bestrafung) => {
   try {
-    const saved = await supabaseService.saveBestrafung(bestrafung);
+    const chan = requireAuthorizedActiveChannel(bestrafung && bestrafung.channel);
+    const saved = await supabaseService.saveBestrafung({ ...bestrafung, channel: chan }, chan);
     return { success: true, bestrafung: saved };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1120,7 +1153,8 @@ ipcMain.handle('bestrafungen:save', async (event, bestrafung) => {
 
 ipcMain.handle('bestrafungen:update-status', async (event, id, status) => {
   try {
-    const updated = await supabaseService.updateBestrafungStatus(id, status);
+    const chan = requireAuthorizedActiveChannel();
+    const updated = await supabaseService.updateBestrafungStatus(id, status, null, chan);
     return { success: true, updated };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1129,7 +1163,8 @@ ipcMain.handle('bestrafungen:update-status', async (event, id, status) => {
 
 ipcMain.handle('bestrafungen:delete', async (event, id) => {
   try {
-    const deleted = await supabaseService.deleteBestrafung(id);
+    const chan = requireAuthorizedActiveChannel();
+    const deleted = await supabaseService.deleteBestrafung(id, chan);
     return { success: true, deleted };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1138,13 +1173,13 @@ ipcMain.handle('bestrafungen:delete', async (event, id) => {
 
 ipcMain.handle('qna:delete-all', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     const questions = await supabaseService.getQnAQuestions(chan);
     for (const q of questions) {
-      await supabaseService.deleteQnAQuestion(q.id);
+      await supabaseService.deleteQnAQuestion(q.id, chan);
     }
-    await dbService.saveQnAQuestions([]);
-    await dbService.setActiveQnAQuestion(null);
+    await dbService.saveQnAQuestions([], chan);
+    await dbService.setActiveQnAQuestion(null, chan);
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1153,14 +1188,14 @@ ipcMain.handle('qna:delete-all', async (event, channel) => {
 
 ipcMain.handle('qna:delete-duplicates', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     const questions = await supabaseService.getQnAQuestions(chan);
     const seen = new Set();
     let deletedCount = 0;
     for (const q of questions) {
       const key = `${(q.login || '').toLowerCase()}:${(q.question || '').trim().toLowerCase()}`;
       if (seen.has(key)) {
-        await supabaseService.deleteQnAQuestion(q.id);
+        await supabaseService.deleteQnAQuestion(q.id, chan);
         deletedCount++;
       } else {
         seen.add(key);
@@ -1175,7 +1210,8 @@ ipcMain.handle('qna:delete-duplicates', async (event, channel) => {
 // Twitch Polls & Vorlagen IPC Handlers
 ipcMain.handle('polls:create', async (event, { title, choices, duration, channelPointsVoting, channelPointsPerVote, channel }) => {
   try {
-    const res = await twitchService.createPoll(title, choices, duration, channelPointsVoting, channelPointsPerVote, channel);
+    const chan = requireAuthorizedActiveChannel(channel);
+    const res = await twitchService.createPoll(title, choices, duration, channelPointsVoting, channelPointsPerVote, chan);
     return { success: true, poll: res.poll };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1184,7 +1220,8 @@ ipcMain.handle('polls:create', async (event, { title, choices, duration, channel
 
 ipcMain.handle('polls:get-active', async (event, channel) => {
   try {
-    const poll = await twitchService.getActivePoll(channel);
+    const chan = requireAuthorizedActiveChannel(channel);
+    const poll = await twitchService.getActivePoll(chan);
     return { success: true, poll };
   } catch(e) {
     return { success: false, error: e.message, poll: null };
@@ -1193,7 +1230,8 @@ ipcMain.handle('polls:get-active', async (event, channel) => {
 
 ipcMain.handle('polls:end', async (event, { pollId, status, channel }) => {
   try {
-    const res = await twitchService.endPoll(pollId, status, channel);
+    const chan = requireAuthorizedActiveChannel(channel);
+    const res = await twitchService.endPoll(pollId, status, chan);
     return { success: true, poll: res.poll };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1221,7 +1259,8 @@ ipcMain.handle('polls:save-templates', async (event, templates) => {
 // Twitch Predictions IPC Handlers
 ipcMain.handle('predictions:create', async (event, { title, outcomes, duration, channel }) => {
   try {
-    const res = await twitchService.createTwitchPrediction({ title, outcomes, duration, channel });
+    const chan = requireAuthorizedActiveChannel(channel);
+    const res = await twitchService.createTwitchPrediction({ title, outcomes, duration, channel: chan });
     return { success: true, prediction: res.prediction };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1230,7 +1269,8 @@ ipcMain.handle('predictions:create', async (event, { title, outcomes, duration, 
 
 ipcMain.handle('predictions:get-active', async (event, channel) => {
   try {
-    const prediction = await twitchService.getActivePrediction(channel);
+    const chan = requireAuthorizedActiveChannel(channel);
+    const prediction = await twitchService.getActivePrediction(chan);
     return { success: true, prediction };
   } catch(e) {
     return { success: false, error: e.message, prediction: null };
@@ -1239,7 +1279,8 @@ ipcMain.handle('predictions:get-active', async (event, channel) => {
 
 ipcMain.handle('predictions:end', async (event, { predictionId, status, winningOutcomeId, channel }) => {
   try {
-    const res = await twitchService.endPrediction(predictionId, status, winningOutcomeId, channel);
+    const chan = requireAuthorizedActiveChannel(channel);
+    const res = await twitchService.endPrediction(predictionId, status, winningOutcomeId, chan);
     return { success: true, prediction: res.prediction };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1249,10 +1290,10 @@ ipcMain.handle('predictions:end', async (event, { predictionId, status, winningO
 // Stats & Kohle-Timer IPC Handlers
 ipcMain.handle('stats:get-sessions', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     let sessions = await supabaseService.getShishaSessions(chan);
     if (!sessions || sessions.length === 0) {
-      sessions = await dbService.getShishaSessions();
+      sessions = await dbService.getShishaSessions(chan);
     }
     return { success: true, sessions: sessions || [] };
   } catch(e) {
@@ -1262,15 +1303,17 @@ ipcMain.handle('stats:get-sessions', async (event, channel) => {
 
 ipcMain.handle('stats:save-session', async (event, session) => {
   try {
-    const cloudResult = await supabaseService.saveShishaSession(session);
-    const localSessions = await dbService.getShishaSessions();
-    const idx = localSessions.findIndex(s => s.id === session.id);
+    const chan = requireAuthorizedActiveChannel(session && session.channel);
+    const scopedSession = { ...session, channel: chan };
+    const cloudResult = await supabaseService.saveShishaSession(scopedSession);
+    const localSessions = await dbService.getShishaSessions(chan);
+    const idx = localSessions.findIndex(s => s.id === scopedSession.id);
     if (idx >= 0) {
-      localSessions[idx] = session;
+      localSessions[idx] = scopedSession;
     } else {
-      localSessions.unshift(session);
+      localSessions.unshift(scopedSession);
     }
-    await dbService.saveShishaSessions(localSessions);
+    await dbService.saveShishaSessions(localSessions, chan);
     if (!cloudResult || !cloudResult.success) {
       return {
         success: false,
@@ -1287,10 +1330,11 @@ ipcMain.handle('stats:save-session', async (event, session) => {
 
 ipcMain.handle('stats:delete-session', async (event, id) => {
   try {
-    await supabaseService.deleteShishaSession(id);
-    const localSessions = await dbService.getShishaSessions();
+    const chan = requireAuthorizedActiveChannel();
+    await supabaseService.deleteShishaSession(id, chan);
+    const localSessions = await dbService.getShishaSessions(chan);
     const filtered = localSessions.filter(s => s.id !== id);
-    await dbService.saveShishaSessions(filtered);
+    await dbService.saveShishaSessions(filtered, chan);
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };
@@ -1299,10 +1343,10 @@ ipcMain.handle('stats:delete-session', async (event, id) => {
 
 ipcMain.handle('stats:get-timer-state', async (event, channel) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     let timerState = await supabaseService.getActiveTimerState(chan);
     if (!timerState) {
-      timerState = await dbService.getActiveTimerState();
+      timerState = await dbService.getActiveTimerState(chan);
     }
     return { success: true, timerState };
   } catch(e) {
@@ -1312,9 +1356,9 @@ ipcMain.handle('stats:get-timer-state', async (event, channel) => {
 
 ipcMain.handle('stats:save-timer-state', async (event, { channel, timerState }) => {
   try {
-    const chan = channel || (twitchService ? twitchService.targetChannel : 'marved');
+    const chan = requireAuthorizedActiveChannel(channel);
     await supabaseService.saveActiveTimerState(chan, timerState);
-    await dbService.saveActiveTimerState(timerState);
+    await dbService.saveActiveTimerState(timerState, chan);
     return { success: true };
   } catch(e) {
     return { success: false, error: e.message };

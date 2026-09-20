@@ -17,10 +17,12 @@ test('claim portal preserves channel and reward type through OAuth and submits b
   assert.match(claim, /stateObj\.type\).*rewardType = stateObj\.type/);
   assert.match(claim, /const stateObj = \{[^}]*channel:[^}]*type:/s);
   assert.doesNotMatch(claim, /decodeURIComponent\(stateParam\)/);
-  assert.match(claim, /update\(\{[^}]*channel: channel/s);
-  assert.match(claim, /\.eq\(['"]username['"], verifiedLogin\)/);
+  assert.match(claim, /action:\s*['"]claim\.submit['"]/);
+  assert.match(claim, /['"]x-twitch-token['"]:\s*verifiedAccessToken/);
+  assert.match(claim, /username:\s*verifiedLogin/);
+  assert.match(claim, /channel,/);
   assert.match(claim, /rewardType: rewardType/);
-  assert.match(claim, /if \(upsertError\) throw upsertError/);
+  assert.match(claim, /if \(!claimResponse\.ok\)/);
 
   const originalState = { id: 'winner-20-percent', user: 'testuser', prize: '20% Rabatt', channel: 'marved', type: 'giveaway' };
   const stateParam = new URLSearchParams(`state=${encodeURIComponent(JSON.stringify(originalState))}`).get('state');
@@ -28,12 +30,12 @@ test('claim portal preserves channel and reward type through OAuth and submits b
 });
 
 test('claim portal rejects a second submission after Telegram delivery', () => {
-  const claim = read('docs/claim.html');
+  const edge = read('supabase/functions/channel-api/index.ts');
 
-  assert.match(claim, /select\(['"]id,status['"]\)/);
-  assert.match(claim, /existingWinner\.status === ['"]sent_to_telegram['"]/);
-  assert.match(claim, /Du hast deine Daten bereits abgesendet\./);
-  assert.match(claim, /\.neq\(['"]status['"], ['"]sent_to_telegram['"]\)/);
+  assert.match(edge, /select\(['"]id,status['"]\)/);
+  assert.match(edge, /winner\.status === ['"]sent_to_telegram['"]/);
+  assert.match(edge, /Die Daten wurden bereits abgesendet\./);
+  assert.match(edge, /\.neq\(['"]status['"], ['"]sent_to_telegram['"]\)/);
 });
 
 test('manual reward modal exposes an explicit Giveaway/Freekohle selection and forwards it', () => {
@@ -92,20 +94,14 @@ test('manual links default to copy-only and refresh with the existing function',
 
 test('Supabase winner persistence keeps channel and coal size without a nonexistent coal_size column', async () => {
   const service = require('../src/main/supabaseService');
-  const { decryptAddress, encryptAddress } = require('../src/main/crypto');
+  const { encryptAddress } = require('../src/main/crypto');
 
   let savedRow;
-  service.client = {
-    from(table) {
-      assert.equal(table, 'giveaway_winners');
-      return {
-        upsert(row, options) {
-          savedRow = row;
-          assert.deepEqual(options, { onConflict: 'id' });
-          return Promise.resolve({ data: [row], error: null });
-        }
-      };
-    }
+  const originalSecureRequest = service.secureRequest;
+  service.secureRequest = async (action, payload) => {
+    assert.equal(action, 'giveaways.upsert');
+    savedRow = payload.winner;
+    return savedRow;
   };
 
   await service.saveGiveawayWinner({
@@ -116,17 +112,13 @@ test('Supabase winner persistence keeps channel and coal size without a nonexist
 
   assert.equal(savedRow.channel, 'marved');
   assert.equal(Object.hasOwn(savedRow, 'coal_size'), false);
-  assert.equal(decryptAddress(savedRow.address).coalSize, '27er');
+  assert.equal(savedRow.address.coalSize, '27er');
 
   const encryptedAddress = encryptAddress({ coalSize: '26er', rewardType: 'channel_points' });
-  service.client = {
-    from(table) {
-      assert.equal(table, 'giveaway_winners');
-      return {
-        select() { return this; },
-        order() {
-          return Promise.resolve({
-            data: [{
+  service.secureRequest = async (action, payload) => {
+    assert.equal(action, 'giveaways.list');
+    assert.equal(payload.channel, 'marved');
+    return [{
               id: 'winner-2',
               channel: 'marved',
               username: 'anotheruser',
@@ -135,31 +127,20 @@ test('Supabase winner persistence keeps channel and coal size without a nonexist
               status: 'address_received',
               address: encryptedAddress,
               created_at: '2026-09-01T12:00:00.000Z'
-            }],
-            error: null
-          });
-        }
-      };
-    }
+            }];
   };
 
   const [winner] = await service.getGiveaways('marved');
   assert.equal(winner.coalSize, '26er');
   assert.equal(winner.type, 'channel_points');
   assert.equal(winner.address.coalSize, '26er');
+  service.secureRequest = originalSecureRequest;
 });
 
 test('Supabase save rejects returned database errors instead of reporting a false success', async () => {
   const service = require('../src/main/supabaseService');
-  service.client = {
-    from() {
-      return {
-        upsert() {
-          return Promise.resolve({ data: null, error: new Error('DB rejected') });
-        }
-      };
-    }
-  };
+  const originalSecureRequest = service.secureRequest;
+  service.secureRequest = async () => { throw new Error('DB rejected'); };
 
   const originalConsoleError = console.error;
   console.error = () => {};
@@ -170,23 +151,15 @@ test('Supabase save rejects returned database errors instead of reporting a fals
     );
   } finally {
     console.error = originalConsoleError;
+    service.secureRequest = originalSecureRequest;
   }
 });
 
 test('explicit reward type is persisted schema-compatibly for pending winners', async () => {
   const service = require('../src/main/supabaseService');
-  const { decryptAddress } = require('../src/main/crypto');
   let savedRow;
-  service.client = {
-    from() {
-      return {
-        upsert(row) {
-          savedRow = row;
-          return Promise.resolve({ data: [row], error: null });
-        }
-      };
-    }
-  };
+  const originalSecureRequest = service.secureRequest;
+  service.secureRequest = async (_action, payload) => { savedRow = payload.winner; return savedRow; };
 
   await service.saveGiveawayWinner({
     id: 'winner-explicit-type',
@@ -195,14 +168,15 @@ test('explicit reward type is persisted schema-compatibly for pending winners', 
     type: 'giveaway'
   }, 'marved');
 
-  assert.equal(decryptAddress(savedRow.address).rewardType, 'giveaway');
+  assert.equal(savedRow.address.rewardType, 'giveaway');
   assert.equal(Object.hasOwn(savedRow, 'type'), false);
+  service.secureRequest = originalSecureRequest;
 });
 
-test('release metadata is bumped to 8.0.0', () => {
+test('release metadata is bumped to 8.0.1', () => {
   const pkg = JSON.parse(read('package.json'));
   const index = read('src/renderer/index.html');
 
-  assert.equal(pkg.version, '8.0.0');
-  assert.match(index, /id="app-version-tag">v8\.0\.0</);
+  assert.equal(pkg.version, '8.0.1');
+  assert.match(index, /id="app-version-tag">v8\.0\.1</);
 });

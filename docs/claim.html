@@ -342,6 +342,7 @@
   <script>
     const SUPABASE_URL = 'https://gdaprclycouoxtffcuxb.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QrSzf1SeHsgwIfbhbwQeGw_H7CkoJsV';
+    const SECURE_API_URL = SUPABASE_URL + '/functions/v1/channel-api';
     const CLIENT_ID = '440sjk1dkut7ltxkf7b3p267dekbpu';
 
     // Parse URL params or OAuth state
@@ -398,6 +399,7 @@
     const errorBox = document.getElementById('error-box');
 
     let verifiedUser = null;
+    let verifiedAccessToken = '';
 
     // Login button click
     document.getElementById('btn-login-twitch').addEventListener('click', () => {
@@ -439,6 +441,7 @@
 
             // Success: Unlock form
             verifiedUser = user;
+            verifiedAccessToken = token;
             authSection.classList.add('hidden');
             formSection.classList.remove('hidden');
             document.getElementById('verified-avatar').src = user.profile_image_url || '';
@@ -457,7 +460,7 @@
     // Submit form
     document.getElementById('address-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!verifiedUser && targetUser) {
+      if (!verifiedUser || !verifiedAccessToken) {
         alert('Bitte verifiziere dich zuerst über Twitch!');
         return;
       }
@@ -484,39 +487,24 @@
 
       // Submit directly to Supabase Database
       try {
-        if (!window.supabase) throw new Error('Supabase-Client konnte nicht geladen werden.');
-        const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
         const verifiedLogin = (verifiedUser ? verifiedUser.login : targetUser).toLowerCase().replace(/^@/, '').trim();
-
-        const { data: existingWinner, error: lookupError } = await sbClient.from('giveaway_winners')
-          .select('id,status')
-          .eq('id', winId)
-          .eq('username', verifiedLogin)
-          .maybeSingle();
-        if (lookupError) throw lookupError;
-        if (!existingWinner) throw new Error('Der Gewinn konnte für diesen Twitch-Account nicht gefunden werden.');
-        if (existingWinner.status === 'sent_to_telegram') {
-          const alreadySubmittedError = new Error('Du hast deine Daten bereits abgesendet.');
-          alreadySubmittedError.code = 'ALREADY_SUBMITTED';
-          throw alreadySubmittedError;
-        }
-
-        const { data: updatedRow, error: upsertError } = await sbClient.from('giveaway_winners').update({
-          channel: channel,
-          status: 'address_received',
-          address: addressData
-        })
-          .eq('id', winId)
-          .eq('username', verifiedLogin)
-          .neq('status', 'sent_to_telegram')
-          .select('id')
-          .maybeSingle();
-        if (upsertError) throw upsertError;
-        if (!updatedRow) {
-          const alreadySubmittedError = new Error('Du hast deine Daten bereits abgesendet.');
-          alreadySubmittedError.code = 'ALREADY_SUBMITTED';
-          throw alreadySubmittedError;
-        }
+        const claimResponse = await fetch(SECURE_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: SUPABASE_PUBLISHABLE_KEY,
+            'x-twitch-token': verifiedAccessToken
+          },
+          body: JSON.stringify({
+            action: 'claim.submit',
+            id: winId,
+            username: verifiedLogin,
+            channel,
+            address: addressData
+          })
+        });
+        const claimResult = await claimResponse.json().catch(() => ({}));
+        if (!claimResponse.ok) throw new Error(claimResult.error || 'Die Adresse konnte nicht sicher gespeichert werden.');
       } catch(sbErr) {
         console.warn('Supabase claim error:', sbErr);
         errorBox.classList.remove('hidden');

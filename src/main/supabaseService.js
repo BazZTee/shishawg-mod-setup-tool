@@ -20,10 +20,56 @@ class SupabaseService {
     this.supabase = this.client;
     this.mainWindow = null;
     this.channelSubscriptions = [];
+    this.activeChannel = 'marved';
+    this.twitchTokenProvider = () => '';
   }
 
   setMainWindow(win) {
     this.mainWindow = win;
+  }
+
+  setTwitchTokenProvider(provider) {
+    this.twitchTokenProvider = typeof provider === 'function' ? provider : (() => '');
+  }
+
+  async secureRequest(action, payload = {}) {
+    const twitchToken = String(this.twitchTokenProvider() || '').trim();
+    if (!twitchToken) throw new Error('Twitch-Anmeldung für den geschützten Datenzugriff fehlt.');
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/channel-api`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_PUBLISHABLE_KEY,
+        'x-twitch-token': twitchToken
+      },
+      body: JSON.stringify({ action, ...payload })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `Geschützter Datenzugriff fehlgeschlagen (${response.status}).`);
+    return result.data;
+  }
+
+  secureDb(table, operation, channel, options = {}) {
+    return this.secureRequest('db', {
+      table,
+      operation,
+      channel: this.normalizeChannel(channel || this.activeChannel),
+      ...options
+    });
+  }
+
+  normalizeChannel(channel = 'marved') {
+    return String(channel || 'marved').toLowerCase().replace('#', '').trim();
+  }
+
+  setActiveChannel(channel = 'marved') {
+    this.activeChannel = this.normalizeChannel(channel);
+  }
+
+  isPayloadForActiveChannel(payload) {
+    const row = (payload && (payload.new || payload.old)) || {};
+    const rowChannel = this.normalizeChannel(row.channel || 'marved');
+    return rowChannel === this.activeChannel;
   }
 
   // --- Realtime WebSocket Subscriptions for Electron ---
@@ -32,7 +78,7 @@ class SupabaseService {
       const qnaChannel = this.client
         .channel('db-qna-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_questions' }, (payload) => {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          if (this.isPayloadForActiveChannel(payload) && this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('supabase:qna-changed', payload);
           }
         })
@@ -41,7 +87,7 @@ class SupabaseService {
       const setupChannel = this.client
         .channel('db-setup-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'stream_setups' }, (payload) => {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          if (this.isPayloadForActiveChannel(payload) && this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('supabase:setup-changed', payload);
           }
         })
@@ -50,7 +96,7 @@ class SupabaseService {
       const chatChannel = this.client
         .channel('db-chat-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'mod_chat' }, (payload) => {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          if (this.isPayloadForActiveChannel(payload) && this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('supabase:chat-changed', payload);
           }
         })
@@ -59,7 +105,7 @@ class SupabaseService {
       const bestrafungenChannel = this.client
         .channel('db-bestrafungen-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'bestrafungen' }, (payload) => {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          if (this.isPayloadForActiveChannel(payload) && this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('supabase:bestrafungen-changed', payload);
           }
         })
@@ -68,7 +114,7 @@ class SupabaseService {
       const settingsChannel = this.client
         .channel('db-settings-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'qna_settings' }, (payload) => {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          if (this.isPayloadForActiveChannel(payload) && this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('supabase:settings-changed', payload);
           }
         })
@@ -77,7 +123,7 @@ class SupabaseService {
       const giveawayChannel = this.client
         .channel('db-giveaway-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'giveaway_winners' }, (payload) => {
-          if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          if (this.isPayloadForActiveChannel(payload) && this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('supabase:giveaway-changed', payload);
           }
         })
@@ -154,12 +200,7 @@ class SupabaseService {
         row.created_at = new Date(q.timestamp).toISOString();
       }
 
-      const { data, error } = await this.client
-        .from('qna_questions')
-        .upsert(row, { onConflict: 'id' })
-        .select();
-
-      if (error) throw error;
+      const data = await this.secureDb('qna_questions', 'upsert', row.channel, { values: row, onConflict: 'id' });
       return data;
     } catch(err) {
       console.error('Supabase upsertQnAQuestion error:', err.message);
@@ -188,12 +229,7 @@ class SupabaseService {
         updated_at: new Date(q.updatedAt || Date.now()).toISOString()
       }));
 
-      const { data, error } = await this.client
-        .from('qna_questions')
-        .upsert(rows, { onConflict: 'id' })
-        .select();
-
-      if (error) throw error;
+      const data = await this.secureDb('qna_questions', 'upsert', rows[0].channel, { values: rows, onConflict: 'id' });
       return data;
     } catch(err) {
       console.error('Supabase saveAllQnAQuestions error:', err.message);
@@ -201,18 +237,15 @@ class SupabaseService {
     }
   }
 
-  async setQnAStatus(questionId, status) {
+  async setQnAStatus(questionId, status, channel = 'marved') {
     try {
-      const { data, error } = await this.client
-        .from('qna_questions')
-        .update({
+      const data = await this.secureDb('qna_questions', 'update', channel, {
+        values: {
           status: status,
           updated_at: new Date().toISOString()
-        })
-        .eq('id', questionId)
-        .select();
-
-      if (error) throw error;
+        },
+        filters: { id: questionId }
+      });
       return data;
     } catch(err) {
       console.error('Supabase setQnAStatus error:', err.message);
@@ -262,18 +295,17 @@ class SupabaseService {
       const cleanChan = channel.toLowerCase().replace('#', '');
       
       // 1. Reset all other questions on this channel that are currently on_air to approved
-      await this.client
-        .from('qna_questions')
-        .update({ status: 'approved', updated_at: new Date().toISOString() })
-        .eq('channel', cleanChan)
-        .eq('status', 'on_air');
+      await this.secureDb('qna_questions', 'update', cleanChan, {
+        values: { status: 'approved', updated_at: new Date().toISOString() },
+        filters: { status: 'on_air' }
+      });
 
       // 2. If a new question is to be set on_air
       if (questionObj && questionObj.id) {
-        await this.client
-          .from('qna_questions')
-          .update({ status: 'on_air', updated_at: new Date().toISOString() })
-          .eq('id', questionObj.id);
+        await this.secureDb('qna_questions', 'update', cleanChan, {
+          values: { status: 'on_air', updated_at: new Date().toISOString() },
+          filters: { id: questionObj.id }
+        });
       }
       return questionObj;
     } catch(err) {
@@ -282,14 +314,9 @@ class SupabaseService {
     }
   }
 
-  async deleteQnAQuestion(questionId) {
+  async deleteQnAQuestion(questionId, channel = 'marved') {
     try {
-      const { error } = await this.client
-        .from('qna_questions')
-        .delete()
-        .eq('id', questionId);
-
-      if (error) throw error;
+      await this.secureDb('qna_questions', 'delete', channel, { filters: { id: questionId } });
       return true;
     } catch(err) {
       console.error('Supabase deleteQnAQuestion error:', err.message);
@@ -300,12 +327,7 @@ class SupabaseService {
   async deleteAllQnAQuestions(channel = 'marved') {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { error } = await this.client
-        .from('qna_questions')
-        .delete()
-        .eq('channel', cleanChan);
-
-      if (error) throw error;
+      await this.secureDb('qna_questions', 'delete', cleanChan);
       return true;
     } catch(err) {
       console.error('Supabase deleteAllQnAQuestions error:', err.message);
@@ -316,13 +338,7 @@ class SupabaseService {
   async deleteAnsweredQnAQuestions(channel = 'marved') {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { error } = await this.client
-        .from('qna_questions')
-        .delete()
-        .eq('channel', cleanChan)
-        .eq('status', 'answered');
-
-      if (error) throw error;
+      await this.secureDb('qna_questions', 'delete', cleanChan, { filters: { status: 'answered' } });
       return true;
     } catch(err) {
       console.error('Supabase deleteAnsweredQnAQuestions error:', err.message);
@@ -350,16 +366,11 @@ class SupabaseService {
   async saveStreamSetup(channel = 'marved', setupData) {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('stream_setups')
-        .upsert({
+      await this.secureDb('stream_setups', 'upsert', cleanChan, { values: {
           channel: cleanChan,
           setup_data: setupData,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'channel' })
-        .select();
-
-      if (error) throw error;
+        }, onConflict: 'channel' });
       return setupData;
     } catch(err) {
       console.error('Supabase saveStreamSetup error:', err.message);
@@ -387,14 +398,11 @@ class SupabaseService {
 
   async saveCatalogCategory(category, items) {
     try {
-      const { error } = await this.client
-        .from('shishawg_catalog')
-        .upsert({
+      await this.secureDb('shishawg_catalog', 'upsert', this.activeChannel, { values: {
           category,
           items: Array.isArray(items) ? items : [],
           updated_at: new Date().toISOString()
-        }, { onConflict: 'category' });
-      if (error) throw error;
+        }, onConflict: 'category' });
       return true;
     } catch(err) {
       console.error('Supabase saveCatalogCategory error:', err.message);
@@ -406,11 +414,9 @@ class SupabaseService {
   async getWatchlist(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('mod_watchlist')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+      const data = await this.secureDb('mod_watchlist', 'select', cleanChan, {
+        order: { column: 'created_at', ascending: false }
+      });
       return (data || []).map(r => ({
         id: r.id,
         channel: r.channel || cleanChan,
@@ -431,25 +437,21 @@ class SupabaseService {
     try {
       const row = {
         id: item.id || ('wl_' + Date.now()),
+        channel: this.normalizeChannel(channel),
         username: item.username,
         added_by: item.addedBy || 'Mod',
         reason: item.note || item.reason || '',
         created_at: new Date(item.timestamp || Date.now()).toISOString()
       };
-      await this.client
-        .from('mod_watchlist')
-        .upsert(row, { onConflict: 'id' });
+      await this.secureDb('mod_watchlist', 'upsert', channel, { values: row, onConflict: 'id' });
     } catch(err) {
       console.error('Supabase addToWatchlist error:', err.message);
     }
   }
 
-  async removeFromWatchlist(id) {
+  async removeFromWatchlist(id, channel = 'marved') {
     try {
-      await this.client
-        .from('mod_watchlist')
-        .delete()
-        .eq('id', id);
+      await this.secureDb('mod_watchlist', 'delete', channel, { filters: { id } });
     } catch(err) {
       console.error('Supabase removeFromWatchlist error:', err.message);
     }
@@ -459,14 +461,7 @@ class SupabaseService {
   async getTelegramConfig(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('telegram_config')
-        .select('*')
-        .in('id', [cleanChan, 'default'])
-        .order('id', { ascending: true }) // custom channel first or fallback
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await this.secureDb('telegram_config', 'select', cleanChan, { maybeSingle: true });
       return data ? { botToken: data.bot_token, chatId: data.chat_id, claimUrl: data.claim_url } : null;
     } catch(err) {
       console.error('Supabase getTelegramConfig error:', err.message);
@@ -477,15 +472,13 @@ class SupabaseService {
   async saveTelegramConfig(config, channel = 'marved') {
     try {
       const cleanChan = (channel || config.channel || 'marved').toLowerCase().replace('#', '');
-      await this.client
-        .from('telegram_config')
-        .upsert({
+      await this.secureDb('telegram_config', 'upsert', cleanChan, { values: {
           id: cleanChan,
           bot_token: config.botToken || '',
           chat_id: config.chatId || '',
           claim_url: config.claimUrl || '',
           updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        }, onConflict: 'id' });
     } catch(err) {
       console.error('Supabase saveTelegramConfig error:', err.message);
     }
@@ -495,12 +488,10 @@ class SupabaseService {
   async getModChat(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('mod_chat')
-        .select('*')
-        .order('created_at', { ascending: true })
-        .limit(100);
-      if (error) throw error;
+      const data = await this.secureDb('mod_chat', 'select', cleanChan, {
+        order: { column: 'created_at', ascending: true },
+        limit: 100
+      });
       return (data || []).map(r => ({
         id: r.id,
         channel: r.channel || cleanChan,
@@ -520,14 +511,13 @@ class SupabaseService {
     try {
       const row = {
         id: msg.id || ('chat_' + Date.now()),
+        channel: this.normalizeChannel(channel),
         sender: msg.senderName || msg.sender || 'Mod',
         message: msg.text || msg.message || '',
         color: msg.senderColor || msg.color || '#00f0ff',
         created_at: new Date(msg.timestamp || Date.now()).toISOString()
       };
-      await this.client
-        .from('mod_chat')
-        .upsert(row, { onConflict: 'id' });
+      await this.secureDb('mod_chat', 'upsert', channel, { values: row, onConflict: 'id' });
       return await this.getModChat(channel);
     } catch(err) {
       console.error('Supabase sendModChatMessage error:', err.message);
@@ -535,12 +525,9 @@ class SupabaseService {
     }
   }
 
-  async clearModChat() {
+  async clearModChat(channel = 'marved') {
     try {
-      await this.client
-        .from('mod_chat')
-        .delete()
-        .neq('id', '');
+      await this.secureDb('mod_chat', 'delete', channel);
       return [];
     } catch(err) {
       console.error('Supabase clearModChat error:', err.message);
@@ -552,45 +539,23 @@ class SupabaseService {
   async getGiveaways(channel = 'marved') {
     try {
       const cleanChan = (channel || 'marved').toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('giveaway_winners')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+      const data = await this.secureRequest('giveaways.list', { channel: cleanChan });
       return (data || []).map(r => {
         let decryptedAddr = null;
-        let needsEncryptionUpgrade = false;
 
         if (r.address) {
           if (typeof r.address === 'string') {
             if (isEncrypted(r.address)) {
               decryptedAddr = decryptAddress(r.address);
             } else {
-              // Legacy unencrypted JSON string or raw text
               try {
                 decryptedAddr = JSON.parse(r.address);
               } catch(e) {
                 decryptedAddr = r.address;
               }
-              needsEncryptionUpgrade = true;
             }
           } else if (typeof r.address === 'object') {
-            // Unencrypted jsonb object stored in Supabase
             decryptedAddr = r.address;
-            needsEncryptionUpgrade = true;
-          }
-        }
-
-        // Retroactive encryption in Supabase if found unencrypted
-        if (needsEncryptionUpgrade && decryptedAddr && typeof decryptedAddr === 'object') {
-          const enc = encryptAddress(decryptedAddr);
-          if (enc) {
-            this.client
-              .from('giveaway_winners')
-              .update({ address: enc })
-              .eq('id', r.id)
-              .then(() => {})
-              .catch(() => {});
           }
         }
 
@@ -622,30 +587,9 @@ class SupabaseService {
   async saveGiveawayWinner(winner, channel = 'marved') {
     try {
       const cleanChan = (channel || winner.channel || 'marved').toLowerCase().replace('#', '');
-      let addressToSave = null;
-      if (winner.address) {
-        if (typeof winner.address === 'object') {
-          const addressObject = { ...winner.address };
-          if ((winner.type === 'channel_points' || winner.type === 'giveaway') && !addressObject.rewardType) {
-            addressObject.rewardType = winner.type;
-          }
-          addressToSave = encryptAddress(addressObject);
-        } else if (typeof winner.address === 'string') {
-          if (isEncrypted(winner.address)) {
-            addressToSave = winner.address;
-          } else {
-            try {
-              const parsed = JSON.parse(winner.address);
-              addressToSave = encryptAddress(parsed) || winner.address;
-            } catch(e) {
-              addressToSave = encryptAddress({ raw: winner.address }) || winner.address;
-            }
-          }
-        }
-      } else if (winner.type === 'channel_points' || winner.type === 'giveaway') {
-        // Persist explicit type without requiring non-existent type/coal_size columns.
-        addressToSave = encryptAddress({ rewardType: winner.type });
-      }
+      let addressToSave = winner.address && typeof winner.address === 'object' ? { ...winner.address } : null;
+      if (!addressToSave && (winner.type === 'channel_points' || winner.type === 'giveaway')) addressToSave = { rewardType: winner.type };
+      if (addressToSave && !addressToSave.rewardType && winner.type) addressToSave.rewardType = winner.type;
 
       const row = {
         id: winner.id || ('win_' + Date.now()),
@@ -658,10 +602,7 @@ class SupabaseService {
         created_at: new Date(winner.timestamp || winner.created_at || Date.now()).toISOString()
       };
 
-      const { error } = await this.client
-        .from('giveaway_winners')
-        .upsert(row, { onConflict: 'id' });
-      if (error) throw error;
+      await this.secureRequest('giveaways.upsert', { channel: cleanChan, winner: row });
       return true;
     } catch(err) {
       console.error('Supabase saveGiveawayWinner error:', err.message);
@@ -669,13 +610,9 @@ class SupabaseService {
     }
   }
 
-  async deleteGiveawayWinner(id) {
+  async deleteGiveawayWinner(id, channel = 'marved') {
     try {
-      const { error } = await this.client
-        .from('giveaway_winners')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      await this.secureRequest('giveaways.delete', { channel: this.normalizeChannel(channel), id });
       return true;
     } catch(err) {
       console.error('Supabase deleteGiveawayWinner error:', err.message);
@@ -705,15 +642,18 @@ class SupabaseService {
   }
 
   // --- Bestrafungen (Punishments / Challenges) CRUD ---
-  async getBestrafungen() {
+  async getBestrafungen(channel = 'marved') {
     try {
+      const cleanChan = this.normalizeChannel(channel);
       const { data, error } = await this.client
         .from('bestrafungen')
         .select('*')
+        .eq('channel', cleanChan)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []).map(r => ({
-        id: r.id,
+          id: r.id,
+          channel: r.channel || cleanChan,
         name: r.name,
         status: r.status,
         executedBy: r.executed_by || null,
@@ -725,19 +665,16 @@ class SupabaseService {
     }
   }
 
-  async saveBestrafung(b) {
+  async saveBestrafung(b, channel = 'marved') {
     try {
-      const { data, error } = await this.client
-        .from('bestrafungen')
-        .upsert({
+      const data = await this.secureDb('bestrafungen', 'upsert', channel, { values: {
           id: b.id || ('pen_' + Date.now()),
+          channel: this.normalizeChannel(channel),
           name: b.name || '',
           status: b.status || 'offen',
           executed_by: b.executedBy || null,
           created_at: new Date(b.timestamp || Date.now()).toISOString()
-        }, { onConflict: 'id' })
-        .select();
-      if (error) throw error;
+        }, onConflict: 'id' });
       return data;
     } catch(err) {
       console.error('Supabase saveBestrafung error:', err.message);
@@ -745,17 +682,12 @@ class SupabaseService {
     }
   }
 
-  async updateBestrafungStatus(id, status, executedBy = null) {
+  async updateBestrafungStatus(id, status, executedBy = null, channel = 'marved') {
     try {
       const payload = { status };
       if (executedBy) payload.executed_by = executedBy;
 
-      const { data, error } = await this.client
-        .from('bestrafungen')
-        .update(payload)
-        .eq('id', id)
-        .select();
-      if (error) throw error;
+      const data = await this.secureDb('bestrafungen', 'update', channel, { values: payload, filters: { id } });
       return data;
     } catch(err) {
       console.error('Supabase updateBestrafungStatus error:', err.message);
@@ -763,13 +695,9 @@ class SupabaseService {
     }
   }
 
-  async deleteBestrafung(id) {
+  async deleteBestrafung(id, channel = 'marved') {
     try {
-      const { error } = await this.client
-        .from('bestrafungen')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      await this.secureDb('bestrafungen', 'delete', channel, { filters: { id } });
       return true;
     } catch(err) {
       console.error('Supabase deleteBestrafung error:', err.message);
@@ -783,7 +711,7 @@ class SupabaseService {
       const cleanChan = channel.toLowerCase().replace('#', '');
       const { data, error } = await this.client
         .from('qna_settings')
-        .select('*')
+        .select('channel,persons,active_person,wheel_enabled,display_duration,timer_state,updated_at')
         .eq('channel', cleanChan)
         .maybeSingle();
       if (error) throw error;
@@ -818,18 +746,14 @@ class SupabaseService {
   async saveQnASettings(channel = 'marved', settings = {}) {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('qna_settings')
-        .upsert({
+      const data = await this.secureDb('qna_settings', 'upsert', cleanChan, { values: {
           channel: cleanChan,
           persons: settings.persons || ['Marved', 'Hasty', 'Kai'],
           active_person: settings.activePerson || 'Marved',
           wheel_enabled: settings.wheelEnabled !== false,
           display_duration: settings.displayDuration || 10,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'channel' })
-        .select();
-      if (error) throw error;
+        }, onConflict: 'channel' });
       return data;
     } catch(err) {
       console.error('Supabase saveQnASettings error:', err.message);
@@ -837,15 +761,14 @@ class SupabaseService {
     }
   }
 
+  // Twitch requires the broadcaster's own token for Poll and Prediction APIs.
+  // This compatibility store should be replaced by a protected server-side broker.
   async getBroadcasterToken(channel = 'marved') {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('qna_settings')
-        .select('broadcaster_token')
-        .eq('channel', cleanChan)
-        .maybeSingle();
-      if (error) throw error;
+      const data = await this.secureDb('qna_settings', 'select', cleanChan, {
+        select: 'broadcaster_token', maybeSingle: true
+      });
       return data && data.broadcaster_token ? data.broadcaster_token : null;
     } catch(err) {
       console.error('Supabase getBroadcasterToken error:', err.message);
@@ -856,15 +779,11 @@ class SupabaseService {
   async saveBroadcasterToken(channel = 'marved', token) {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('qna_settings')
-        .upsert({
+      await this.secureDb('qna_settings', 'upsert', cleanChan, { values: {
           channel: cleanChan,
           broadcaster_token: token,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'channel' })
-        .select();
-      if (error) throw error;
+        }, onConflict: 'channel' });
       return true;
     } catch(err) {
       console.error('Supabase saveBroadcasterToken error:', err.message);
@@ -876,12 +795,9 @@ class SupabaseService {
   async getShishaSessions(channel = 'marved') {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { data, error } = await this.client
-        .from('shisha_sessions')
-        .select('*')
-        .eq('channel', cleanChan)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
+      const data = await this.secureDb('shisha_sessions', 'select', cleanChan, {
+        order: { column: 'created_at', ascending: false }
+      });
       return data || [];
     } catch(err) {
       console.error('Supabase getShishaSessions error:', err.message);
@@ -912,19 +828,23 @@ class SupabaseService {
         ended_at: session.endedAt ? new Date(session.endedAt).toISOString() : new Date().toISOString(),
         created_at: new Date().toISOString()
       };
-      let { data, error } = await this.client
-        .from('shisha_sessions')
-        .upsert(row)
-        .select();
-      if (error) {
+      let data;
+      let error = null;
+      try {
+        data = await this.secureDb('shisha_sessions', 'upsert', cleanChan, { values: row });
+      } catch (firstError) {
+        error = firstError;
         // Keep releases compatible until the optional stats migration has been applied.
         const legacyRow = { ...row };
         delete legacyRow.tobacco_items;
         delete legacyRow.electric_device;
         delete legacyRow.is_electric;
-        const legacyResult = await this.client.from('shisha_sessions').upsert(legacyRow).select();
-        data = legacyResult.data;
-        error = legacyResult.error;
+        try {
+          data = await this.secureDb('shisha_sessions', 'upsert', cleanChan, { values: legacyRow });
+          error = null;
+        } catch (legacyError) {
+          error = legacyError;
+        }
       }
       if (error) throw error;
       return {
@@ -941,13 +861,9 @@ class SupabaseService {
     }
   }
 
-  async deleteShishaSession(id) {
+  async deleteShishaSession(id, channel = 'marved') {
     try {
-      const { error } = await this.client
-        .from('shisha_sessions')
-        .delete()
-        .eq('id', id);
-      if (error) throw error;
+      await this.secureDb('shisha_sessions', 'delete', channel, { filters: { id } });
       return true;
     } catch(err) {
       console.error('Supabase deleteShishaSession error:', err.message);
@@ -973,14 +889,11 @@ class SupabaseService {
   async saveActiveTimerState(channel = 'marved', timerState) {
     try {
       const cleanChan = channel.toLowerCase().replace('#', '');
-      const { error } = await this.client
-        .from('qna_settings')
-        .upsert({
+      await this.secureDb('qna_settings', 'upsert', cleanChan, { values: {
           channel: cleanChan,
           timer_state: timerState,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'channel' });
-      if (error) throw error;
+        }, onConflict: 'channel' });
       return true;
     } catch(err) {
       return false;

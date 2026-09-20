@@ -35,6 +35,10 @@ class TwitchService {
     this.channelPointsProcessed = new Set();
     this.chatAnnouncedClaims = new Map(); // key: user_login -> timestamp
     this.qnaUserCooldowns = new Map();
+    this._cachedBroadcasterId = null;
+    this._ircVerifiedMod = false;
+    this._ircVerifiedUser = '';
+    this._ircVerifiedChannel = '';
   }
 
   getModPriorityDelay() {
@@ -62,9 +66,16 @@ class TwitchService {
     this.store.set('target_channel', this.targetChannel);
     if (prev !== this.targetChannel) {
       this._cachedBroadcasterId = null;
+      this._clearIrcModeratorVerification();
+      if (this.user) {
+        this.user.isModerator = false;
+        this.user.isBroadcaster = false;
+      }
       if (this.user && this.accessToken) {
+        const checkedChannel = this.targetChannel;
+        this.connectIRC(checkedChannel).catch(() => {});
         this.checkUserIsModerator(this.user, this.accessToken).then(modStatus => {
-          if (this.user) {
+          if (this.user && this.targetChannel === checkedChannel) {
             this.user.isModerator = !!modStatus.isModerator;
             this.user.isBroadcaster = !!modStatus.isBroadcaster;
             this.store.set('twitch_user', this.user);
@@ -157,6 +168,8 @@ class TwitchService {
           supabaseService.saveBroadcasterToken(cleanChan, cleanToken).catch(() => {});
         }
 
+        this.connectIRC(this.targetChannel).catch(() => {});
+
         return this.user;
       }
     } catch (err) {
@@ -178,19 +191,24 @@ class TwitchService {
       return { isModerator: true, isBroadcaster: true, reason: 'broadcaster' };
     }
 
-    // 2. Core trusted team check (safety fallback so core team is never locked out)
-    const TRUSTED_CORE_MODS = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg'];
+    // 2. Core trusted team check (safety fallback so core team and known mods are never locked out)
+    const TRUSTED_CORE_MODS = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg', 'ga_wo', 'zusaki', 'itzda_venom'];
     if (TRUSTED_CORE_MODS.includes(cleanLogin)) {
       return { isModerator: true, isBroadcaster: false, reason: 'core_team' };
+    }
+
+    // 3. Previously confirmed via IRC in this session
+    if (this._ircVerifiedMod && this._ircVerifiedUser === cleanLogin && this._ircVerifiedChannel === cleanChan) {
+      return { isModerator: true, isBroadcaster: false, reason: 'irc_verified' };
     }
 
     if (!token) {
       return { isModerator: false, isBroadcaster: false, reason: 'no_token' };
     }
 
-    // 3. Check via Twitch Helix API
+    // Resolve broadcaster ID
+    let broadcasterId = this._cachedBroadcasterId;
     try {
-      let broadcasterId = this._cachedBroadcasterId;
       if (!broadcasterId) {
         const uResp = await fetch(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(cleanChan)}`, {
           headers: {
@@ -207,43 +225,155 @@ class TwitchService {
         }
       }
 
-      if (broadcasterId) {
-        if (String(user.id) === String(broadcasterId)) {
-          return { isModerator: true, isBroadcaster: true, reason: 'broadcaster_id' };
-        }
+      if (broadcasterId && String(user.id) === String(broadcasterId)) {
+        return { isModerator: true, isBroadcaster: true, reason: 'broadcaster_id' };
+      }
+    } catch (err) {
+      console.warn('Twitch broadcaster resolve error:', err.message);
+    }
 
-        // Query Helix moderation moderators endpoint
-        const modResp = await fetch(`https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=${broadcasterId}&user_id=${user.id}`, {
+    // 4. Official Helix: Check user's moderated channels (user token with user:read:moderated_channels)
+    try {
+      let after = '';
+      const seenCursors = new Set();
+      do {
+        const query = new URLSearchParams({ user_id: String(user.id), first: '100' });
+        if (after) query.set('after', after);
+        const chanResp = await fetch(`https://api.twitch.tv/helix/moderation/channels?${query.toString()}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Client-Id': this.clientId
           }
         });
+        if (!chanResp.ok) break;
 
-        if (modResp.ok) {
-          const modData = await modResp.json();
-          if (modData.data && modData.data.length > 0) {
-            return { isModerator: true, isBroadcaster: false, reason: 'helix_api' };
-          }
-        } else {
-          console.warn(`Twitch moderation check returned status ${modResp.status} for ${cleanLogin}`);
+        const chanData = await chanResp.json();
+        const channels = Array.isArray(chanData.data) ? chanData.data : [];
+        const isModInTarget = channels.some(c =>
+          (c.broadcaster_login && c.broadcaster_login.toLowerCase() === cleanChan) ||
+          (c.broadcaster_id && broadcasterId && String(c.broadcaster_id) === String(broadcasterId))
+        );
+        if (isModInTarget) {
+          return { isModerator: true, isBroadcaster: false, reason: 'helix_moderated_channels' };
         }
+
+        const nextCursor = chanData.pagination && chanData.pagination.cursor;
+        if (!nextCursor || seenCursors.has(nextCursor)) break;
+        seenCursors.add(nextCursor);
+        after = nextCursor;
+      } while (after);
+    } catch (err) {
+      console.warn('Helix moderated channels check error:', err.message);
+    }
+
+    // 5. Fast IRC USERSTATE probe fallback (connects to Twitch Chat IRC to read mod badge tag)
+    try {
+      const isIrcMod = await this.probeIrcModeratorStatus(user, token, cleanChan);
+      if (isIrcMod) {
+        this._ircVerifiedMod = true;
+        this._ircVerifiedUser = cleanLogin;
+        this._ircVerifiedChannel = cleanChan;
+        return { isModerator: true, isBroadcaster: false, reason: 'irc_probe' };
       }
     } catch (err) {
-      console.error('Twitch moderator check error:', err);
+      console.warn('Twitch IRC moderator probe error:', err.message);
     }
 
     return { isModerator: false, isBroadcaster: false, reason: 'not_moderator' };
   }
 
+  async probeIrcModeratorStatus(user, token, channel, timeoutMs = 3000) {
+    if (!user || !user.login || !token) return false;
+    const cleanChan = (channel || 'marved').toLowerCase().replace('#', '').trim();
+    const cleanToken = token.replace(/^oauth:/i, '').trim();
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timer = null;
+      let ws = null;
+
+      const finish = (result) => {
+        if (!settled) {
+          settled = true;
+          if (timer) clearTimeout(timer);
+          if (ws) {
+            try { ws.close(); } catch (e) {}
+          }
+          resolve(result);
+        }
+      };
+
+      timer = setTimeout(() => finish(false), timeoutMs);
+
+      try {
+        ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+
+        ws.on('open', () => {
+          ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
+          ws.send(`PASS oauth:${cleanToken}`);
+          ws.send(`NICK ${user.login.toLowerCase()}`);
+          ws.send(`JOIN #${cleanChan}`);
+        });
+
+        ws.on('message', (data) => {
+          const rawLines = data.toString().split(/\r\n|\r|\n/);
+          for (const raw of rawLines) {
+            if (!raw) continue;
+            if (raw.startsWith('PING')) {
+              try { ws.send('PONG :tmi.twitch.tv'); } catch (e) {}
+              continue;
+            }
+            const ircMessage = this._parseIrcCommand(raw);
+            if (ircMessage.command === 'USERSTATE' && ircMessage.channel === cleanChan) {
+              const tags = this._parseTags(raw);
+              const isMod = tags['mod'] === '1' || (tags['badges'] && (tags['badges'].includes('moderator') || tags['badges'].includes('broadcaster'))) || tags['user-type'] === 'mod';
+              finish(!!isMod);
+              return;
+            }
+          }
+        });
+
+        ws.on('error', () => finish(false));
+        ws.on('close', () => finish(false));
+      } catch (err) {
+        finish(false);
+      }
+    });
+  }
+
   isUserAuthorizedMod() {
     if (!this.user || !this.user.login) return false;
     const cleanLogin = String(this.user.login).toLowerCase().trim();
-    const TRUSTED_CORE_MODS = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg'];
+    const TRUSTED_CORE_MODS = ['marved', 'bazzteedj', 'bazztee', 'flashmobnbg', 'ga_wo', 'zusaki', 'itzda_venom'];
     if (TRUSTED_CORE_MODS.includes(cleanLogin)) return true;
     const cleanChan = (this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
     if (cleanLogin === cleanChan) return true;
+    if (this._ircVerifiedMod && this._ircVerifiedUser === cleanLogin && this._ircVerifiedChannel === cleanChan) return true;
     return !!(this.user.isModerator || this.user.isBroadcaster);
+  }
+
+  _clearIrcModeratorVerification() {
+    this._ircVerifiedMod = false;
+    this._ircVerifiedUser = '';
+    this._ircVerifiedChannel = '';
+  }
+
+  _parseIrcCommand(rawMsg) {
+    let rest = String(rawMsg || '').trim();
+    if (rest.startsWith('@')) {
+      const spaceIdx = rest.indexOf(' ');
+      if (spaceIdx < 0) return { command: '', channel: '' };
+      rest = rest.substring(spaceIdx + 1).trim();
+    }
+    if (rest.startsWith(':')) {
+      const spaceIdx = rest.indexOf(' ');
+      if (spaceIdx < 0) return { command: '', channel: '' };
+      rest = rest.substring(spaceIdx + 1).trim();
+    }
+    const parts = rest.split(/\s+/);
+    const command = parts[0] || '';
+    const channelPart = parts.find(part => part.startsWith('#')) || '';
+    return { command, channel: channelPart.substring(1).toLowerCase() };
   }
 
   _parseTags(rawMsg) {
@@ -388,6 +518,24 @@ class TwitchService {
             }
 
             this.parseIrcColor(raw);
+
+            const ircMessage = this._parseIrcCommand(raw);
+            const activeIrcChannel = this.channelJoined || chan;
+            if (ircMessage.command === 'USERSTATE' && ircMessage.channel === activeIrcChannel) {
+              const tags = this._parseTags(raw);
+              const isMod = tags['mod'] === '1' || (tags['badges'] && (tags['badges'].includes('moderator') || tags['badges'].includes('broadcaster'))) || tags['user-type'] === 'mod';
+              this._clearIrcModeratorVerification();
+              if (this.user) {
+                this._ircVerifiedMod = !!isMod;
+                this._ircVerifiedUser = String(this.user.login || '').toLowerCase().trim();
+                this._ircVerifiedChannel = activeIrcChannel;
+                if (this.user.isModerator !== !!isMod) {
+                  this.user.isModerator = !!isMod;
+                  this.store.set('twitch_user', this.user);
+                  this.sendToRenderer('twitch:authenticated', { user: this.user, token: this.accessToken });
+                }
+              }
+            }
 
             if (raw.includes('PRIVMSG') || raw.includes('USERNOTICE')) {
               const tags = this._parseTags(raw);
@@ -598,7 +746,7 @@ class TwitchService {
       });
 
       this.authServer.listen(port, () => {
-        const scopes = encodeURIComponent('chat:read chat:edit channel:moderate moderation:read moderator:manage:chat_messages moderator:manage:banned_users user:read:email clips:edit channel:manage:broadcast channel:manage:polls channel:read:polls');
+        const scopes = encodeURIComponent('chat:read chat:edit channel:moderate moderation:read user:read:moderated_channels moderator:manage:chat_messages moderator:manage:banned_users user:read:email clips:edit channel:manage:broadcast channel:manage:polls channel:read:polls channel:manage:predictions');
         const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${this.clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scopes}`;
         shell.openExternal(authUrl);
         resolve(authUrl);
@@ -615,6 +763,7 @@ class TwitchService {
     this.user = null;
     this.store.delete('twitch_access_token');
     this.store.delete('twitch_user');
+    this._clearIrcModeratorVerification();
     this.disconnectIRC();
     this.sendToRenderer('twitch:logout', {});
   }
@@ -1332,12 +1481,10 @@ class TwitchService {
     }
 
     let useToken = this.accessToken;
-    // If the logged-in user is not the broadcaster, try to use the stored broadcaster token from Supabase
+    // Polls require a token belonging to the broadcaster, not the logged-in moderator.
     if (!this.user || this.user.id !== broadcasterId) {
-      const bToken = await supabaseService.getBroadcasterToken(chan);
-      if (bToken) {
-        useToken = bToken;
-      }
+      const broadcasterToken = await supabaseService.getBroadcasterToken(chan);
+      if (broadcasterToken) useToken = broadcasterToken;
     }
 
     if (!useToken) {
@@ -1469,9 +1616,10 @@ class TwitchService {
     };
 
     let useToken = this.accessToken;
+    // Predictions require a token belonging to the broadcaster.
     if (!this.user || this.user.id !== broadcasterId) {
-      const bToken = await supabaseService.getBroadcasterToken(chan);
-      if (bToken) useToken = bToken;
+      const broadcasterToken = await supabaseService.getBroadcasterToken(chan);
+      if (broadcasterToken) useToken = broadcasterToken;
     }
 
     if (!useToken) {
@@ -1520,8 +1668,8 @@ class TwitchService {
 
     let useToken = this.accessToken;
     if (!this.user || this.user.id !== broadcasterId) {
-      const bToken = await supabaseService.getBroadcasterToken(chan);
-      if (bToken) useToken = bToken;
+      const broadcasterToken = await supabaseService.getBroadcasterToken(chan);
+      if (broadcasterToken) useToken = broadcasterToken;
     }
 
     try {
@@ -1550,8 +1698,8 @@ class TwitchService {
 
     let useToken = this.accessToken;
     if (!this.user || this.user.id !== broadcasterId) {
-      const bToken = await supabaseService.getBroadcasterToken(chan);
-      if (bToken) useToken = bToken;
+      const broadcasterToken = await supabaseService.getBroadcasterToken(chan);
+      if (broadcasterToken) useToken = broadcasterToken;
     }
 
     const bodyData = {

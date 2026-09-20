@@ -1,0 +1,4 @@
+project_id = "gdaprclycouoxtffcuxb"
+
+[functions.channel-api]
+verify_jwt = false

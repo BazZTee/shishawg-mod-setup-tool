@@ -967,6 +967,7 @@
 
   <script>
     const SUPABASE_REST = 'https://gdaprclycouoxtffcuxb.supabase.co/rest/v1';
+    const SECURE_API_URL = 'https://gdaprclycouoxtffcuxb.supabase.co/functions/v1/channel-api';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_QrSzf1SeHsgwIfbhbwQeGw_H7CkoJsV';
 
     const reqHeaders = {
@@ -975,6 +976,26 @@
       'Content-Type': 'application/json',
       'Prefer': 'return=representation'
     };
+
+    async function secureDb(table, operation, values = null, filters = {}, options = {}, tokenOverride = '') {
+      const twitchToken = tokenOverride || localStorage.getItem('prompter_twitch_token') || '';
+      if (!twitchToken) throw new Error('Bitte zuerst mit Twitch anmelden.');
+      const response = await fetch(SECURE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          'x-twitch-token': twitchToken
+        },
+        body: JSON.stringify({
+          action: 'db', table, operation, channel: targetChannel,
+          values, filters, ...options
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Geschützter Datenzugriff fehlgeschlagen.');
+      return result.data;
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
@@ -1002,18 +1023,14 @@
     async function syncAllData() {
       try {
         // 1. Fetch Questions
-        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?select=*&order=created_at.desc`, {
+        const qRes = await fetch(`${SUPABASE_REST}/qna_questions?channel=eq.${encodeURIComponent(targetChannel)}&select=*&order=created_at.desc`, {
           headers: reqHeaders,
           cache: 'no-store'
         });
         if (qRes.ok) {
           const qData = await qRes.json();
           if (Array.isArray(qData)) {
-            let filtered = qData.filter(r => !r.channel || r.channel.toLowerCase().replace('#', '') === targetChannel);
-            if (filtered.length === 0 && qData.length > 0) {
-              filtered = qData;
-            }
-            currentQuestions = filtered.map(r => ({
+            currentQuestions = qData.map(r => ({
               id: r.id,
               channel: r.channel,
               login: r.login,
@@ -1033,14 +1050,15 @@
 
       try {
         // 2. Fetch Settings
-        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?select=*&order=updated_at.desc`, {
+        const settingsFields = 'channel,persons,active_person,wheel_enabled,display_duration,timer_state,updated_at';
+        const sRes = await fetch(`${SUPABASE_REST}/qna_settings?channel=eq.${encodeURIComponent(targetChannel)}&select=${settingsFields}&order=updated_at.desc`, {
           headers: reqHeaders,
           cache: 'no-store'
         });
         if (sRes.ok) {
           const sData = await sRes.json();
           if (Array.isArray(sData) && sData.length > 0) {
-            const s = sData.find(x => x.channel && x.channel.toLowerCase().replace('#', '') === targetChannel) || sData[0];
+            const s = sData[0];
             if (Array.isArray(s.persons) && s.persons.length > 0) {
               qnaSettings.persons = s.persons;
             }
@@ -1055,7 +1073,7 @@
 
       try {
         // 3. Fetch Bestrafungen
-        const bRes = await fetch(`${SUPABASE_REST}/bestrafungen?select=*&order=created_at.desc`, {
+        const bRes = await fetch(`${SUPABASE_REST}/bestrafungen?channel=eq.${encodeURIComponent(targetChannel)}&select=*&order=created_at.desc`, {
           headers: reqHeaders,
           cache: 'no-store'
         });
@@ -1158,18 +1176,14 @@
 
     async function saveSettingsRemote() {
       try {
-        await fetch(`${SUPABASE_REST}/qna_settings?on_conflict=channel`, {
-          method: 'POST',
-          headers: Object.assign({}, reqHeaders, { 'Prefer': 'resolution=merge-duplicates' }),
-          body: JSON.stringify({
+        await secureDb('qna_settings', 'upsert', {
             channel: targetChannel,
             persons: qnaSettings.persons,
             active_person: qnaSettings.activePerson,
             wheel_enabled: qnaSettings.wheelEnabled,
             display_duration: qnaSettings.displayDuration,
             updated_at: new Date().toISOString()
-          })
-        });
+          }, {}, { onConflict: 'channel' });
       } catch(e) {}
     }
 
@@ -1190,21 +1204,13 @@
 
         try {
           // Reset any other on_air questions
-          await fetch(`${SUPABASE_REST}/qna_questions?status=eq.on_air`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({ status: 'approved', updated_at: new Date().toISOString() })
-          });
+          await secureDb('qna_questions', 'update', { status: 'approved', updated_at: new Date().toISOString() }, { status: 'on_air' });
 
           // Set chosen question to on_air
-          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(randomQ.id)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({
+          await secureDb('qna_questions', 'update', {
               status: 'on_air',
               updated_at: new Date().toISOString()
-            })
-          });
+            }, { id: randomQ.id });
         } catch(e) {}
 
         syncAllData();
@@ -1239,15 +1245,11 @@
         renderScreenPrompter();
 
         try {
-          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(qId)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({
+          await secureDb('qna_questions', 'update', {
               status: 'answered',
               answered_by: pName,
               updated_at: new Date().toISOString()
-            })
-          });
+            }, { id: qId });
         } catch(e) {}
 
         await cycleToNextPerson();
@@ -1269,15 +1271,11 @@
           renderScreenPrompter();
 
           try {
-            await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(qId)}`, {
-              method: 'PATCH',
-              headers: reqHeaders,
-              body: JSON.stringify({
+            await secureDb('qna_questions', 'update', {
                 status: 'rejected',
                 answered_by: pName,
                 updated_at: new Date().toISOString()
-              })
-            });
+              }, { id: qId });
           } catch(e) {}
 
           await cycleToNextPerson();
@@ -1473,26 +1471,18 @@
       btnWheelDone.addEventListener('click', async () => {
         const pName = qnaSettings.activePerson;
         if (selectedBestrafung) {
-          await fetch(`${SUPABASE_REST}/bestrafungen?id=eq.${encodeURIComponent(selectedBestrafung.id)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({
+          await secureDb('bestrafungen', 'update', {
               status: 'erledigt',
               executed_by: pName
-            })
-          });
+            }, { id: selectedBestrafung.id });
         }
         if (activeQuestion) {
           // Question was replaced by challenge, so mark question rejected/answered with answered_by
-          await fetch(`${SUPABASE_REST}/qna_questions?id=eq.${encodeURIComponent(activeQuestion.id)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({
+          await secureDb('qna_questions', 'update', {
               status: 'rejected',
               answered_by: pName,
               updated_at: new Date().toISOString()
-            })
-          });
+            }, { id: activeQuestion.id });
           activeQuestion = null;
         }
         document.getElementById('wheel-modal').classList.remove('active');
@@ -1505,14 +1495,10 @@
       btnWheelSpinAgain.addEventListener('click', async () => {
         const pName = qnaSettings.activePerson;
         if (selectedBestrafung) {
-          await fetch(`${SUPABASE_REST}/bestrafungen?id=eq.${encodeURIComponent(selectedBestrafung.id)}`, {
-            method: 'PATCH',
-            headers: reqHeaders,
-            body: JSON.stringify({
+          await secureDb('bestrafungen', 'update', {
               status: 'erledigt',
               executed_by: pName
-            })
-          });
+            }, { id: selectedBestrafung.id });
         }
         document.getElementById('wheel-winner-card').classList.remove('show');
         await syncAllData();
@@ -1669,22 +1655,18 @@
             const uLogin = (twitchUser.login || '').toLowerCase();
             const uName = twitchUser.display_name || twitchUser.login;
 
-            // Save to localStorage for prompter session
-            localStorage.setItem('prompter_twitch_token', token);
-            localStorage.setItem('prompter_twitch_user', uName);
-
-            // If user is broadcaster, persist token to Supabase for desktop tool 1-click polls
+            // Twitch Polls and Predictions require the broadcaster's own token.
             if (uLogin === targetChannel.toLowerCase()) {
-              await fetch(`${SUPABASE_REST}/qna_settings?on_conflict=channel`, {
-                method: 'POST',
-                headers: Object.assign({}, reqHeaders, { 'Prefer': 'resolution=merge-duplicates' }),
-                body: JSON.stringify({
+              await secureDb('qna_settings', 'upsert', {
                   channel: targetChannel,
                   broadcaster_token: token,
                   updated_at: new Date().toISOString()
-                })
-              });
+                }, {}, { onConflict: 'channel' }, token);
             }
+
+            // Save locally only after all required cloud data was persisted successfully.
+            localStorage.setItem('prompter_twitch_token', token);
+            localStorage.setItem('prompter_twitch_user', uName);
 
             unlockPrompterUI(uName);
             syncAllData();
@@ -1727,7 +1709,7 @@
     if (btnGateLogin) {
       btnGateLogin.addEventListener('click', () => {
         const redirectUri = window.location.origin + window.location.pathname;
-        const scopes = encodeURIComponent('channel:manage:polls channel:read:polls chat:read user:read:email');
+        const scopes = encodeURIComponent('channel:manage:polls channel:read:polls channel:manage:predictions chat:read user:read:email');
         const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=440sjk1dkut7ltxkf7b3p267dekbpu&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${scopes}`;
         window.location.href = authUrl;
       });

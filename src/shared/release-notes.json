@@ -1,47 +1,47 @@
 {
-  "version": "8.0.0",
-  "title": "Neu in Version 8.0.0",
-  "intro": "Das bisher größte Update: ein komplett erneuerter Arbeitsplatz mit verbundenen Live-Funktionen, freiem Dashboard und vielen Verbesserungen im gesamten Tool.",
+  "version": "8.0.1",
+  "title": "Neu in Version 8.0.1",
+  "intro": "Dieses Sicherheitsupdate trennt alle Arbeitsbereiche zuverlässig nach Twitch-Kanal und schützt interne Cloud-Daten durch eine serverseitige Berechtigungsprüfung.",
   "items": [
     {
       "icon": "🧭",
-      "title": "Komplett neuer Workspace",
-      "description": "Neue Navigation, Schnellsuche, einheitliches Design und übersichtlichere Arbeitsbereiche für alle Stream-Werkzeuge."
+      "title": "Sichere Kanaltrennung",
+      "description": "Adressdaten, Mod-Chat, Watchlist, Q&A, Statistiken und weitere Cloud-Daten bleiben strikt beim jeweils berechtigten Twitch-Kanal."
     },
     {
       "icon": "🧩",
-      "title": "Dein persönliches Dashboard",
-      "description": "Module frei zusammenstellen, wie in einer Profi-Oberfläche andocken, als Tabs gruppieren, verschieben, einklappen und in der Größe anpassen."
+      "title": "Geschützte Cloud-Zugriffe",
+      "description": "Interne Lese- und Schreibvorgänge laufen über eine serverseitige Twitch- und Moderatorprüfung statt über offene Datenbankrechte."
     },
     {
       "icon": "💨",
-      "title": "Setup, Timer und Statistik erweitert",
-      "description": "Gerauchte Köpfe nachträglich bearbeiten, Top-10-Ranglisten auswerten und aktive Sessions zwischen Hauptansicht und Dashboard synchron halten."
+      "title": "Adressannahme abgesichert",
+      "description": "Gewinner müssen zum Gewinn passen; neue Adressen werden bereits vor der Speicherung in Supabase serverseitig verschlüsselt."
     },
     {
       "icon": "💬",
-      "title": "Mod-HQ und Chats ausgebaut",
-      "description": "Gemeinsamer Mod-Chat, Twitch-Livechat, 7TV-Emotes, Antworten, Watchlist, Pinnwand und direkt beantwortbare Chat-Benachrichtigungen."
+      "title": "Moderator-Erkennung verbessert",
+      "description": "Offizielle Twitch-Prüfung, kanalgebundene Chat-Erkennung und sichere Behandlung von Profilwechseln verhindern falsche Freischaltungen."
     },
     {
       "icon": "🎁",
-      "title": "Giveaways und Adressen neu organisiert",
-      "description": "Live-Auslosung und Adressverwaltung sind klar getrennt, sensible Daten geschützt und Telegram-Übergaben zuverlässiger."
+      "title": "Polls und Vorhersagen bleiben erhalten",
+      "description": "Der notwendige Broadcaster-Token bleibt geschützt verfügbar und wird weiterhin für Twitch-Umfragen und Vorhersagen verwendet."
     },
     {
       "icon": "📣",
-      "title": "Mehr Live-Werkzeuge",
-      "description": "Q&A, Bestrafungen und Challenges, Umfragen, Vorhersagen, YouTube-Finder, Stream-Aktionen und OBS-Overlays arbeiten direkt mit den gemeinsamen Daten."
+      "title": "Webseiten ebenfalls geschützt",
+      "description": "Claim-Portal und Q&A-Steuerung schreiben nicht mehr direkt in interne Tabellen, während öffentliche OBS-Anzeigen weiter funktionieren."
     },
     {
       "icon": "👥",
-      "title": "Profile und Kanäle verbessert",
-      "description": "Streamer-Profile, Twitch- und YouTube-Kanäle, Team-Personen sowie mehrere Shop-Rabattcodes lassen sich zentral verwalten."
+      "title": "Bestehende Daten übernommen",
+      "description": "Vorhandene Datensätze bleiben dem ursprünglichen Marved-Arbeitsbereich zugeordnet und lokale Ersatzdaten werden ebenfalls getrennt."
     },
     {
       "icon": "🛡️",
-      "title": "Stabiler und sicherer",
-      "description": "Automatische Twitch-Moderatorprüfung zum Schutz sensibler Adressen und Mod-Tools, sichtbare Datenbank-Fehlerbehandlung und zahlreiche Verbesserungen im Hintergrund."
+      "title": "Fehlerpfade abgesichert",
+      "description": "Auch bei Cloud-Ausfällen oder fehlender Berechtigung werden keine fremden lokalen Adress- oder Kanaldaten mehr ausgeliefert."
     }
   ]
 }

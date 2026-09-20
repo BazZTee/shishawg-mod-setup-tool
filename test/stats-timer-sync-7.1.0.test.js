@@ -92,17 +92,8 @@ test('history rows expose an editor that updates the existing session', () => {
 
 test('session saves surface cloud database failures while preserving the local fallback', async () => {
   const service = require('../src/main/supabaseService');
-  service.client = {
-    from() {
-      return {
-        upsert() {
-          return {
-            select: async () => ({ data: null, error: new Error('DB offline') })
-          };
-        }
-      };
-    }
-  };
+  const originalSecureDb = service.secureDb;
+  service.secureDb = async () => { throw new Error('DB offline'); };
 
   const originalConsoleError = console.error;
   console.error = () => {};
@@ -112,6 +103,7 @@ test('session saves surface cloud database failures while preserving the local f
     assert.match(result.error, /DB offline/);
   } finally {
     console.error = originalConsoleError;
+    service.secureDb = originalSecureDb;
   }
 
   const main = read('src/main/main.js');

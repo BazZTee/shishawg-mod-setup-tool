@@ -912,31 +912,53 @@ class DatabaseService {
   }
 
   // Mod-Chat Messages (Local Offline Fallback)
-  async getModChatMessages() {
-    return this._readFile('mod_chat_messages.json', []);
+  _normalizeChannel(channel = 'marved') {
+    return String(channel || 'marved').toLowerCase().replace('#', '').trim();
   }
 
-  async sendModChatMessage(msgObj) {
+  _rowBelongsToChannel(row, channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
+    return this._normalizeChannel(row && row.channel ? row.channel : 'marved') === cleanChan;
+  }
+
+  async getModChatMessages(channel = 'marved') {
+    const messages = this._readFile('mod_chat_messages.json', []);
+    return Array.isArray(messages) ? messages.filter(msg => this._rowBelongsToChannel(msg, channel)) : [];
+  }
+
+  async sendModChatMessage(msgObj, channel = 'marved') {
     let msgs = this._readFile('mod_chat_messages.json', []);
-    msgs.push(msgObj);
-    msgs = msgs.slice(-100);
+    const cleanChan = this._normalizeChannel(channel);
+    msgs.push({ ...msgObj, channel: cleanChan });
+    const channelMessages = msgs.filter(msg => this._rowBelongsToChannel(msg, cleanChan));
+    if (channelMessages.length > 100) {
+      const removeIds = new Set(channelMessages.slice(0, channelMessages.length - 100).map(msg => msg.id));
+      msgs = msgs.filter(msg => !this._rowBelongsToChannel(msg, cleanChan) || !removeIds.has(msg.id));
+    }
     this._writeFile('mod_chat_messages.json', msgs);
-    return msgs;
+    return msgs.filter(msg => this._rowBelongsToChannel(msg, cleanChan));
   }
 
-  async clearModChatMessages() {
-    this._writeFile('mod_chat_messages.json', []);
+  async clearModChatMessages(channel = 'marved') {
+    const msgs = this._readFile('mod_chat_messages.json', []);
+    const remaining = Array.isArray(msgs) ? msgs.filter(msg => !this._rowBelongsToChannel(msg, channel)) : [];
+    this._writeFile('mod_chat_messages.json', remaining);
     return [];
   }
 
   // Watchlist (Local Offline Fallback)
-  async getWatchlist() {
-    return this._readFile('mod_watchlist.json', []);
+  async getWatchlist(channel = 'marved') {
+    const list = this._readFile('mod_watchlist.json', []);
+    return Array.isArray(list) ? list.filter(item => this._rowBelongsToChannel(item, channel)) : [];
   }
 
-  async saveWatchlist(list) {
-    this._writeFile('mod_watchlist.json', list);
-    return list;
+  async saveWatchlist(list, channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
+    const current = this._readFile('mod_watchlist.json', []);
+    const otherChannels = Array.isArray(current) ? current.filter(item => !this._rowBelongsToChannel(item, cleanChan)) : [];
+    const scopedList = (Array.isArray(list) ? list : []).map(item => ({ ...item, channel: cleanChan }));
+    this._writeFile('mod_watchlist.json', [...otherChannels, ...scopedList]);
+    return scopedList;
   }
 
   // Stream Markers (Session Cache)
@@ -950,7 +972,7 @@ class DatabaseService {
   }
 
   // Giveaway Winners & DSGVO Address Database (Local Offline Fallback)
-  async getGiveawayWinners() {
+  async getGiveawayWinners(channel = 'marved') {
     const decryptList = (arr) => {
       if (!Array.isArray(arr)) return [];
       return arr.map(w => {
@@ -962,36 +984,40 @@ class DatabaseService {
     };
 
     const localList = this._readFile('giveaway_winners.json', []);
-    return decryptList(localList);
+    return decryptList(localList).filter(winner => this._rowBelongsToChannel(winner, channel));
   }
 
-  async saveGiveawayWinner(winnerObj) {
+  async saveGiveawayWinner(winnerObj, channel = 'marved') {
     let list = this._readFile('giveaway_winners.json', []);
-    const idx = list.findIndex(w => w.id === winnerObj.id);
+    const cleanChan = this._normalizeChannel(channel);
+    const scopedWinner = { ...winnerObj, channel: cleanChan };
+    const idx = list.findIndex(w => w.id === winnerObj.id && this._rowBelongsToChannel(w, cleanChan));
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...winnerObj };
+      list[idx] = { ...list[idx], ...scopedWinner };
     } else {
-      list.unshift(winnerObj);
+      list.unshift(scopedWinner);
     }
     this._writeFile('giveaway_winners.json', list);
-    return list;
+    return this.getGiveawayWinners(cleanChan);
   }
 
-  async updateGiveawayWinner(id, updates) {
+  async updateGiveawayWinner(id, updates, channel = 'marved') {
     let list = this._readFile('giveaway_winners.json', []);
-    const idx = list.findIndex(w => w.id === id);
+    const cleanChan = this._normalizeChannel(channel);
+    const idx = list.findIndex(w => w.id === id && this._rowBelongsToChannel(w, cleanChan));
     if (idx >= 0) {
-      list[idx] = { ...list[idx], ...updates };
+      list[idx] = { ...list[idx], ...updates, channel: cleanChan };
       this._writeFile('giveaway_winners.json', list);
     }
-    return list;
+    return this.getGiveawayWinners(cleanChan);
   }
 
-  async deleteGiveawayWinner(id) {
+  async deleteGiveawayWinner(id, channel = 'marved') {
     let list = this._readFile('giveaway_winners.json', []);
-    list = list.filter(w => w.id !== id);
+    const cleanChan = this._normalizeChannel(channel);
+    list = list.filter(w => w.id !== id || !this._rowBelongsToChannel(w, cleanChan));
     this._writeFile('giveaway_winners.json', list);
-    return list;
+    return this.getGiveawayWinners(cleanChan);
   }
 
   // Telegram Bot Dispatch
@@ -1059,58 +1085,77 @@ class DatabaseService {
   }
 
   // --- Q&A Questions & Moderation (Local Offline Fallback) ---
-  async getQnAQuestions() {
+  async getQnAQuestions(channel = 'marved') {
     const questions = this._readFile('qna_questions.json', []);
-    return Array.isArray(questions) ? questions : [];
+    return Array.isArray(questions) ? questions.filter(q => this._rowBelongsToChannel(q, channel)) : [];
   }
 
-  async saveQnAQuestions(questions) {
+  async saveQnAQuestions(questions, channel = 'marved') {
     const now = Date.now();
+    const cleanChan = this._normalizeChannel(channel);
     const updatedQuestions = (questions || []).map(q => ({
       ...q,
+      channel: cleanChan,
       updatedAt: q.updatedAt || now
     }));
-    this._writeFile('qna_questions.json', updatedQuestions);
+    const current = this._readFile('qna_questions.json', []);
+    const otherChannels = Array.isArray(current) ? current.filter(q => !this._rowBelongsToChannel(q, cleanChan)) : [];
+    this._writeFile('qna_questions.json', [...otherChannels, ...updatedQuestions]);
     return updatedQuestions;
   }
 
-  async deleteQnAQuestion(questionId) {
+  async deleteQnAQuestion(questionId, channel = 'marved') {
     try {
-      let questions = await this.getQnAQuestions();
-      questions = questions.filter(q => q.id !== questionId);
+      let questions = this._readFile('qna_questions.json', []);
+      const cleanChan = this._normalizeChannel(channel);
+      if (!Array.isArray(questions)) questions = [];
+      questions = questions.filter(q => q.id !== questionId || !this._rowBelongsToChannel(q, cleanChan));
       return this._writeFile('qna_questions.json', questions);
     } catch(e) {
       return false;
     }
   }
 
-  async deleteAllQnAQuestions() {
-    return this._writeFile('qna_questions.json', []);
+  async deleteAllQnAQuestions(channel = 'marved') {
+    const questions = this._readFile('qna_questions.json', []);
+    const remaining = Array.isArray(questions) ? questions.filter(q => !this._rowBelongsToChannel(q, channel)) : [];
+    return this._writeFile('qna_questions.json', remaining);
   }
 
-  async deleteAnsweredQnAQuestions() {
+  async deleteAnsweredQnAQuestions(channel = 'marved') {
     try {
-      let questions = await this.getQnAQuestions();
-      questions = questions.filter(q => q.status !== 'answered');
+      let questions = this._readFile('qna_questions.json', []);
+      const cleanChan = this._normalizeChannel(channel);
+      if (!Array.isArray(questions)) questions = [];
+      questions = questions.filter(q => q.status !== 'answered' || !this._rowBelongsToChannel(q, cleanChan));
       return this._writeFile('qna_questions.json', questions);
     } catch(e) {
       return false;
     }
   }
 
-  async getActiveQnAQuestion() {
+  async getActiveQnAQuestion(channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
     const raw = this._readFile('qna_active.json', { active: null, updatedAt: 0 });
+    if (raw && raw.channels && typeof raw.channels === 'object') {
+      return raw.channels[cleanChan]?.active || null;
+    }
+    if (cleanChan !== 'marved') return null;
     if (raw && typeof raw === 'object' && 'active' in raw) {
       return raw.active;
     }
     return (raw && raw.active !== undefined) ? raw.active : (raw || null);
   }
 
-  async setActiveQnAQuestion(activeObj) {
-    const data = {
-      active: activeObj,
-      updatedAt: Date.now()
-    };
+  async setActiveQnAQuestion(activeObj, channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
+    const raw = this._readFile('qna_active.json', { channels: {} });
+    const channels = raw && raw.channels && typeof raw.channels === 'object' ? { ...raw.channels } : {};
+    if (!raw.channels && (raw.active || raw.updatedAt)) {
+      channels.marved = { active: raw.active || null, updatedAt: raw.updatedAt || 0 };
+    }
+    channels[cleanChan] = { active: activeObj, updatedAt: Date.now() };
+    const data = { channels };
     this._writeFile('qna_active.json', data);
     return activeObj;
   }
@@ -1161,22 +1206,34 @@ class DatabaseService {
   }
 
   // --- Shisha Sessions Local Persistence ---
-  getShishaSessions() {
+  getShishaSessions(channel = 'marved') {
     const loaded = this._readFile('shisha_sessions.json', []);
-    return Array.isArray(loaded) ? loaded : [];
+    return Array.isArray(loaded) ? loaded.filter(session => this._rowBelongsToChannel(session, channel)) : [];
   }
 
-  saveShishaSessions(sessions) {
-    this._writeFile('shisha_sessions.json', sessions);
-    return sessions;
+  saveShishaSessions(sessions, channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
+    const current = this._readFile('shisha_sessions.json', []);
+    const otherChannels = Array.isArray(current) ? current.filter(session => !this._rowBelongsToChannel(session, cleanChan)) : [];
+    const scopedSessions = (Array.isArray(sessions) ? sessions : []).map(session => ({ ...session, channel: cleanChan }));
+    this._writeFile('shisha_sessions.json', [...otherChannels, ...scopedSessions]);
+    return scopedSessions;
   }
 
-  getActiveTimerState() {
-    return this._readFile('shisha_timer.json', null);
+  getActiveTimerState(channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
+    const raw = this._readFile('shisha_timer.json', null);
+    if (raw && raw.channels && typeof raw.channels === 'object') return raw.channels[cleanChan] || null;
+    return cleanChan === 'marved' ? raw : null;
   }
 
-  saveActiveTimerState(timerState) {
-    this._writeFile('shisha_timer.json', timerState);
+  saveActiveTimerState(timerState, channel = 'marved') {
+    const cleanChan = this._normalizeChannel(channel);
+    const raw = this._readFile('shisha_timer.json', null);
+    const channels = raw && raw.channels && typeof raw.channels === 'object' ? { ...raw.channels } : {};
+    if (raw && !raw.channels) channels.marved = raw;
+    channels[cleanChan] = timerState;
+    this._writeFile('shisha_timer.json', { channels });
     return timerState;
   }
 }

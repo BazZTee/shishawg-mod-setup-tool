@@ -7475,6 +7475,159 @@ input#qa-yt-search-input:focus {
   color: var(--text-secondary, #b7c5da);
 }
 
+.catalog-widget-summary-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.catalog-widget-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.catalog-widget-presence > span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.8);
+}
+
+.catalog-widget-action-label {
+  color: #d8e8ff;
+  background: rgba(147, 197, 253, 0.1);
+  border: 1px solid rgba(147, 197, 253, 0.22);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.catalog-widget-summary:hover .catalog-widget-action-label {
+  background: rgba(147, 197, 253, 0.18);
+  border-color: rgba(147, 197, 253, 0.38);
+}
+
+.dashboard-source-feature-hidden {
+  display: none !important;
+}
+
+.dashboard-embedded-source-view {
+  position: static !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  overflow: visible !important;
+}
+
+.dashboard-embedded-source-view > .tool-sub-header .btn-back-hub,
+.dashboard-embedded-source-view > .tool-sub-header .tool-breadcrumb,
+.dashboard-embedded-source-view > .tool-sub-header > .sub-header-left {
+  display: none !important;
+}
+
+.dashboard-embedded-source-view > .tool-sub-header {
+  min-height: 0;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.dashboard-embedded-source-view > .tool-sub-header:not(:has(.sub-header-actions, .gw-header-actions)) {
+  display: none !important;
+}
+
+.dashboard-embedded-source-view > .tool-sub-header:empty,
+.dashboard-embedded-source-view .qna-sidebar-panel:not(:has(> :not(.dashboard-source-feature-hidden))),
+.dashboard-embedded-source-view .giveaway-sidebar-panel:not(:has(> :not(.dashboard-source-feature-hidden))) {
+  display: none !important;
+}
+
+.dashboard-embedded-source-view .hq-tools-grid:not(:has(> :not(.dashboard-source-feature-hidden))),
+.dashboard-embedded-source-view .sa-library:not(:has([data-dashboard-source-feature]:not(.dashboard-source-feature-hidden))) {
+  display: none !important;
+}
+
+/* Reduced modules must reclaim columns that belonged to deselected features. */
+.dashboard-embedded-source-view#view-modchat[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="publicchat"]) .modhq-grid-container,
+.dashboard-embedded-source-view#view-modchat[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="teamchat"]) .modhq-grid-container,
+.dashboard-embedded-source-view#view-giveaways[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="configuration"]) .giveaway-live-grid,
+.dashboard-embedded-source-view#view-giveaways[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="winner"]):not([data-dashboard-enabled-features~="participants"]) .giveaway-live-grid,
+.dashboard-embedded-source-view#view-giveaways[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="history"]) .giveaway-fulfillment-grid,
+.dashboard-embedded-source-view#view-giveaways[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="addresses"]) .giveaway-fulfillment-grid,
+.dashboard-embedded-source-view#view-qna[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="round"]) .qna-grid-container,
+.dashboard-embedded-source-view#view-qna[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="onair"]):not([data-dashboard-enabled-features~="inbox"]) .qna-grid-container,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="poll-live"]):not([data-dashboard-enabled-features~="poll-presets"]) #panel-mode-polls,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="poll-create"]):not([data-dashboard-enabled-features~="poll-saved"]) #panel-mode-polls,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="prediction-live"]):not([data-dashboard-enabled-features~="prediction-presets"]) #panel-mode-predictions,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="prediction-create"]):not([data-dashboard-enabled-features~="prediction-saved"]) #panel-mode-predictions {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.dashboard-embedded-source-view#view-qna[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="onair"]):not([data-dashboard-enabled-features~="inbox"]) .qna-main-panel,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="poll-live"]):not([data-dashboard-enabled-features~="poll-presets"]) #panel-mode-polls > .qna-main-panel,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="poll-create"]):not([data-dashboard-enabled-features~="poll-saved"]) #panel-mode-polls > .qna-sidebar-panel,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="prediction-live"]):not([data-dashboard-enabled-features~="prediction-presets"]) #panel-mode-predictions > .qna-main-panel,
+.dashboard-embedded-source-view#view-polls[data-dashboard-enabled-features]:not([data-dashboard-enabled-features~="prediction-create"]):not([data-dashboard-enabled-features~="prediction-saved"]) #panel-mode-predictions > .qna-sidebar-panel {
+  display: none !important;
+}
+
+.custom-widget-body:has(> .dashboard-embedded-source-view) {
+  padding: 16px;
+  overflow: auto;
+  container-type: inline-size;
+}
+
+@container (max-width: 760px) {
+  .dashboard-embedded-source-view :is(
+    .qa-grid-container,
+    .modhq-grid-container,
+    .giveaway-grid-container,
+    .giveaway-fulfillment-grid,
+    .qna-grid-container,
+    .polls-grid-container,
+    .stats-analytics-grid,
+    .hq-tools-grid,
+    .sa-quick
+  ) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-embedded-source-view .qna-sidebar-panel,
+  .dashboard-embedded-source-view .giveaway-sidebar-panel,
+  .dashboard-embedded-source-view .giveaway-main-panel,
+  .dashboard-embedded-source-view .qna-main-panel {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+
+  .dashboard-embedded-source-view .stats-analytics-grid > .qna-card {
+    grid-column: span 1 !important;
+  }
+
+  .dashboard-embedded-source-view .live-session-bottom-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
 .catalog-widget-chevron {
   display: inline-block;
   margin-left: 3px;
@@ -7577,7 +7730,9 @@ input#qa-yt-search-input:focus {
   #modal-add-dashboard-widget .dashboard-widget-picker-body { padding: 14px; }
   .catalog-widget-options { padding-left: 14px; }
   .catalog-widget-features { grid-template-columns: 1fr; margin-left: 0; }
-  .catalog-widget-state { font-size: 0; }
+  .catalog-widget-presence { display: none; }
+  .catalog-widget-action-label { font-size: 0; padding: 5px; }
+  .catalog-widget-action-label::after { content: '⚙'; font-size: 0.8rem; }
   .catalog-widget-chevron { font-size: 0.8rem; }
 }
 

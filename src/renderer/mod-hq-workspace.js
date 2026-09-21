@@ -43,7 +43,9 @@
   }
 
   const markers = $('markers-stream-list').closest('.modhq-card'), watch = $('watchlist-items-list').closest('.modhq-card');
+  teamChat.dataset.dashboardSourceFeature = 'teamchat';
   const publicCard = make('section', 'hq-public modhq-chat-panel');
+  publicCard.dataset.dashboardSourceFeature = 'publicchat';
   const heading = make('div', 'hq-heading modhq-panel-header');
   const publicHeadingInfo = make('div', 'chat-header-info');
   publicHeadingInfo.append(make('span', 'chat-header-avatar', '🌐'));
@@ -150,6 +152,7 @@
     return '';
   };
   const agreements = make('section', 'hq-agreements');
+  agreements.dataset.dashboardSourceFeature = 'pinboard';
 
   const agHead = make('div', 'hq-agreements-header');
   agHead.append(
@@ -229,10 +232,11 @@
 
   agreements.append(agHead, agreementText, deleteBtn, editFold);
   const toolsGrid = make('div', 'hq-tools-grid');
-  toolsGrid.append(
-    fold(watch, 'Nutzervermerke & Chatter', 'Auffällige Chatter & Giveaway-Gewinner notieren'),
-    fold(markers, 'Cutter-Marker', 'VOD-Zeitstempel für Video-Editor setzen & exportieren')
-  );
+  const watchFold = fold(watch, 'Nutzervermerke & Chatter', 'Auffällige Chatter & Giveaway-Gewinner notieren');
+  const markerFold = fold(markers, 'Cutter-Marker', 'VOD-Zeitstempel für Video-Editor setzen & exportieren');
+  watchFold.dataset.dashboardSourceFeature = 'watchlist';
+  markerFold.dataset.dashboardSourceFeature = 'markers';
+  toolsGrid.append(watchFold, markerFold);
   layout.replaceChildren(teamChat, publicCard, agreements, toolsGrid);
   sidebar.remove();
 

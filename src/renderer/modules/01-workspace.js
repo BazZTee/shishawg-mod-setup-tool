@@ -776,6 +776,8 @@ function showView(targetViewId) {
   // If opening Custom Mod Dashboard, render the grid and start live sync
   if (targetViewId === 'view-custom-dashboard') {
     renderCustomDashboard();
+    if (state.persons.length) renderPersonsGrid();
+    loadStreamChannelInfo();
     startModHQSync();
     loadGiveawayWinnersHistory().then(() => {
       if (typeof updateDashboardGiveawayWidget === 'function') updateDashboardGiveawayWidget();

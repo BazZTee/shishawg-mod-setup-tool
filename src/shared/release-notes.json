@@ -30,8 +30,8 @@
     },
     {
       "icon": "🧩",
-      "title": "Dashboard-Module individuell zusammenstellen",
-      "description": "Beim Hinzufügen oder Bearbeiten eines Dashboard-Moduls kann jetzt zwischen dem gesamten Modul und gezielt ausgewählten Einzelfunktionen gewählt werden."
+      "title": "Originalmodule im persönlichen Dashboard",
+      "description": "Das Dashboard verwendet jetzt dieselben vollständigen Module wie die Hauptnavigation. Beim Hinzufügen oder Anpassen kann das gesamte Originalmodul verwendet oder können einzelne echte Funktionsbereiche gezielt ein- und ausgeblendet werden."
     }
   ]
 }

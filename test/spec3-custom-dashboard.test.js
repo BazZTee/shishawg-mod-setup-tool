@@ -26,22 +26,21 @@ test('View 8 (#view-custom-dashboard) and Add-Widget modal exist in index.html',
   assert.match(indexHtml, /id="btn-close-add-widget-modal"/);
 });
 
-test('CUSTOM_DASHBOARD_CATALOG follows navigation order and includes Giveaways', () => {
+test('CUSTOM_DASHBOARD_CATALOG maps the seven real workspace modules in navigation order', () => {
   const matchCatalog = rendererCode.match(/const CUSTOM_DASHBOARD_CATALOG = (\[[\s\S]*?\]);/);
   assert.ok(matchCatalog, 'CUSTOM_DASHBOARD_CATALOG should be defined in renderer.js');
 
   const catalog = eval(matchCatalog[1]);
-  assert.equal(catalog.length, 8);
+  assert.equal(catalog.length, 7);
 
   const ids = catalog.map(c => c.id);
-  assert.ok(ids.includes('widget-timer'), 'Must include timer widget');
+  assert.ok(ids.includes('widget-timer'), 'Must include the combined stats and timer module');
   assert.ok(ids.includes('widget-setup'), 'Must include setup widget');
   assert.ok(ids.includes('widget-modchat'), 'Must include modchat widget');
   assert.ok(ids.includes('widget-giveaways'), 'Must include giveaways widget');
   assert.ok(ids.includes('widget-quickactions'), 'Must include quickactions widget');
   assert.ok(ids.includes('widget-polls'), 'Must include polls widget');
   assert.ok(ids.includes('widget-qna'), 'Must include qna widget');
-  assert.ok(ids.includes('widget-stats'), 'Must include stats widget');
   assert.deepEqual(ids, [
     'widget-setup',
     'widget-quickactions',
@@ -49,9 +48,14 @@ test('CUSTOM_DASHBOARD_CATALOG follows navigation order and includes Giveaways',
     'widget-giveaways',
     'widget-qna',
     'widget-polls',
-    'widget-timer',
-    'widget-stats'
+    'widget-timer'
   ], 'Widget picker must follow the left navigation order');
+
+  assert.ok(catalog.every(item => item.sourceView), 'Every dashboard module must point to its real full view');
+  assert.ok(catalog.every(item => item.features.every(feature => feature.selector)), 'Every selectable feature needs a real DOM selector');
+  assert.match(rendererCode, /function mountDashboardSourceView\(widgetConfig, container, catalogItem\)/);
+  assert.match(rendererCode, /container\.replaceChildren\(view\)/, 'The real module view must be docked instead of cloned');
+  assert.match(rendererCode, /if \(selected\) view\.dataset\.dashboardEnabledFeatures = selected\.join\(' '\)/);
 
 });
 
@@ -179,7 +183,7 @@ test('widget-setup provides full-featured setup tool with multi-tobacco and data
 
 test('dashboard uses Premiere-style directional docking, tab groups, and persistent split ratios', () => {
   const stylesCss = fs.readFileSync(path.join(__dirname, '../src/renderer/styles.css'), 'utf8');
-  assert.match(rendererCode, /CUSTOM_DASHBOARD_LAYOUT_VERSION = 2/);
+  assert.match(rendererCode, /CUSTOM_DASHBOARD_LAYOUT_VERSION = 3/);
   assert.match(rendererCode, /function makeDashboardSplit\(direction, first, second/);
   assert.match(rendererCode, /function dockDashboardWidget\(layout, widgetId, targetPanelId, zone\)/);
   assert.match(rendererCode, /data-zone="left"/);

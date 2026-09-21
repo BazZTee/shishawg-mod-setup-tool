@@ -19,11 +19,14 @@
     const inner=make('div','sa-fold-inner');inner.append(card);panel.append(inner);section.append(trigger,panel);return {section,trigger,label};
   }
   const stream=fold(cards.stream,'Titel & Kategorie','Streamdaten laden …');
+  stream.section.dataset.dashboardSourceFeature='streaminfo';
   const summary=stream.label.lastChild;
   const updateSummary=()=>{if(view.classList.contains('hidden'))return;const title=document.getElementById('qa-input-title').value;const game=document.getElementById('qa-input-game').value;const text=[title,game].filter(Boolean).join(' · ')||'Titel und Kategorie bearbeiten';if(summary.textContent!==text)summary.textContent=text;};
   setInterval(updateSummary,1000);
   const quick=make('section','sa-quick');
+  cards.clip.dataset.dashboardSourceFeature='clipping';
   const favorites=make('section','qa-card sa-favorites');
+  favorites.dataset.dashboardSourceFeature='favorites';
   const favHeader=make('div','qa-card-header');
   const favGroup=make('div','qa-title-group');
   const favIcon=make('span','qa-header-icon');
@@ -45,7 +48,7 @@
   const panels=[cards.videos,cards.commands];
   panels.forEach((panel,i)=>{panel.id='sa-library-'+i;panel.setAttribute('role','tabpanel');panel.setAttribute('aria-labelledby','sa-tab-'+i);});
   function select(index,focus=false){panels.forEach((panel,i)=>{panel.hidden=i!==index;const tab=tabs.querySelectorAll('button')[i];tab.classList.toggle('active',i===index);tab.setAttribute('aria-selected',String(i===index));tab.tabIndex=i===index?0:-1;});if(focus)tabs.querySelectorAll('button')[index].focus();}
-  ['Videos teilen','Chat-Befehle'].forEach((name,i)=>{const tab=button(name,()=>select(i));tab.id='sa-tab-'+i;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panels[i].id);tabs.append(tab);});
+  ['Videos teilen','Chat-Befehle'].forEach((name,i)=>{const tab=button(name,()=>select(i));const feature=i===0?'youtube':'commands';tab.id='sa-tab-'+i;tab.dataset.dashboardSourceFeature=feature;panels[i].dataset.dashboardSourceFeature=feature;tab.setAttribute('role','tab');tab.setAttribute('aria-controls',panels[i].id);tabs.append(tab);});
   tabs.addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();select(event.key==='Home'?0:event.key==='End'?1:tabs.querySelectorAll('button')[0].getAttribute('aria-selected')==='true'?1:0,true);}});
   library.append(tabs,...panels);select(0);
   const search=make('input','sa-command-search');search.type='search';search.placeholder='Befehl suchen …';search.setAttribute('aria-label','Chat-Befehle suchen');
@@ -107,6 +110,7 @@
   },true);
   new MutationObserver(decorate).observe(commandGrid,{childList:true});search.addEventListener('input',filter);decorate();
   const raid=fold(cards.raid,'Raid vorbereiten','Zielkanal suchen, Live-Status prüfen und Raid steuern');
+  raid.section.dataset.dashboardSourceFeature='raid';
   root.append(stream.section,quick,library,raid.section);
   grid.replaceChildren(root);view.classList.add('sa-ready');
 })();

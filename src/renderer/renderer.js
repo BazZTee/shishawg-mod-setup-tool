@@ -777,6 +777,8 @@ function showView(targetViewId) {
   // If opening Custom Mod Dashboard, render the grid and start live sync
   if (targetViewId === 'view-custom-dashboard') {
     renderCustomDashboard();
+    if (state.persons.length) renderPersonsGrid();
+    loadStreamChannelInfo();
     startModHQSync();
     loadGiveawayWinnersHistory().then(() => {
       if (typeof updateDashboardGiveawayWidget === 'function') updateDashboardGiveawayWidget();
@@ -10945,111 +10947,128 @@ function setupChangeRequestListeners() {
 
 const CUSTOM_DASHBOARD_STORAGE_KEY = 'swg_custom_dashboard_config';
 const CUSTOM_DASHBOARD_LOCK_KEY = 'swg_custom_dashboard_locked';
-const CUSTOM_DASHBOARD_LAYOUT_VERSION = 2;
+const CUSTOM_DASHBOARD_LAYOUT_VERSION = 3;
 
 const CUSTOM_DASHBOARD_CATALOG = [
   {
     id: 'widget-setup',
     title: 'Setup-Schnellgenerator',
     icon: '💨',
-    desc: 'Pfeife, Kopf, Tabak, Kohle & 1-Klick !editsetup Twitch-Chat',
-    defaultColSpan: 6,
+    desc: 'Der vollständige Setup-Manager – auf Wunsch nur mit den benötigten Bereichen',
+    sourceView: 'view-setup',
+    defaultColSpan: 12,
     features: [
-      { id: 'identity', label: 'Person & E-Gerät' },
-      { id: 'hardware', label: 'Pfeife, Kopf, HMD & Kohle' },
-      { id: 'tobacco', label: 'Tabaksorten' },
-      { id: 'preview', label: 'Befehlsvorschau' },
-      { id: 'actions', label: 'Kopieren & an Twitch senden' }
+      { id: 'toolbar', label: 'Werkzeugleiste & Import', selector: '.toolbar, #onboarding-hint' },
+      { id: 'notes', label: 'Schnell-Notizen', selector: '#notes-card' },
+      { id: 'persons', label: 'Personen-Setups', selector: '.persons-section-card' },
+      { id: 'extras', label: 'Kohle, Extras & Promo', selector: '.global-extras-card' },
+      { id: 'command', label: 'Befehlsvorschau & Twitch-Versand', selector: '.generator-card' }
     ],
-    compactDefaults: ['hardware', 'tobacco', 'actions']
+    compactDefaults: ['persons', 'extras', 'command']
   },
   {
     id: 'widget-quickactions',
-    title: 'Stream Quick-Actions & YouTube-Finder',
+    title: 'Stream-Aktionen',
     icon: '⚡',
-    desc: 'Befehle (!dc, !setup, !tabak), ShishaWG YouTube-Suche & Marker',
-    defaultColSpan: 6,
+    desc: 'Die vollständigen Stream-Aktionen mit Twitch- und YouTube-Werkzeugen',
+    sourceView: 'view-quickactions',
+    defaultColSpan: 12,
     features: [
-      { id: 'youtube', label: 'YouTube-Finder' },
-      { id: 'commands', label: 'Chat-Befehle' },
-      { id: 'streaminfo', label: 'Stream-Titel & Kategorie' },
-      { id: 'clipping', label: 'Clip-Tool' },
-      { id: 'raid', label: 'Raid-Steuerung' }
+      { id: 'streaminfo', label: 'Stream-Titel & Kategorie', selector: '[data-dashboard-source-feature="streaminfo"]' },
+      { id: 'clipping', label: 'Clip-Tool', selector: '[data-dashboard-source-feature="clipping"]' },
+      { id: 'favorites', label: 'Persönlicher Schnellzugriff', selector: '[data-dashboard-source-feature="favorites"]' },
+      { id: 'youtube', label: 'YouTube-Finder', selector: '[data-dashboard-source-feature="youtube"]' },
+      { id: 'commands', label: 'Chat-Befehle', selector: '[data-dashboard-source-feature="commands"]' },
+      { id: 'raid', label: 'Raid-Steuerung', selector: '[data-dashboard-source-feature="raid"]' }
     ],
-    compactDefaults: ['commands', 'streaminfo']
+    compactDefaults: ['favorites', 'commands']
   },
   {
     id: 'widget-modchat',
-    title: 'Mod-HQ Live-Chat',
+    title: 'Mod-HQ & Chat',
     icon: '💬',
-    desc: 'Team-Chat für Moderatoren mit 7TV-Emotes & Schnelleingabe',
+    desc: 'Das vollständige Mod-HQ mit Team-, Livechat- und Organisationsbereichen',
+    sourceView: 'view-modchat',
     defaultColSpan: 12,
     features: [
-      { id: 'messages', label: 'Nachrichtenverlauf' },
-      { id: 'composer', label: 'Nachrichten schreiben & 7TV' }
+      { id: 'teamchat', label: 'Mod-Teamchat & Anwesenheit', selector: '[data-dashboard-source-feature="teamchat"]' },
+      { id: 'publicchat', label: 'Öffentlicher Twitch-/YouTube-Chat', selector: '[data-dashboard-source-feature="publicchat"]' },
+      { id: 'pinboard', label: 'Angeheftete Pinnwand', selector: '[data-dashboard-source-feature="pinboard"]' },
+      { id: 'watchlist', label: 'Nutzervermerke & Chatter', selector: '[data-dashboard-source-feature="watchlist"]' },
+      { id: 'markers', label: 'Cutter-Marker', selector: '[data-dashboard-source-feature="markers"]' }
     ],
-    compactDefaults: ['messages']
+    compactDefaults: ['teamchat']
   },
   {
     id: 'widget-giveaways',
-    title: 'Giveaways & Gewinner',
+    title: 'Giveaways & Adressen',
     icon: '🎁',
-    desc: 'Giveaway starten, Teilnehmer überwachen und Gewinner auslosen',
-    defaultColSpan: 6,
+    desc: 'Die vollständige Giveaway-, Gewinner- und Versandverwaltung',
+    sourceView: 'view-giveaways',
+    defaultColSpan: 12,
     features: [
-      { id: 'overview', label: 'Status & Gewinner' },
-      { id: 'configuration', label: 'Gewinn & Teilnahmeart' },
-      { id: 'controls', label: 'Start, Stopp & Auslosung' },
-      { id: 'participants', label: 'Teilnehmerliste' }
+      { id: 'configuration', label: 'Giveaway konfigurieren & steuern', selector: '#giveaway-workspace-live .giveaway-main-panel' },
+      { id: 'winner', label: 'Gezogener Gewinner', selector: '#giveaway-workspace-live .giveaway-sidebar-panel > .giveaway-card:not(.giveaway-participants-card)' },
+      { id: 'participants', label: 'Teilnehmer-Pool', selector: '#giveaway-workspace-live .giveaway-participants-card' },
+      { id: 'history', label: 'Gewinne & Versandstatus', selector: '#giveaway-workspace-addresses .giveaway-history-card' },
+      { id: 'addresses', label: 'Adressprüfung & Versand', selector: '#giveaway-workspace-addresses .giveaway-address-card' }
     ],
-    compactDefaults: ['overview', 'controls']
+    compactDefaults: ['configuration', 'winner', 'participants']
   },
   {
     id: 'widget-qna',
     title: 'Community Q&A',
     icon: '🙋',
-    desc: 'Fragen der Zuschauer moderieren und beantworten',
-    defaultColSpan: 6
+    desc: 'Die vollständige Fragenverwaltung mit On-Air-Bereich und Fragerunde',
+    sourceView: 'view-qna',
+    defaultColSpan: 12,
+    features: [
+      { id: 'tools', label: 'Q&A-Werkzeugleiste', selector: '.qna-sub-header' },
+      { id: 'onair', label: 'Aktuell On-Air', selector: '.qna-spotlight-card' },
+      { id: 'inbox', label: 'Fragen-Inbox & Moderation', selector: '.qna-inbox-card' },
+      { id: 'round', label: 'Fragerunde & Personen', selector: '.qna-round-card' }
+    ],
+    compactDefaults: ['onair', 'inbox']
   },
   {
     id: 'widget-polls',
-    title: 'Live Twitch-Umfragen',
+    title: 'Umfragen & Vorhersagen',
     icon: '🗳️',
-    desc: 'Aktuelle Umfragen überwachen mit Live-Balken & Stimmen',
-    defaultColSpan: 6
+    desc: 'Alle Twitch-Umfragen und Vorhersagen mit Vorlagen und Live-Auswertung',
+    sourceView: 'view-polls',
+    defaultColSpan: 12,
+    features: [
+      { id: 'poll-live', label: 'Live-Umfrage', selector: '#panel-mode-polls .poll-active-card' },
+      { id: 'poll-presets', label: 'Umfrage-Schnellvorlagen', selector: '#panel-mode-polls .poll-presets-card' },
+      { id: 'poll-create', label: 'Umfrage erstellen', selector: '#panel-mode-polls .poll-creator-card' },
+      { id: 'poll-saved', label: 'Gespeicherte Umfragen', selector: '#panel-mode-polls .poll-saved-templates-card' },
+      { id: 'prediction-live', label: 'Live-Vorhersage', selector: '#panel-mode-predictions .poll-active-card' },
+      { id: 'prediction-presets', label: 'Vorhersage-Schnellvorlagen', selector: '#panel-mode-predictions .poll-presets-card' },
+      { id: 'prediction-create', label: 'Vorhersage erstellen', selector: '#panel-mode-predictions .poll-creator-card' },
+      { id: 'prediction-saved', label: 'Gespeicherte Vorhersagen', selector: '#panel-mode-predictions .poll-saved-templates-card' }
+    ],
+    compactDefaults: ['poll-live', 'poll-create']
   },
   {
     id: 'widget-timer',
-    title: 'Live Kohle- & Session-Timer',
+    title: 'Statistiken & Timer',
     icon: '⏱️',
-    desc: 'Laufender Kopf, Restzeit, Kohle-Wenden & Schnellstart',
-    defaultColSpan: 6,
+    desc: 'Die vollständige Historie, Auswertung und laufende Timer-Leiste',
+    sourceView: 'view-stats',
+    defaultColSpan: 12,
     features: [
-      { id: 'status', label: 'Setup, Zeit & Kohlezähler' },
-      { id: 'progress', label: 'Fortschrittsbalken' },
-      { id: 'controls', label: 'Timer- und Kohle-Aktionen' }
+      { id: 'history', label: 'Gerauchte Köpfe & Historie', selector: '#panel-stats-history' },
+      { id: 'analytics', label: 'Statistiken & Ranglisten', selector: '#panel-stats-analytics' },
+      { id: 'timer', label: 'Live Session- & Kohle-Timer', selector: '.live-session-bottom-bar' },
+      { id: 'overlay', label: 'OBS-Overlay-Verwaltung', selector: '.tool-sub-header .sub-header-actions' }
     ],
-    compactDefaults: ['status', 'controls']
-  },
-  {
-    id: 'widget-stats',
-    title: 'Stream-Statistik KPIs',
-    icon: '📊',
-    desc: 'Köpfe heute & getrennte Ø Rauchdauer (Kohle vs. E-Kopf)',
-    defaultColSpan: 6,
-    features: [
-      { id: 'heads', label: 'Köpfe heute' },
-      { id: 'coal', label: 'Ø Rauchdauer Kohle' },
-      { id: 'electric', label: 'Ø Rauchdauer E-Kopf' },
-      { id: 'details', label: 'Link zu allen Statistiken' }
-    ],
-    compactDefaults: ['heads', 'coal', 'electric']
+    compactDefaults: ['timer']
   }
 ];
 
 const DEFAULT_DASHBOARD_WIDGETS = [
-  { id: 'widget-timer', colSpan: 6, collapsed: false },
-  { id: 'widget-setup', colSpan: 6, collapsed: false },
+  { id: 'widget-timer', colSpan: 12, collapsed: false },
+  { id: 'widget-setup', colSpan: 12, collapsed: false },
   { id: 'widget-modchat', colSpan: 12, collapsed: false }
 ];
 
@@ -11058,10 +11077,9 @@ const CUSTOM_DASHBOARD_FULL_VIEWS = {
   'widget-setup': 'view-setup',
   'widget-modchat': 'view-modchat',
   'widget-giveaways': 'view-giveaways',
-  'widget-quickactions': 'view-stream-actions',
+  'widget-quickactions': 'view-quickactions',
   'widget-polls': 'view-polls',
-  'widget-qna': 'view-qna',
-  'widget-stats': 'view-stats'
+  'widget-qna': 'view-qna'
 };
 
 function isCustomDashboardLocked() {
@@ -11246,6 +11264,11 @@ function getCustomDashboardLayout() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.version === CUSTOM_DASHBOARD_LAYOUT_VERSION && Object.prototype.hasOwnProperty.call(parsed, 'root')) return parsed;
+      if (parsed && parsed.version === 2 && Object.prototype.hasOwnProperty.call(parsed, 'root')) {
+        const migrated = migrateDashboardLayoutToSharedModules(parsed);
+        localStorage.setItem(CUSTOM_DASHBOARD_STORAGE_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
       if (Array.isArray(parsed)) return dashboardLayoutFromLegacy(parsed);
       if (parsed && Array.isArray(parsed.widgets)) return dashboardLayoutFromLegacy(parsed.widgets);
     }
@@ -11253,6 +11276,36 @@ function getCustomDashboardLayout() {
     console.warn('Failed to load dashboard layout:', e);
   }
   return createDefaultDashboardLayout();
+}
+
+function migrateDashboardLayoutToSharedModules(layout) {
+  const migrated = JSON.parse(JSON.stringify(layout || {}));
+  migrated.version = CUSTOM_DASHBOARD_LAYOUT_VERSION;
+  const seen = new Set();
+  const walk = node => {
+    if (!node) return null;
+    if (node.type === 'panel') {
+      node.tabs = (node.tabs || []).map(widget => {
+        if (widget.id === 'widget-stats') widget.id = 'widget-timer';
+        const catalogItem = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === widget.id);
+        if (!catalogItem || seen.has(widget.id)) return null;
+        seen.add(widget.id);
+        const validFeatureIds = new Set((catalogItem.features || []).map(feature => feature.id));
+        if (!Array.isArray(widget.features) || widget.features.some(feature => !validFeatureIds.has(feature))) delete widget.features;
+        return widget;
+      }).filter(Boolean);
+      if (!node.tabs.length) return null;
+      if (!node.tabs.some(widget => widget.id === node.activeId)) node.activeId = node.tabs[0].id;
+      return node;
+    }
+    node.first = walk(node.first);
+    node.second = walk(node.second);
+    if (!node.first) return node.second;
+    if (!node.second) return node.first;
+    return node;
+  };
+  migrated.root = walk(migrated.root);
+  return migrated;
 }
 
 function flattenDashboardWidgets(node, result = []) {
@@ -11290,6 +11343,50 @@ function applyDashboardFeatureSelection(widgetConfig, container) {
     const featureIds = String(element.dataset.dashboardFeature || '').split(/\s+/).filter(Boolean);
     element.classList.toggle('dashboard-feature-hidden', featureIds.length > 0 && !featureIds.some(featureId => enabled.has(featureId)));
   });
+}
+
+const dashboardSourceViewHomes = new Map();
+
+function restoreDashboardSourceViews() {
+  dashboardSourceViewHomes.forEach((home, viewId) => {
+    const view = document.getElementById(viewId);
+    if (!view || !home.placeholder.parentNode) return;
+    view.querySelectorAll('.dashboard-source-feature-hidden').forEach(element => element.classList.remove('dashboard-source-feature-hidden'));
+    view.classList.remove('dashboard-embedded-source-view');
+    delete view.dataset.dashboardEnabledFeatures;
+    home.placeholder.parentNode.insertBefore(view, home.placeholder.nextSibling);
+    view.classList.add('hidden');
+  });
+  dashboardSourceViewHomes.clear();
+}
+
+function mountDashboardSourceView(widgetConfig, container, catalogItem) {
+  const view = document.getElementById(catalogItem.sourceView);
+  if (!view || !view.parentNode) return false;
+
+  if (!dashboardSourceViewHomes.has(catalogItem.sourceView)) {
+    const placeholder = document.createComment(`dashboard-home:${catalogItem.sourceView}`);
+    view.parentNode.insertBefore(placeholder, view);
+    dashboardSourceViewHomes.set(catalogItem.sourceView, { placeholder });
+  }
+
+  view.querySelectorAll('.dashboard-source-feature-hidden').forEach(element => element.classList.remove('dashboard-source-feature-hidden'));
+  const selected = getDashboardWidgetFeatures(widgetConfig, catalogItem);
+  if (selected) view.dataset.dashboardEnabledFeatures = selected.join(' ');
+  else delete view.dataset.dashboardEnabledFeatures;
+  if (selected) {
+    const enabled = new Set(selected);
+    (catalogItem.features || []).forEach(feature => {
+      view.querySelectorAll(feature.selector).forEach(element => {
+        element.classList.toggle('dashboard-source-feature-hidden', !enabled.has(feature.id));
+      });
+    });
+  }
+
+  container.replaceChildren(view);
+  view.classList.add('dashboard-embedded-source-view');
+  view.classList.remove('hidden');
+  return true;
 }
 
 function saveCustomDashboardLayout(layout) {
@@ -11387,6 +11484,7 @@ function renderCustomDashboard() {
   const grid = document.getElementById('custom-dashboard-grid');
   if (!grid) return;
 
+  restoreDashboardSourceViews();
   grid.innerHTML = '';
   const layout = getCustomDashboardLayout();
   const locked = isCustomDashboardLocked();
@@ -11772,6 +11870,8 @@ function refreshDashboardWidgets(widgetIds) {
   document.querySelectorAll('.custom-widget-body[data-widget-id]').forEach(container => {
     const widgetId = container.dataset.widgetId;
     if (!requested.has(widgetId) || container.classList.contains('hidden')) return;
+    const catalogItem = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === widgetId);
+    if (catalogItem?.sourceView) return;
     renderWidgetContent(configuredWidgets.get(widgetId) || widgetId, container);
   });
 }
@@ -11779,6 +11879,8 @@ function refreshDashboardWidgets(widgetIds) {
 function renderWidgetContent(widgetObj, container) {
   const widgetId = typeof widgetObj === 'string' ? widgetObj : widgetObj.id;
   const wConfig = typeof widgetObj === 'object' ? widgetObj : {};
+  const catalogItem = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === widgetId);
+  if (catalogItem?.sourceView && mountDashboardSourceView(wConfig, container, catalogItem)) return;
 
   switch (widgetId) {
     case 'widget-timer': {
@@ -12819,7 +12921,11 @@ function openAddWidgetModal() {
             <span class="catalog-widget-desc">${escapeHtml(cat.desc)}</span>
           </span>
         </span>
-        <span class="catalog-widget-state">${isAdded ? '✓ Aktiv' : 'Konfigurieren'} <span class="catalog-widget-chevron">⌄</span></span>
+        <span class="catalog-widget-summary-actions">
+          ${isAdded ? '<span class="catalog-widget-presence"><span></span>Im Dashboard</span>' : ''}
+          <span class="catalog-widget-action-label">${isAdded ? 'Anpassen' : 'Auswählen'}</span>
+          <span class="catalog-widget-chevron">⌄</span>
+        </span>
       </summary>
       <div class="catalog-widget-options">
         <label class="catalog-widget-mode">
@@ -12922,6 +13028,9 @@ function setupCustomDashboardListeners() {
   }
 
   if (btnAdd) btnAdd.addEventListener('click', openAddWidgetModal);
+  window.addEventListener('swg:view-changed', event => {
+    if (event.detail !== 'view-custom-dashboard') restoreDashboardSourceViews();
+  });
   document.addEventListener('click', (event) => {
     const suggestions = document.getElementById('cw-yt-suggestions');
     if (suggestions && !event.target.closest('.cw-yt-search-wrapper')) {

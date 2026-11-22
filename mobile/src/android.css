@@ -5,8 +5,10 @@ html.swg-android body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Status and navigation bars are kept outside the WebView natively
+   (SystemBars insetsHandling "native"), so no safe-area padding here. */
 html.swg-android body {
-  padding-top: env(safe-area-inset-top, 0px);
+  background-color: #080e1c;
 }
 
 @media (max-width: 820px) {

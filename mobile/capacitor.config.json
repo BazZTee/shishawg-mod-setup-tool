@@ -8,6 +8,11 @@
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "SystemBars": {
+      "insetsHandling": "native",
+      "style": "DARK"
     }
-  }
+  },
+  "backgroundColor": "#080e1c"
 }

@@ -5,6 +5,8 @@ const host = require('./host');
 const http = require('./http');
 const { Clipboard } = require('@capacitor/clipboard');
 const { LocalNotifications } = require('@capacitor/local-notifications');
+const { Browser } = require('@capacitor/browser');
+const { App } = require('@capacitor/app');
 
 /* global __APP_VERSION__ */
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -83,35 +85,57 @@ function parseFragment(value) {
   return new URLSearchParams(index >= 0 ? value.slice(index + 1) : '');
 }
 
-// Twitch login: the desktop app listens on http://localhost:<port>/auth. Here
-// an in-app browser opens the login, the redirect is caught and its token is
-// handed to the registered virtual server, so twitchService runs unchanged.
+// Twitch login: Twitch blocks logins inside WebViews, so the login opens in a
+// Chrome Custom Tab. Twitch redirects to a GitHub Pages page that forwards the
+// token (URL fragment only) to this app via its own URL scheme. The token is
+// then handed to the virtual http server that twitchService registered on
+// localhost, so twitchService runs unchanged.
+const AUTH_RETURN_URL = 'https://bazztee.github.io/shishawg-mod-setup-tool/android-auth.html';
+const APP_AUTH_PREFIX = 'de.shishawg.modsetuptool://auth';
+const LOGIN_TIMEOUT_MS = 15 * 60 * 1000;
+let pendingLogin = null;
+let authListener = false;
+
+function randomState() {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function handleAuthReturn(value) {
+  const target = String(value || '');
+  if (!target.startsWith(APP_AUTH_PREFIX)) return;
+  const login = pendingLogin;
+  pendingLogin = null;
+  Browser.close().catch(() => {});
+  const params = parseFragment(target);
+  if (!login || Date.now() - login.started > LOGIN_TIMEOUT_MS || params.get('state') !== login.state) {
+    dialog.showErrorBox('Twitch-Anmeldung', 'Die Anmeldung ist abgelaufen oder gehört nicht zu dieser App. Bitte erneut verbinden.');
+    return;
+  }
+  const token = params.get('access_token');
+  if (token) {
+    http.__dispatch(login.port, '/token?token=' + encodeURIComponent(token));
+  } else {
+    dialog.showErrorBox('Twitch-Anmeldung', params.get('error_description') || 'Anmeldung abgebrochen.');
+  }
+}
+
 function openTwitchLogin(authUrl, redirect) {
-  const iab = globalThis.cordova?.InAppBrowser;
-  if (!iab) {
+  if (!host.isNative()) {
     window.open(authUrl, '_blank');
     return;
   }
-  const port = Number(redirect.port || 80);
-  const ref = iab.open(authUrl, '_blank', 'location=yes,clearcache=no,clearsessioncache=no,zoom=no');
-  let handled = false;
-  const onUrl = (event) => {
-    const target = String(event && event.url || '');
-    if (handled || !target.startsWith(redirect.origin + redirect.pathname)) return;
-    handled = true;
-    try { ref.close(); } catch (_error) {}
-    const params = parseFragment(target);
-    const query = new URL(target).searchParams;
-    const token = params.get('access_token');
-    if (token) {
-      http.__dispatch(port, '/token?token=' + encodeURIComponent(token));
-    } else {
-      const reason = params.get('error_description') || query.get('error_description') || 'Anmeldung abgebrochen.';
-      dialog.showErrorBox('Twitch-Anmeldung', reason);
-    }
-  };
-  ref.addEventListener('loadstart', onUrl);
-  ref.addEventListener('loaderror', onUrl);
+  if (!authListener) {
+    authListener = true;
+    App.addListener('appUrlOpen', ({ url }) => handleAuthReturn(url));
+  }
+  const login = new URL(authUrl);
+  const state = randomState();
+  login.searchParams.set('redirect_uri', AUTH_RETURN_URL);
+  login.searchParams.set('state', state);
+  pendingLogin = { state, port: Number(redirect.port || 80), started: Date.now() };
+  Browser.open({ url: login.toString() });
 }
 
 const shell = {
@@ -128,7 +152,8 @@ const shell = {
         }
       }
     } catch (_error) {}
-    window.open(target, host.isNative() ? '_system' : '_blank');
+    if (host.isNative()) await Browser.open({ url: target });
+    else window.open(target, '_blank');
   },
   openPath: async () => 'Nicht verfügbar',
   showItemInFolder() {}

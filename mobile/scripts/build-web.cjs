@@ -80,8 +80,6 @@ let html = fs.readFileSync(indexPath, 'utf8');
 const firstScript = '<script src="fuzzy.js"></script>';
 if (!html.includes(firstScript)) throw new Error('index.html: Einstiegspunkt für die Android-Brücke nicht gefunden.');
 html = html
-  .replace('<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">')
   .replace('src="../../build/icon.png"', 'src="build/icon.png"')
   .replace('</head>', '  <link rel="stylesheet" href="android.css">\n</head>')
   .replace(firstScript, '<script src="android-bridge.js"></script>\n  ' + firstScript);

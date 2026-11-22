@@ -1,12 +1,22 @@
 {
-  "version": "8.0.3",
-  "title": "Neu in Version 8.0.3",
+  "version": "8.0.4",
+  "title": "Neu in Version 8.0.4",
   "intro": "Seit 8.0.1: mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
     {
       "icon": "🛡️",
       "title": "Sicherere Gewinne und Stream-Erkennung",
       "description": "Kanalpunkte-Gewinne entstehen nur noch aus Nachrichten des eingetragenen Bots und werden nicht doppelt angelegt. Ein kurzer Verbindungsfehler beendet keine Session mehr, und Telegram-Einstellungen bleiben beim jeweiligen Kanal."
+    },
+    {
+      "icon": "🔄",
+      "title": "Datenbank bleibt bei allen Mods gleich",
+      "description": "Gelöschte Einträge kommen nicht mehr zurück, und neue Einträge gehen nicht mehr verloren, wenn mehrere Mods gleichzeitig arbeiten. Ohne Verbindung gemerkte Änderungen werden nachgereicht. Ändern darf den Katalog das Core-Team; alle anderen sehen eine klare Meldung."
+    },
+    {
+      "icon": "🔍",
+      "title": "Doppelte Einträge vermeiden",
+      "description": "Gibt es schon einen ähnlichen Eintrag, etwa „Blade Mini“ beim Anlegen von „Blade Mini Rot“, fragt das Tool vorher nach. Automatisch gelernt wird so etwas nicht mehr."
     },
     {
       "icon": "🧩",

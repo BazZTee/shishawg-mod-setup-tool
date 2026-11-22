@@ -44,5 +44,7 @@ test('auto-learn never adds a variant of an existing entry', (t) => {
 test('manual add asks before creating a similar entry', () => {
   const setup = read('src/renderer/modules/02-setup.js');
   assert.match(setup, /const similar = findSimilarCatalogEntry\(checkName, existingList\);/);
-  assert.match(setup, /if \(similar && !confirm\(/);
+  assert.match(setup, /if \(similar && !\(await showAppConfirm\(\{/);
+  assert.match(setup, /function showAppConfirm\(/);
+  assert.doesNotMatch(setup, /!confirm\(`„\$\{similar\.name\}/, 'no native browser dialog');
 });

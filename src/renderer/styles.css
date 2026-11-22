@@ -8303,3 +8303,11 @@ input#qa-yt-search-input:focus {
   justify-content: space-between;
   margin-top: 12px;
 }
+
+/* Confirmation dialog shown above other modals (e.g. the catalog database). */
+.app-confirm-overlay { z-index: 1100; align-items: center; padding-top: 0; }
+.app-confirm-card { width: 440px; }
+.app-confirm-card .modal-header h3 { font-size: 1rem; }
+.app-confirm-message { margin: 0; color: var(--text-primary); }
+.app-confirm-detail { margin: 0; color: var(--text-secondary); font-size: 0.9rem; }
+.app-confirm-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--border-color); }

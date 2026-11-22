@@ -2497,7 +2497,13 @@ function setupEventListeners() {
       return;
     }
     // Variants of an existing entry ("Blade Mini Rot") are only added after confirmation.
-    if (similar && !confirm(`„${similar.name}“ ist schon in der Datenbank.\n\n„${checkName}“ trotzdem als eigenen Eintrag anlegen?`)) {
+    if (similar && !(await showAppConfirm({
+      title: 'Ähnlicher Eintrag vorhanden',
+      message: `„${similar.name}“ ist schon in der Datenbank.`,
+      detail: `„${checkName}“ trotzdem als eigenen Eintrag anlegen?`,
+      confirmLabel: 'Trotzdem anlegen',
+      cancelLabel: 'Abbrechen'
+    }))) {
       showToast(`Nicht angelegt – „${similar.name}“ bleibt der Eintrag.`, 'info');
       return;
     }
@@ -2809,6 +2815,69 @@ function renderCatalogList() {
         showCatalogSyncError(res);
       }
     });
+  });
+}
+
+// Confirmation dialog in the app's modal design. Resolves true only on the confirm
+// button or Enter on it; Escape, the close button and a click beside the card cancel.
+function showAppConfirm({ title, message, detail = '', confirmLabel = 'OK', cancelLabel = 'Abbrechen' }) {
+  return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+    const make = (tag, className, text) => {
+      const el = document.createElement(tag);
+      if (className) el.className = className;
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+
+    const overlay = make('div', 'modal-overlay app-confirm-overlay');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'app-confirm-title');
+    const card = make('div', 'modal-card app-confirm-card');
+
+    const header = make('div', 'modal-header');
+    const heading = make('h3', '', title);
+    heading.id = 'app-confirm-title';
+    const btnClose = make('button', 'btn-icon', '✕');
+    btnClose.type = 'button';
+    btnClose.setAttribute('aria-label', 'Schließen');
+    header.append(heading, btnClose);
+
+    const body = make('div', 'modal-body');
+    body.append(make('p', 'app-confirm-message', message));
+    if (detail) body.append(make('p', 'app-confirm-detail', detail));
+
+    const footer = make('div', 'modal-footer app-confirm-footer');
+    const btnCancel = make('button', 'btn btn-secondary', cancelLabel);
+    const btnConfirm = make('button', 'btn btn-primary', confirmLabel);
+    btnCancel.type = 'button';
+    btnConfirm.type = 'button';
+    footer.append(btnCancel, btnConfirm);
+
+    card.append(header, body, footer);
+    overlay.append(card);
+
+    const close = (result) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus();
+      resolve(result);
+    };
+    function onKey(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        close(false);
+      }
+    }
+    btnConfirm.addEventListener('click', () => close(true));
+    btnCancel.addEventListener('click', () => close(false));
+    btnClose.addEventListener('click', () => close(false));
+    overlay.addEventListener('mousedown', (event) => { if (event.target === overlay) close(false); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.append(overlay);
+    btnConfirm.focus();
   });
 }
 

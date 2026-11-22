@@ -129,6 +129,16 @@ function openTwitchLogin(authUrl, redirect) {
   if (!authListener) {
     authListener = true;
     App.addListener('appUrlOpen', ({ url }) => handleAuthReturn(url));
+    // Tab closed without a login result: offer the manual token dialog
+    // (#twitch-modal from the desktop UI, otherwise unreachable).
+    Browser.addListener('browserFinished', () => {
+      setTimeout(() => {
+        if (!pendingLogin) return;
+        pendingLogin = null;
+        const modal = document.getElementById('twitch-modal');
+        if (modal) modal.classList.remove('hidden');
+      }, 1000);
+    });
   }
   const login = new URL(authUrl);
   const state = randomState();

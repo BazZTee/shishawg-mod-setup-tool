@@ -2473,6 +2473,16 @@ function setupEventListeners() {
     });
   });
 
+  // Enter in the name or description field adds the entry like the button.
+  [newItemInput, newItemDescInput].forEach(input => {
+    if (!input) return;
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      btnAddDbItem.click();
+    });
+  });
+
   btnAddDbItem.addEventListener('click', async () => {
     const code = newItemInput.value.trim();
     if (!code) return;

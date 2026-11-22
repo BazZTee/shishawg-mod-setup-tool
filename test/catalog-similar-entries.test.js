@@ -48,3 +48,8 @@ test('manual add asks before creating a similar entry', () => {
   assert.match(setup, /function showAppConfirm\(/);
   assert.doesNotMatch(setup, /!confirm\(`„\$\{similar\.name\}/, 'no native browser dialog');
 });
+
+test('Enter in the database input adds the entry like the button', () => {
+  const setup = read('src/renderer/modules/02-setup.js');
+  assert.match(setup, /\[newItemInput, newItemDescInput\]\.forEach\(input => \{[\s\S]*?event\.key !== 'Enter'[\s\S]*?btnAddDbItem\.click\(\);/);
+});

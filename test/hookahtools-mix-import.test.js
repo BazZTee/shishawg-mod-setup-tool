@@ -7,7 +7,7 @@ const https = require('node:https');
 const { EventEmitter } = require('node:events');
 const DatabaseService = require('../src/main/dbService');
 
-function mockLiveMixPages(pages, details = []) {
+function mockHookahTools(overlay, details = []) {
   const original = https.request;
   const requests = [];
   https.request = (options, callback) => {
@@ -19,7 +19,7 @@ function mockLiveMixPages(pages, details = []) {
       response.statusCode = 200;
       process.nextTick(() => {
         callback(response);
-        response.emit('data', JSON.stringify(options.path.startsWith('/rest/v1/flavors?') ? details : (pages.shift() || [])));
+        response.emit('data', JSON.stringify(options.path.startsWith('/rest/v1/flavors?') ? details : overlay));
         response.emit('end');
       });
     };
@@ -28,51 +28,62 @@ function mockLiveMixPages(pages, details = []) {
   return { requests, restore: () => { https.request = original; } };
 }
 
-test('HookahTools live RPC finds recent Marv mix and keeps brand, tobacco, percentages', async () => {
-  const recent = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const pages = [Array.from({ length: 50 }, (_, index) => ({
-    mix_id: `other-${index}`, creator: { nickname: 'Other' }, created_at: recent, flavors: []
-  })), [{
-    mix_id: 'marv-mix', creator: { nickname: 'Marv' }, created_at: recent,
-    flavors: [
-      { flavor_id: 'aino-black', brand_name: 'Aino', name: 'Black', percentage: 58 },
-      { flavor_id: 'blackburn-roze-t', brand_name: 'Blackburn', name: 'Roze T', percentage: 29 },
-      { flavor_id: 'musth-early-gre', brand_name: 'MustH', name: 'Early Grey', percentage: 13 }
-    ]
-  }]];
-  const mock = mockLiveMixPages(pages, [
+const OVERLAY_LINK = 'https://hookahtools.de/stream/AbC123_xyz-9?format=wide';
+
+test('HookahTools overlay link imports the selected mix with brand, line, tobacco and percentages', async () => {
+  const mock = mockHookahTools({
+    found: true,
+    nickname: 'Marv',
+    bowl_size: 20,
+    mix: {
+      id: 'marv-mix',
+      name: 'Abendmix',
+      flavors: [
+        { id: 'aino-black', brand: 'Aino', name: 'Black', color: '#000', percentage: 58 },
+        { id: 'blackburn-roze-t', brand: 'Blackburn', name: 'Roze T', color: '#f0f', percentage: 29 },
+        { id: 'musth-early-gre', brand: 'MustH', name: 'Early Grey', color: '#0f0', percentage: 13 }
+      ]
+    }
+  }, [
     { id: 'aino-black', line: 'Strong' },
     { id: 'blackburn-roze-t', line: 'main' },
     { id: 'musth-early-gre', line: null }
   ]);
   try {
-    const mix = await new DatabaseService().fetchCurrentMarvHookahToolsMix();
+    const mix = await new DatabaseService().fetchHookahToolsOverlayMix(OVERLAY_LINK);
     assert.equal(mix.mixId, 'marv-mix');
+    assert.equal(mix.name, 'Abendmix');
     assert.deepEqual(mix.flavors, [
       { name: 'Aino Strong - Black', percentage: 58 },
       { name: 'Blackburn - Roze T', percentage: 29 },
       { name: 'MustH - Early Grey', percentage: 13 }
     ]);
-    assert.equal(mock.requests[0].options.path, '/rest/v1/rpc/get_live_mixes');
-    assert.deepEqual(mock.requests.filter(request => request.params).map(request => request.params.p_offset), [0, 50]);
-    assert.match(mock.requests[2].options.path, /flavors\?select=id,line&id=in/);
+    assert.equal(mock.requests[0].options.path, '/rest/v1/rpc/get_stream_overlay');
+    assert.deepEqual(mock.requests[0].params, { p_token: 'AbC123_xyz-9' });
+    assert.match(mock.requests[1].options.path, /flavors\?select=id,line&id=in/);
   } finally {
     mock.restore();
   }
 });
 
-test('HookahTools import rejects stale and incomplete mixes without changing setup', async () => {
-  const old = new Date(Date.now() - 31 * 60 * 1000).toISOString();
-  const mock = mockLiveMixPages([[{
-    mix_id: 'old', creator: { nickname: 'Marv' }, created_at: old,
-    flavors: [{ brand_name: 'Aino', name: 'Black', percentage: 100 }]
-  }]]);
+test('HookahTools overlay without mix, unknown link or missing link changes nothing', async () => {
+  let mock = mockHookahTools({ found: true, nickname: 'Marv', mix: null });
   try {
-    assert.equal(await new DatabaseService().fetchCurrentMarvHookahToolsMix(), null);
+    assert.equal(await new DatabaseService().fetchHookahToolsOverlayMix(OVERLAY_LINK), null);
   } finally {
     mock.restore();
   }
+  mock = mockHookahTools({ found: false });
+  try {
+    await assert.rejects(new DatabaseService().fetchHookahToolsOverlayMix(OVERLAY_LINK), /kennt diesen Overlay-Link nicht/);
+  } finally {
+    mock.restore();
+  }
+  await assert.rejects(new DatabaseService().fetchHookahToolsOverlayMix(''), /Kein gültiger HookahTools-Overlay-Link/);
+  assert.equal(DatabaseService.parseHookahToolsOverlayToken('https://hookahtools.de/profile'), '');
+});
 
+test('HookahTools mix is applied to the setup without touching the hardware', () => {
   const source = fs.readFileSync(path.join(__dirname, '../src/renderer/modules/02-setup.js'), 'utf8');
   const apply = source.match(/function applyMarvHookahToolsMix\(mix\) \{[\s\S]*?^\}/m)?.[0];
   assert.ok(apply);

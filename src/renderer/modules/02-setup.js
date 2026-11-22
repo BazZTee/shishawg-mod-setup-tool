@@ -1801,11 +1801,12 @@ function setupEventListeners() {
         const result = await ipcRenderer.invoke('db:get-marv-hookahtools-mix');
         if (!result?.success) throw new Error(result?.error || 'HookahTools-Mix konnte nicht geladen werden');
         if (!result.mix) {
-          showToast('Kein Live-Mix von Marv aus den letzten 30 Minuten gefunden.', 'info');
+          showToast('Im HookahTools-Stream-Overlay ist gerade kein Mix ausgewählt.', 'info');
           return;
         }
         if (!applyMarvHookahToolsMix(result.mix)) throw new Error('Mix konnte nicht in das Setup übernommen werden');
-        showToast('Marvs HookahTools-Mix mit Tabaksorten und Prozentanteilen übernommen.', 'success');
+        const mixLabel = result.mix.name ? `„${result.mix.name}“` : 'HookahTools-Mix';
+        showToast(`${mixLabel} mit Tabaksorten und Prozentanteilen übernommen.`, 'success');
       } catch (error) {
         showToast(error.message || 'HookahTools-Import fehlgeschlagen', 'error');
       } finally {

@@ -1491,7 +1491,11 @@ ipcMain.handle('db:get-catalog', async () => {
 
 ipcMain.handle('db:get-marv-hookahtools-mix', async () => {
   try {
-    return { success: true, mix: await dbService.fetchCurrentMarvHookahToolsMix() };
+    // The overlay link is stored per streamer profile; the active profile decides.
+    const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+    const activeId = store.get('active_profile_id', profiles[0]?.id);
+    const active = profiles.find(p => p.id === activeId) || profiles[0] || {};
+    return { success: true, mix: await dbService.fetchHookahToolsOverlayMix(active.hookahToolsOverlay) };
   } catch (error) {
     return { success: false, error: error.message || 'HookahTools-Mix konnte nicht geladen werden' };
   }

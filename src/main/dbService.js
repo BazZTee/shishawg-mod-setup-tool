@@ -153,12 +153,12 @@ function fetchSupabaseEndpoint(pathStr) {
   });
 }
 
-function fetchHookahToolsLiveMixes(offset) {
+function postHookahToolsRpc(name, params) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ p_limit: 50, p_offset: offset });
+    const body = JSON.stringify(params || {});
     const req = https.request({
       hostname: HOOKAHTOOLS_SUPABASE_HOST,
-      path: '/rest/v1/rpc/get_live_mixes',
+      path: `/rest/v1/rpc/${name}`,
       method: 'POST',
       headers: {
         'apikey': HOOKAHTOOLS_SUPABASE_KEY,
@@ -172,13 +172,11 @@ function fetchHookahToolsLiveMixes(offset) {
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`HookahTools Live-Mixes: HTTP ${res.statusCode}`));
+          reject(new Error(`HookahTools antwortet mit HTTP ${res.statusCode}`));
           return;
         }
         try {
-          const mixes = JSON.parse(data);
-          if (!Array.isArray(mixes)) throw new Error('Ungültige Live-Mix-Antwort');
-          resolve(mixes);
+          resolve(JSON.parse(data));
         } catch (error) {
           reject(error);
         }
@@ -190,43 +188,53 @@ function fetchHookahToolsLiveMixes(offset) {
   });
 }
 
+// Accepts the stream overlay link from the streamer's HookahTools profile
+// (https://hookahtools.de/stream/<token>) or the bare token.
+function parseHookahToolsOverlayToken(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/\/stream\/([^/?#\s]+)/i);
+  const token = match ? decodeURIComponent(match[1]) : raw;
+  return /^[A-Za-z0-9_-]{8,128}$/.test(token) ? token : '';
+}
+
 class DatabaseService {
-  async fetchCurrentMarvHookahToolsMix() {
-    const now = Date.now();
-    const cutoff = now - 30 * 60 * 1000;
-    for (let offset = 0; offset < 1000; offset += 50) {
-      const mixes = await fetchHookahToolsLiveMixes(offset);
-      for (const mix of mixes) {
-        const createdAt = Date.parse(mix?.created_at);
-        if (!Number.isFinite(createdAt) || createdAt < cutoff || createdAt > now + 60 * 1000) continue;
-        if (String(mix?.creator?.nickname || '').trim().toLowerCase() !== 'marv') continue;
-        const sourceFlavors = Array.isArray(mix.flavors) ? mix.flavors : [];
-        const flavorIds = sourceFlavors.map(flavor => flavor?.flavor_id);
-        if (!flavorIds.length || flavorIds.some(id => typeof id !== 'string' || !id.trim())) {
-          throw new Error('Marvs Live-Mix enthält keine eindeutigen Tabaksorten');
-        }
-        const details = await fetchSupabaseEndpoint(`flavors?select=id,line&id=in.(${flavorIds.map(encodeURIComponent).join(',')})`);
-        const flavorLines = new Map(details.map(flavor => [flavor.id, flavor.line]));
-        if (flavorIds.some(id => !flavorLines.has(id))) {
-          throw new Error('Nicht alle Tabaksorten aus Marvs Live-Mix sind im HookahTools-Katalog verfügbar');
-        }
-        const flavors = sourceFlavors.map(flavor => ({
-          name: formatHookahToolsTobacco(
-            typeof flavor?.brand_name === 'string' ? flavor.brand_name : '',
-            flavorLines.get(flavor.flavor_id),
-            typeof flavor?.name === 'string' ? flavor.name : ''
-          ),
-          percentage: Number(flavor?.percentage)
-        }));
-        if (!flavors.length || flavors.some(flavor => !flavor.name || !Number.isFinite(flavor.percentage) || flavor.percentage <= 0 || flavor.percentage > 100)) {
-          throw new Error('Marvs Live-Mix enthält ungültige Tabaksorten oder Mischanteile');
-        }
-        return { mixId: mix.mix_id, createdAt: mix.created_at, flavors };
-      }
-      if (mixes.length < 50 || mixes.some(mix => Number.isFinite(Date.parse(mix?.created_at)) && Date.parse(mix.created_at) < cutoff)) return null;
+  // Reads the mix the streamer currently shows in the HookahTools stream overlay.
+  // Returns null when the overlay has no mix selected.
+  async fetchHookahToolsOverlayMix(overlayLink) {
+    const token = parseHookahToolsOverlayToken(overlayLink);
+    if (!token) throw new Error('Kein gültiger HookahTools-Overlay-Link im Streamer-Profil hinterlegt.');
+    const overlay = await postHookahToolsRpc('get_stream_overlay', { p_token: token });
+    if (!overlay || typeof overlay !== 'object') throw new Error('Ungültige Antwort von HookahTools');
+    if (overlay.found === false) throw new Error('HookahTools kennt diesen Overlay-Link nicht (mehr). Bitte den aktuellen Link im Profil eintragen.');
+    const mix = overlay.mix;
+    if (!mix) return null;
+    const sourceFlavors = Array.isArray(mix.flavors) ? mix.flavors : [];
+    const flavorIds = sourceFlavors.map(flavor => flavor?.id);
+    if (!flavorIds.length || flavorIds.some(id => typeof id !== 'string' || !id.trim())) {
+      throw new Error('Der HookahTools-Mix enthält keine eindeutigen Tabaksorten');
     }
-    throw new Error('Zu viele aktuelle Live-Mixes; Marvs Mix konnte nicht sicher gefunden werden');
+    const details = await fetchSupabaseEndpoint(`flavors?select=id,line&id=in.(${flavorIds.map(encodeURIComponent).join(',')})`);
+    const flavorLines = new Map(details.map(flavor => [flavor.id, flavor.line]));
+    const flavors = sourceFlavors.map(flavor => ({
+      name: formatHookahToolsTobacco(
+        typeof flavor?.brand === 'string' ? flavor.brand : '',
+        flavorLines.get(flavor.id),
+        typeof flavor?.name === 'string' ? flavor.name : ''
+      ),
+      percentage: Number(flavor?.percentage)
+    }));
+    if (flavors.some(flavor => !flavor.name || !Number.isFinite(flavor.percentage) || flavor.percentage <= 0 || flavor.percentage > 100)) {
+      throw new Error('Der HookahTools-Mix enthält ungültige Tabaksorten oder Mischanteile');
+    }
+    return {
+      mixId: mix.id,
+      name: typeof mix.name === 'string' ? mix.name : '',
+      nickname: typeof overlay.nickname === 'string' ? overlay.nickname : '',
+      flavors
+    };
   }
+
 
   constructor() {
     const userDataDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : path.join(process.cwd(), '.temp_user_data');
@@ -1329,3 +1337,4 @@ class DatabaseService {
 }
 
 module.exports = DatabaseService;
+module.exports.parseHookahToolsOverlayToken = parseHookahToolsOverlayToken;

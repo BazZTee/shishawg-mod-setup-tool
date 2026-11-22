@@ -168,3 +168,33 @@ test('Custom freetext tobacco not in catalog is preserved 1:1', () => {
   const person = ctx.state.persons[0];
   assert.equal(person.tobaccos[0], 'Geheimer Spezialtabak Mango Lassi');
 });
+
+test('Chat flavor descriptions stay attached to tobacco and never become separate entries', () => {
+  const ctx = setupTestEnvironment();
+  let autoLearnCalls = 0;
+  ctx.triggerAutoLearn = () => { autoLearnCalls++; };
+  const rawCommand = '!editsetup Misha Shisha Yellow // Cosmo Bowl // Enso Diamond, MustH - Rocketman (Erdbeere), Afzal - Kiwi, Maduro Perfume - Million, Blackburn - Grapefruit (Zimt), JAM - Rose, Deus - Menthol (Ingwer), Al Waha - Cardamom, Kismet - Black Sandalwood (Karamell, Vanille) und MustH - Lemn-Lim //';
+
+  assert.equal(vm.runInContext(`parseChatSetupMessage(${JSON.stringify(rawCommand)})`, ctx), true);
+  assert.equal(ctx.state.persons[0].bowl, 'Cosmo Bowl');
+  assert.deepEqual(Array.from(ctx.state.persons[0].tobaccos), [
+    'Enso Diamond', 'MustH - Rocketman', 'Afzal - Kiwi', 'Maduro Perfume - Million',
+    'Blackburn - Grapefruit', 'JAM - Rose', 'Deus - Menthol',
+    'Al Waha - Cardamom', 'Kismet - Black Sandalwood', 'MustH - Lemn-Lim'
+  ]);
+  assert.equal(autoLearnCalls, 0);
+});
+
+test('Electric device is imported as device, with only actual flavor entries under tobacco', () => {
+  const ctx = setupTestEnvironment();
+  const rawCommand = '!editsetup Domi: XKAH Lite // MustH - Rocketman (12g, Erdbeere) und Hookain FYLife - Zitrone Minze //';
+
+  assert.equal(vm.runInContext(`parseChatSetupMessage(${JSON.stringify(rawCommand)})`, ctx), true);
+  const person = ctx.state.persons[0];
+  assert.equal(person.name, 'Domi');
+  assert.equal(person.bowl, 'XKAH Lite');
+  assert.equal(person.isElectric, true);
+  assert.equal(person.pipe, '');
+  assert.deepEqual(Array.from(person.tobaccos), ['MustH - Rocketman', 'Hookain FYLife - Zitrone Minze']);
+  assert.equal(person.tobaccoAmounts[0], '12');
+});

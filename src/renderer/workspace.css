@@ -92,6 +92,17 @@
 .swg-workspace .app-warning-banner { grid-area: notice; margin: 0; border-radius: 0; padding: 7px var(--page-padding); font-size: 11px; background: #30291e; border: none; border-bottom: 1px solid #51412b; color: #ecd4a8; }
 .swg-workspace[data-view='view-landing'] #banner-token-expired { display: none; }
 .swg-workspace .hub-view-pane { gap: 16px; padding: 24px var(--page-padding) 24px; min-width: 0; overflow: auto; }
+.swg-workspace #view-custom-dashboard { scrollbar-gutter: stable; }
+.swg-workspace #view-custom-dashboard > .custom-dashboard-grid { flex: 0 0 auto; }
+@container (max-width: 760px) {
+  .swg-glass .dashboard-embedded-source-view#view-setup .glass-setup-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .swg-glass .dashboard-embedded-source-view#view-setup .glass-setup-companion {
+    position: static;
+    height: auto;
+  }
+}
 .swg-workspace #view-landing { gap: 20px; padding-top: 30px; padding-bottom: 22px; }
 .swg-workspace .landing-hero { position: relative; text-align: left; padding: 0; margin: 0; }
 .ws-eyebrow { font-size: 10px; letter-spacing: 2px; font-weight: 600; color: #a3e0c2; margin-bottom: 8px; }
@@ -254,6 +265,13 @@
 .swg-workspace :is(#custom-timer-duration-display, #custom-timer-phase-label, #cw-setup-cmd-preview, .ls-duration, .ls-coal-time, .ls-phase-label) { color: #b7e0c7 !important; }
 .swg-workspace :is(.mod-chat-messages, .markers-list-container, .chat-system-message) { background: #171c21; }
 .swg-workspace #view-setup { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr); grid-template-areas: 'back back' 'heading heading' 'toolbar toolbar' 'onboard onboard' 'persons notes' 'persons extras' 'generator generator'; grid-template-rows: auto auto auto auto auto auto auto; align-content: start; align-items: start; }
+@container (max-width: 760px) {
+  .swg-workspace .dashboard-embedded-source-view#view-setup {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'back' 'heading' 'toolbar' 'onboard' 'persons' 'notes' 'extras' 'generator';
+    grid-template-rows: auto;
+  }
+}
 .swg-workspace #view-setup > .tool-sub-header { grid-area: back; }
 .swg-workspace #view-setup > .ws-module-heading { grid-area: heading; }
 .swg-workspace #view-setup > .toolbar { grid-area: toolbar; }

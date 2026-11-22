@@ -1,0 +1,92 @@
+#view-modchat .mod-direct-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+#view-modchat .mod-direct-tabs button {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+#view-modchat .mod-direct-tabs button.active {
+  color: var(--text-primary);
+  background: #92bafa28;
+}
+#view-modchat .mod-direct-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+#view-modchat .mod-direct-recipient {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+}
+#view-modchat .mod-direct-recipient select {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: .88rem;
+  box-sizing: border-box;
+}
+#view-modchat .mod-direct-status { margin: 0; padding: 0 14px 8px; font-size: 12px; color: var(--text-muted); }
+#view-modchat .mod-direct-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #171c21;
+}
+#view-modchat .mod-direct-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 86%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #29384a;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+#view-modchat .mod-direct-message.outgoing { align-self: flex-end; background: #244e5d; }
+#view-modchat .mod-direct-message small { opacity: .7; font-size: 11px; }
+#view-modchat .mod-direct-empty { color: var(--text-muted); text-align: center; }
+#view-modchat .mod-direct-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-color);
+}
+#view-modchat .mod-direct-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 58px;
+  max-height: 104px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: .88rem;
+  line-height: 1.4;
+  box-sizing: border-box;
+  resize: vertical;
+}
+#view-modchat .mod-direct-composer button {
+  height: 40px;
+  min-height: 40px;
+  padding: 9px 14px;
+  border-radius: 10px;
+}

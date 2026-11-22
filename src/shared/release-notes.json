@@ -1,37 +1,47 @@
 {
   "version": "8.0.2",
   "title": "Neu in Version 8.0.2",
-  "intro": "Dieses Update verbessert die Zuverlässigkeit des Setup-Managers und des persönlichen Dashboards.",
+  "intro": "Seit 8.0.1: mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
     {
-      "icon": "📝",
-      "title": "Schnellnotizen erkennen aktualisierte Katalogdaten",
-      "description": "Geänderte Produktnamen wie ONMO Alu HMD werden korrekt aus dem aktuellen Katalog übernommen. Allgemeine Begriffe wie HMD wählen nicht mehr versehentlich ein anderes E-Gerät aus."
+      "icon": "🧩",
+      "title": "Vollständige Module im persönlichen Dashboard",
+      "description": "Du kannst Originalmodule übernehmen oder ihre einzelnen Funktionsbereiche auswählen. Der Modul-Picker ist besser lesbar und scrollbar."
     },
     {
       "icon": "🔒",
-      "title": "Persönliches Dashboard bleibt stabil",
-      "description": "Beim Wechsel zwischen YouTube-Finder, Chat-Befehlen und den weiteren Quick-Actions bleiben angedockte Tabs, Aufteilungen, Größen und Eingaben in anderen Modulen erhalten. Die Layout-Sperre schützt außerdem vor dem Hinzufügen, Entfernen und Zurücksetzen von Modulen."
+      "title": "Dashboard-Layout bleibt erhalten",
+      "description": "Tabs, Aufteilungen und Eingaben bleiben beim Wechsel der Werkzeuge erhalten. Die Layout-Sperre schützt vor versehentlichen Änderungen. Schmale Bereiche und der Timer passen sich besser an."
     },
     {
-      "icon": "⏱️",
-      "title": "Timer passt sich an die Modulbreite an",
-      "description": "Setup-Name, Laufzeit und Kohlezähler bleiben beim Verkleinern oder Verschieben des Timer-Moduls lesbar und überlappen sich nicht mehr."
+      "icon": "💨",
+      "title": "Marvs HookahTools-Mix importieren",
+      "description": "Der Setup-Manager findet Marvs Live-Mix aus den letzten 30 Minuten und übernimmt Tabaksorten samt Mischanteilen, ohne die übrige Ausstattung zu verändern."
     },
     {
-      "icon": "📷",
-      "title": "Screenshots in Feedback und Fehlerberichten",
-      "description": "Beim Erstellen einer Trello-Karte können jetzt bis zu vier Screenshots ausgewählt, vor dem Absenden geprüft und direkt als Anhänge hochgeladen werden."
+      "icon": "🛠️",
+      "title": "Setup aus dem Chat genauer übernehmen",
+      "description": "E-Geräte und Geschmacksangaben werden beim Import besser von Tabaksorten getrennt. Der Chat-Import schreibt erkannte Angaben nicht automatisch in den Katalog."
+    },
+    {
+      "icon": "🎮",
+      "title": "ChatGames über die Suche steuern",
+      "description": "Öffne ChatGames mit Strg+K, wähle eines von acht Spielen und bediene die Befehle per Knopfdruck. Mit ausgeschaltetem Chat-Versand kannst du alles ohne Chat-Nachrichten testen."
+    },
+    {
+      "icon": "🔐",
+      "title": "Private Nachrichten im Mod-HQ",
+      "description": "Im neuen Tab können sich zwei Mods direkt schreiben. Der Team-Chat bleibt davon getrennt."
     },
     {
       "icon": "👥",
       "title": "Mod-Anwesenheit im Team-Chat",
-      "description": "Der Mod-Chat zeigt pro Streamer-Kanal alle bisher angemeldeten Mods. Aktive Nutzer stehen alphabetisch oben mit grünem Statuspunkt, derzeit abwesende Nutzer werden rot markiert."
+      "description": "Die Mod-Liste zeigt angemeldete Mods pro Kanal; aktive Nutzer stehen oben und sind am Statuspunkt erkennbar."
     },
     {
-      "icon": "🧩",
-      "title": "Originalmodule im persönlichen Dashboard",
-      "description": "Das Dashboard verwendet jetzt dieselben vollständigen Module wie die Hauptnavigation. Beim Hinzufügen oder Anpassen kann das gesamte Originalmodul verwendet oder können einzelne echte Funktionsbereiche gezielt ein- und ausgeblendet werden."
+      "icon": "📝",
+      "title": "Setup und Feedback verbessert",
+      "description": "Schnellnotizen erkennen aktualisierte Katalognamen zuverlässiger. Feedback und Fehlerberichte können bis zu vier Screenshots als Trello-Anhänge enthalten."
     }
   ]
 }

@@ -550,6 +550,20 @@ class SupabaseService {
     return Array.isArray(data) ? data : [];
   }
 
+  async getModDirectMessages(recipientId, channel = 'marved') {
+    const data = await this.secureRequest('direct.list', {
+      channel: this.normalizeChannel(channel), recipientId: String(recipientId || '')
+    });
+    return Array.isArray(data) ? data : [];
+  }
+
+  async sendModDirectMessage(recipientId, message, channel = 'marved') {
+    return this.secureRequest('direct.send', {
+      channel: this.normalizeChannel(channel),
+      recipientId: String(recipientId || ''), message: String(message || '')
+    });
+  }
+
   // --- Giveaway Winners CRUD ---
   async getGiveaways(channel = 'marved') {
     try {
@@ -599,7 +613,7 @@ class SupabaseService {
     }
   }
 
-  async saveGiveawayWinner(winner, channel = 'marved') {
+  async saveGiveawayWinner(winner, channel = 'marved', { createOnly = false } = {}) {
     try {
       const cleanChan = (channel || winner.channel || 'marved').toLowerCase().replace('#', '');
       let addressToSave = winner.address && typeof winner.address === 'object' ? { ...winner.address } : null;
@@ -617,7 +631,7 @@ class SupabaseService {
         created_at: new Date(winner.timestamp || winner.created_at || Date.now()).toISOString()
       };
 
-      await this.secureRequest('giveaways.upsert', { channel: cleanChan, winner: row });
+      await this.secureRequest('giveaways.upsert', { channel: cleanChan, winner: row, createOnly: createOnly === true });
       return true;
     } catch(err) {
       console.error('Supabase saveGiveawayWinner error:', err.message);

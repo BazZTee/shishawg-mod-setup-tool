@@ -933,11 +933,21 @@ function generateCommandString() {
 // Smart Tobacco String Splitter (splits by comma, ' und ', ' & ', ' + ')
 function splitTobaccoString(str) {
   if (!str) return [];
-  const normalized = str
-    .replace(/\s+und\s+/gi, ', ')
-    .replace(/\s*&\s*/g, ', ')
-    .replace(/\s*\+\s*/g, ', ');
-  return normalized.split(',').map(s => s.trim()).filter(Boolean);
+  const items = [];
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '(') depth++;
+    else if (str[i] === ')') depth = Math.max(0, depth - 1);
+    if (depth > 0) continue;
+    const separator = str.slice(i).match(/^(?:,|\s+und\s+|\s*&\s*|\s*\+\s*)/i);
+    if (!separator) continue;
+    items.push(str.slice(start, i).trim());
+    i += separator[0].length - 1;
+    start = i + 1;
+  }
+  items.push(str.slice(start).trim());
+  return items.filter(Boolean);
 }
 
 // Parse individual tobacco item for amount and unit e.g. "MustH - Pynkman (12g)", "Pinkman 12 Gramm", "50%"
@@ -947,17 +957,17 @@ function parseTobaccoItem(item) {
   let unit = 'g';
   let hasAmount = false;
 
-  // Check for bracketed amount e.g. "(12g)", "(12 g)", "(50%)"
+  // Flavor descriptions in chat output are metadata, not separate tobacco.
   const bracketMatch = name.match(/\(([^)]+)\)$/);
   if (bracketMatch) {
     const inner = bracketMatch[1].trim();
-    const amtMatch = inner.match(/^(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
+    const amtMatch = inner.match(/^(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)(?:\s*,|$)/i);
     if (amtMatch) {
       amount = amtMatch[1].replace(',', '.');
       unit = (amtMatch[2] && amtMatch[2].startsWith('%')) ? '%' : 'g';
       hasAmount = true;
-      name = name.substring(0, bracketMatch.index).trim();
     }
+    name = name.substring(0, bracketMatch.index).trim();
   } else {
     // Check for trailing amount e.g. "12g", "12 Gramm", "12 g", "50%", "50 %"
     const trailingMatch = name.match(/\s+(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
@@ -1013,8 +1023,10 @@ function parseChatSetupMessage(rawText) {
 
   const isBowlSegment = (seg) => {
     const s = seg.toLowerCase();
-    return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto');
+    return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto') || /\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(s);
   };
+
+  const isElectricDeviceSegment = (seg) => /xkah|imoto|e-kopf|\belektr|\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(seg);
 
   const createDefaultPerson = (name = 'Marvin') => ({
     name: name,
@@ -1127,7 +1139,7 @@ function parseChatSetupMessage(rawText) {
       }
       parsedPersons.push(newPerson);
     } else {
-      if (!currentPerson.pipe && rawTobs.length === 1 && !rawTobs[0].includes('-') && !/\d+\s*(g|%)/i.test(rawTobs[0])) {
+      if (!currentPerson.pipe && !currentPerson.bowl && rawTobs.length === 1 && !rawTobs[0].includes('-') && !/\d+\s*(g|%)/i.test(rawTobs[0])) {
         currentPerson.pipe = seg;
       } else {
         rawTobs.forEach(tRaw => addTobaccoToPerson(currentPerson, tRaw));
@@ -1156,7 +1168,7 @@ function parseChatSetupMessage(rawText) {
       let finalPipe = p.pipe;
       let finalBowl = p.bowl || sharedBowl;
       let finalHmd = p.hmd || sharedHmd;
-      let isElec = !!p.isElectric;
+      let isElec = !!p.isElectric || isElectricDeviceSegment(finalBowl);
 
       if (finalPipe && catalog.pipes) {
         const match = findBestFuzzyMatch(finalPipe, catalog.pipes, 0.65);
@@ -1176,7 +1188,7 @@ function parseChatSetupMessage(rawText) {
 
       const mappedTobaccos = (p.tobaccos && p.tobaccos.length > 0 ? p.tobaccos : ['']).map(tob => {
         if (!tob || !catalog.tobacco) return tob;
-        const match = findBestFuzzyMatch(tob, catalog.tobacco, 0.68);
+        const match = findBestFuzzyMatch(tob, catalog.tobacco, 0.85);
         return match ? match.name : tob;
       });
 
@@ -1208,7 +1220,6 @@ function parseChatSetupMessage(rawText) {
 
     renderPersonsGrid();
     generateCommandString();
-    triggerAutoLearn();
     return true;
   }
 
@@ -1708,6 +1719,39 @@ function matchNotesToForm(text) {
 }
 
 // Global Event Listeners
+function applyMarvHookahToolsMix(mix) {
+  const flavors = mix?.flavors;
+  if (!Array.isArray(flavors) || !flavors.length || flavors.some(flavor =>
+    typeof flavor?.name !== 'string' || !flavor.name.trim() ||
+    !Number.isFinite(flavor.percentage) || flavor.percentage <= 0 || flavor.percentage > 100
+  )) return false;
+
+  let personIndex = state.persons.findIndex(person => /^(marv|marvin)$/i.test(String(person?.name || '').trim()));
+  if (personIndex < 0) {
+    personIndex = state.persons.findIndex(person => person &&
+      !person.name && !person.pipe && !person.bowl && !person.hmd &&
+      !(person.tobaccos || []).some(tobacco => String(tobacco || '').trim())
+    );
+  }
+  if (personIndex < 0) {
+    if (state.personCount >= 10) return false;
+    personIndex = state.personCount;
+    state.persons[personIndex] = { name: 'Marvin', pipe: '', bowl: '', hmd: '' };
+    state.personCount += 1;
+    updatePersonCountLabel();
+  }
+
+  const person = state.persons[personIndex];
+  if (!person.name) person.name = 'Marvin';
+  person.tobaccos = flavors.map(flavor => flavor.name.trim());
+  person.tobaccoAmounts = flavors.map(flavor => String(flavor.percentage));
+  person.tobaccoUnit = '%';
+  person.showTobaccoAmounts = true;
+  renderPersonsGrid();
+  generateCommandString();
+  return true;
+}
+
 function setupEventListeners() {
   // Person Count — only + button, count shown as label
   btnIncPersons.addEventListener('click', () => {
@@ -1746,6 +1790,27 @@ function setupEventListeners() {
           inputPasteText.value = text;
         }
       } catch(e) {}
+    });
+  }
+
+  if (btnImportHookahTools) {
+    btnImportHookahTools.addEventListener('click', async () => {
+      importDropdownMenu.classList.add('hidden');
+      btnImportHookahTools.disabled = true;
+      try {
+        const result = await ipcRenderer.invoke('db:get-marv-hookahtools-mix');
+        if (!result?.success) throw new Error(result?.error || 'HookahTools-Mix konnte nicht geladen werden');
+        if (!result.mix) {
+          showToast('Kein Live-Mix von Marv aus den letzten 30 Minuten gefunden.', 'info');
+          return;
+        }
+        if (!applyMarvHookahToolsMix(result.mix)) throw new Error('Mix konnte nicht in das Setup übernommen werden');
+        showToast('Marvs HookahTools-Mix mit Tabaksorten und Prozentanteilen übernommen.', 'success');
+      } catch (error) {
+        showToast(error.message || 'HookahTools-Import fehlgeschlagen', 'error');
+      } finally {
+        btnImportHookahTools.disabled = false;
+      }
     });
   }
 

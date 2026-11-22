@@ -77,6 +77,7 @@ const catalogListItems = document.getElementById('catalog-list-items');
 const btnImportMenu = document.getElementById('btn-import-menu');
 const importDropdownMenu = document.getElementById('import-dropdown-menu');
 const btnOpenPasteModal = document.getElementById('btn-open-paste-modal');
+const btnImportHookahTools = document.getElementById('btn-import-hookahtools');
 const pasteModal = document.getElementById('paste-modal');
 const btnClosePasteModal = document.getElementById('btn-close-paste-modal');
 const inputPasteText = document.getElementById('input-paste-text');
@@ -255,13 +256,22 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
 
   // 7. Re-bind Channel Points Listener
   try {
-    ipcRenderer.invoke('channelpoints:start-listener', { channel: prof.targetChannel }).catch(() => {});
+    startChannelPointsListenerWithNotice(prof.targetChannel);
   } catch(e) {}
 
   if (saveToBackend) {
     showToast(`🎮 Aktiver Streamer: ${prof.name} (#${prof.targetChannel})`, 'success');
   }
   updateTwitchUI();
+}
+
+function startChannelPointsListenerWithNotice(channel) {
+  ipcRenderer.invoke('channelpoints:start-listener', { channel })
+    .then(res => {
+      // Missing mod rights are expected before login; only surface configuration problems.
+      if (res && res.success === false && /Bot-Name/.test(res.error || '')) showToast(res.error, 'error');
+    })
+    .catch(() => {});
 }
 
 function setupProfileEventListeners() {
@@ -631,7 +641,7 @@ async function initApp() {
   startModPresenceTracking();
 
   // Auto-start Channel Points (Kohle Stücke) listener
-  ipcRenderer.invoke('channelpoints:start-listener', { channel: state.targetChannel }).catch(() => {});
+  startChannelPointsListenerWithNotice(state.targetChannel);
   ipcRenderer.on('channelpoints:new-redemption', (event, item) => {
     playNotificationSound();
     showToast(`⬛ Kanalpunkte eingelöst: @${item.user_name || item.user_login} hat Kohle Stücke eingelöst!`, 'success');
@@ -870,15 +880,55 @@ function setupHubNavigation() {
 
 // Check Live Stream Status
 let wasStreamLiveBefore = false;
+let streamStatusChannel = '';
+let consecutiveOfflineChecks = 0;
+let isAutoArchivingStreamEnd = false;
+// F28: A stream only counts as ended after this many confirmed offline answers in a row.
+const STREAM_OFFLINE_CONFIRMATIONS = 2;
+
+function showUnknownStreamStatus(channel) {
+  streamStatusDot.className = 'status-indicator-dot grey';
+  streamStatusText.textContent = `#${channel}: Status unbekannt`;
+  if (streamStatusPill) streamStatusPill.title = `Der Live-Status von #${channel} konnte gerade nicht abgefragt werden.`;
+}
+
+async function archiveSessionAfterStreamEnd() {
+  if (isAutoArchivingStreamEnd) return;
+  if (typeof statsState === 'undefined' || !statsState.isRunning || statsState.sessionElapsedSeconds < 120 || !statsState.activeSetup || !statsState.activeSetup.tobacco) return;
+  isAutoArchivingStreamEnd = true;
+  try {
+    const saved = await autoArchiveFinishedSession(statsState.activeSetup, statsState.sessionElapsedSeconds, statsState.coalRotations, statsState.sessionStartTime);
+    if (saved) {
+      resetActiveTimer();
+      showToast('Stream ist offline gegangen: Aktiver Kopf wurde automatisch archiviert! 🏁', 'info');
+    } else {
+      showToast('Stream ist offline, aber der Kopf konnte nicht archiviert werden. Der Timer läuft weiter – bitte manuell beenden.', 'error');
+    }
+  } finally {
+    isAutoArchivingStreamEnd = false;
+  }
+}
 
 async function checkLiveStreamStatus() {
   if (!streamStatusText || !streamStatusDot) return;
   const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  if (channel.toLowerCase() !== streamStatusChannel) {
+    // A different channel's offline state must never end the previous channel's session.
+    streamStatusChannel = channel.toLowerCase();
+    wasStreamLiveBefore = false;
+    consecutiveOfflineChecks = 0;
+  }
 
   try {
     const res = await ipcRenderer.invoke('twitch:check-stream-status', channel);
-    if (res && res.live) {
+    if (channel.toLowerCase() !== streamStatusChannel) return;
+    if (!res || res.success === false) {
+      showUnknownStreamStatus(channel);
+      return;
+    }
+    if (res.live) {
       wasStreamLiveBefore = true;
+      consecutiveOfflineChecks = 0;
       streamStatusDot.className = 'status-indicator-dot red pulse';
       const viewers = res.viewer_count !== undefined ? ` (${res.viewer_count.toLocaleString('de-DE')} 👁️)` : '';
       const game = res.game_name ? ` • ${res.game_name}` : '';
@@ -888,12 +938,12 @@ async function checkLiveStreamStatus() {
       }
     } else {
       if (wasStreamLiveBefore) {
-        // Stream just went offline! Auto-archive any active smoking head session
-        wasStreamLiveBefore = false;
-        if (typeof statsState !== 'undefined' && statsState.isRunning && statsState.sessionElapsedSeconds >= 120 && statsState.activeSetup && statsState.activeSetup.tobacco) {
-          autoArchiveFinishedSession(statsState.activeSetup, statsState.sessionElapsedSeconds, statsState.coalRotations, statsState.sessionStartTime);
-          resetActiveTimer();
-          showToast('Stream ist offline gegangen: Aktiver Kopf wurde automatisch archiviert! 🏁', 'info');
+        consecutiveOfflineChecks += 1;
+        if (consecutiveOfflineChecks >= STREAM_OFFLINE_CONFIRMATIONS) {
+          // Confirmed stream end: archive first, reset the timer only after it was stored.
+          wasStreamLiveBefore = false;
+          consecutiveOfflineChecks = 0;
+          archiveSessionAfterStreamEnd();
         }
       }
 
@@ -904,8 +954,7 @@ async function checkLiveStreamStatus() {
       }
     }
   } catch (err) {
-    streamStatusDot.className = 'status-indicator-dot grey';
-    streamStatusText.textContent = `#${channel}: Offline`;
+    showUnknownStreamStatus(channel);
   }
 }
 
@@ -1850,11 +1899,21 @@ function generateCommandString() {
 // Smart Tobacco String Splitter (splits by comma, ' und ', ' & ', ' + ')
 function splitTobaccoString(str) {
   if (!str) return [];
-  const normalized = str
-    .replace(/\s+und\s+/gi, ', ')
-    .replace(/\s*&\s*/g, ', ')
-    .replace(/\s*\+\s*/g, ', ');
-  return normalized.split(',').map(s => s.trim()).filter(Boolean);
+  const items = [];
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '(') depth++;
+    else if (str[i] === ')') depth = Math.max(0, depth - 1);
+    if (depth > 0) continue;
+    const separator = str.slice(i).match(/^(?:,|\s+und\s+|\s*&\s*|\s*\+\s*)/i);
+    if (!separator) continue;
+    items.push(str.slice(start, i).trim());
+    i += separator[0].length - 1;
+    start = i + 1;
+  }
+  items.push(str.slice(start).trim());
+  return items.filter(Boolean);
 }
 
 // Parse individual tobacco item for amount and unit e.g. "MustH - Pynkman (12g)", "Pinkman 12 Gramm", "50%"
@@ -1864,17 +1923,17 @@ function parseTobaccoItem(item) {
   let unit = 'g';
   let hasAmount = false;
 
-  // Check for bracketed amount e.g. "(12g)", "(12 g)", "(50%)"
+  // Flavor descriptions in chat output are metadata, not separate tobacco.
   const bracketMatch = name.match(/\(([^)]+)\)$/);
   if (bracketMatch) {
     const inner = bracketMatch[1].trim();
-    const amtMatch = inner.match(/^(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
+    const amtMatch = inner.match(/^(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)(?:\s*,|$)/i);
     if (amtMatch) {
       amount = amtMatch[1].replace(',', '.');
       unit = (amtMatch[2] && amtMatch[2].startsWith('%')) ? '%' : 'g';
       hasAmount = true;
-      name = name.substring(0, bracketMatch.index).trim();
     }
+    name = name.substring(0, bracketMatch.index).trim();
   } else {
     // Check for trailing amount e.g. "12g", "12 Gramm", "12 g", "50%", "50 %"
     const trailingMatch = name.match(/\s+(\d+(?:[.,]\d+)?)\s*(g|gramm|%|prozent)?$/i);
@@ -1930,8 +1989,10 @@ function parseChatSetupMessage(rawText) {
 
   const isBowlSegment = (seg) => {
     const s = seg.toLowerCase();
-    return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto');
+    return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto') || /\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(s);
   };
+
+  const isElectricDeviceSegment = (seg) => /xkah|imoto|e-kopf|\belektr|\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(seg);
 
   const createDefaultPerson = (name = 'Marvin') => ({
     name: name,
@@ -2044,7 +2105,7 @@ function parseChatSetupMessage(rawText) {
       }
       parsedPersons.push(newPerson);
     } else {
-      if (!currentPerson.pipe && rawTobs.length === 1 && !rawTobs[0].includes('-') && !/\d+\s*(g|%)/i.test(rawTobs[0])) {
+      if (!currentPerson.pipe && !currentPerson.bowl && rawTobs.length === 1 && !rawTobs[0].includes('-') && !/\d+\s*(g|%)/i.test(rawTobs[0])) {
         currentPerson.pipe = seg;
       } else {
         rawTobs.forEach(tRaw => addTobaccoToPerson(currentPerson, tRaw));
@@ -2073,7 +2134,7 @@ function parseChatSetupMessage(rawText) {
       let finalPipe = p.pipe;
       let finalBowl = p.bowl || sharedBowl;
       let finalHmd = p.hmd || sharedHmd;
-      let isElec = !!p.isElectric;
+      let isElec = !!p.isElectric || isElectricDeviceSegment(finalBowl);
 
       if (finalPipe && catalog.pipes) {
         const match = findBestFuzzyMatch(finalPipe, catalog.pipes, 0.65);
@@ -2093,7 +2154,7 @@ function parseChatSetupMessage(rawText) {
 
       const mappedTobaccos = (p.tobaccos && p.tobaccos.length > 0 ? p.tobaccos : ['']).map(tob => {
         if (!tob || !catalog.tobacco) return tob;
-        const match = findBestFuzzyMatch(tob, catalog.tobacco, 0.68);
+        const match = findBestFuzzyMatch(tob, catalog.tobacco, 0.85);
         return match ? match.name : tob;
       });
 
@@ -2125,7 +2186,6 @@ function parseChatSetupMessage(rawText) {
 
     renderPersonsGrid();
     generateCommandString();
-    triggerAutoLearn();
     return true;
   }
 
@@ -2625,6 +2685,39 @@ function matchNotesToForm(text) {
 }
 
 // Global Event Listeners
+function applyMarvHookahToolsMix(mix) {
+  const flavors = mix?.flavors;
+  if (!Array.isArray(flavors) || !flavors.length || flavors.some(flavor =>
+    typeof flavor?.name !== 'string' || !flavor.name.trim() ||
+    !Number.isFinite(flavor.percentage) || flavor.percentage <= 0 || flavor.percentage > 100
+  )) return false;
+
+  let personIndex = state.persons.findIndex(person => /^(marv|marvin)$/i.test(String(person?.name || '').trim()));
+  if (personIndex < 0) {
+    personIndex = state.persons.findIndex(person => person &&
+      !person.name && !person.pipe && !person.bowl && !person.hmd &&
+      !(person.tobaccos || []).some(tobacco => String(tobacco || '').trim())
+    );
+  }
+  if (personIndex < 0) {
+    if (state.personCount >= 10) return false;
+    personIndex = state.personCount;
+    state.persons[personIndex] = { name: 'Marvin', pipe: '', bowl: '', hmd: '' };
+    state.personCount += 1;
+    updatePersonCountLabel();
+  }
+
+  const person = state.persons[personIndex];
+  if (!person.name) person.name = 'Marvin';
+  person.tobaccos = flavors.map(flavor => flavor.name.trim());
+  person.tobaccoAmounts = flavors.map(flavor => String(flavor.percentage));
+  person.tobaccoUnit = '%';
+  person.showTobaccoAmounts = true;
+  renderPersonsGrid();
+  generateCommandString();
+  return true;
+}
+
 function setupEventListeners() {
   // Person Count — only + button, count shown as label
   btnIncPersons.addEventListener('click', () => {
@@ -2663,6 +2756,27 @@ function setupEventListeners() {
           inputPasteText.value = text;
         }
       } catch(e) {}
+    });
+  }
+
+  if (btnImportHookahTools) {
+    btnImportHookahTools.addEventListener('click', async () => {
+      importDropdownMenu.classList.add('hidden');
+      btnImportHookahTools.disabled = true;
+      try {
+        const result = await ipcRenderer.invoke('db:get-marv-hookahtools-mix');
+        if (!result?.success) throw new Error(result?.error || 'HookahTools-Mix konnte nicht geladen werden');
+        if (!result.mix) {
+          showToast('Kein Live-Mix von Marv aus den letzten 30 Minuten gefunden.', 'info');
+          return;
+        }
+        if (!applyMarvHookahToolsMix(result.mix)) throw new Error('Mix konnte nicht in das Setup übernommen werden');
+        showToast('Marvs HookahTools-Mix mit Tabaksorten und Prozentanteilen übernommen.', 'success');
+      } catch (error) {
+        showToast(error.message || 'HookahTools-Import fehlgeschlagen', 'error');
+      } finally {
+        btnImportHookahTools.disabled = false;
+      }
     });
   }
 
@@ -9752,7 +9866,11 @@ async function autoArchiveFinishedSession(setup, durationSecs, coalRotations, st
       showToast(`⚠️ ${detail}: ${result.error || 'Unbekannter Fehler'}`, 'error');
     }
     await loadStatsState();
-  } catch(e) {}
+    // Callers may only reset the running timer once the session is stored somewhere.
+    return Boolean(result && (result.success || result.localSaved));
+  } catch(e) {
+    return false;
+  }
 }
 
 function resetActiveTimer(persistState = true) {
@@ -10948,6 +11066,7 @@ function setupChangeRequestListeners() {
 const CUSTOM_DASHBOARD_STORAGE_KEY = 'swg_custom_dashboard_config';
 const CUSTOM_DASHBOARD_LOCK_KEY = 'swg_custom_dashboard_locked';
 const CUSTOM_DASHBOARD_LAYOUT_VERSION = 3;
+const dashboardUndoStack = [];
 
 const CUSTOM_DASHBOARD_CATALOG = [
   {
@@ -10958,13 +11077,10 @@ const CUSTOM_DASHBOARD_CATALOG = [
     sourceView: 'view-setup',
     defaultColSpan: 12,
     features: [
-      { id: 'toolbar', label: 'Werkzeugleiste & Import', selector: '.toolbar, #onboarding-hint' },
-      { id: 'notes', label: 'Schnell-Notizen', selector: '#notes-card' },
-      { id: 'persons', label: 'Personen-Setups', selector: '.persons-section-card' },
-      { id: 'extras', label: 'Kohle, Extras & Promo', selector: '.global-extras-card' },
-      { id: 'command', label: 'Befehlsvorschau & Twitch-Versand', selector: '.generator-card' }
+      { id: 'setup', label: 'Setup erstellen & versenden', selector: '.toolbar, #onboarding-hint, .persons-section-card, .global-extras-card, .generator-card' },
+      { id: 'notes', label: 'Schnell-Notizen', selector: '#notes-card' }
     ],
-    compactDefaults: ['persons', 'extras', 'command']
+    compactDefaults: ['setup']
   },
   {
     id: 'widget-quickactions',
@@ -10976,12 +11092,11 @@ const CUSTOM_DASHBOARD_CATALOG = [
     features: [
       { id: 'streaminfo', label: 'Stream-Titel & Kategorie', selector: '[data-dashboard-source-feature="streaminfo"]' },
       { id: 'clipping', label: 'Clip-Tool', selector: '[data-dashboard-source-feature="clipping"]' },
-      { id: 'favorites', label: 'Persönlicher Schnellzugriff', selector: '[data-dashboard-source-feature="favorites"]' },
+      { id: 'library', label: 'Chat-Befehle & Schnellzugriff', selector: '[data-dashboard-source-feature="commands"], [data-dashboard-source-feature="favorites"]' },
       { id: 'youtube', label: 'YouTube-Finder', selector: '[data-dashboard-source-feature="youtube"]' },
-      { id: 'commands', label: 'Chat-Befehle', selector: '[data-dashboard-source-feature="commands"]' },
       { id: 'raid', label: 'Raid-Steuerung', selector: '[data-dashboard-source-feature="raid"]' }
     ],
-    compactDefaults: ['favorites', 'commands']
+    compactDefaults: ['library']
   },
   {
     id: 'widget-modchat',
@@ -11007,13 +11122,10 @@ const CUSTOM_DASHBOARD_CATALOG = [
     sourceView: 'view-giveaways',
     defaultColSpan: 12,
     features: [
-      { id: 'configuration', label: 'Giveaway konfigurieren & steuern', selector: '#giveaway-workspace-live .giveaway-main-panel' },
-      { id: 'winner', label: 'Gezogener Gewinner', selector: '#giveaway-workspace-live .giveaway-sidebar-panel > .giveaway-card:not(.giveaway-participants-card)' },
-      { id: 'participants', label: 'Teilnehmer-Pool', selector: '#giveaway-workspace-live .giveaway-participants-card' },
-      { id: 'history', label: 'Gewinne & Versandstatus', selector: '#giveaway-workspace-addresses .giveaway-history-card' },
-      { id: 'addresses', label: 'Adressprüfung & Versand', selector: '#giveaway-workspace-addresses .giveaway-address-card' }
+      { id: 'live', label: 'Live-Giveaway, Gewinner & Teilnehmer', selector: '#giveaway-workspace-live' },
+      { id: 'fulfillment', label: 'Gewinne, Adressen & Versand', selector: '#giveaway-workspace-addresses' }
     ],
-    compactDefaults: ['configuration', 'winner', 'participants']
+    compactDefaults: ['live']
   },
   {
     id: 'widget-qna',
@@ -11023,7 +11135,6 @@ const CUSTOM_DASHBOARD_CATALOG = [
     sourceView: 'view-qna',
     defaultColSpan: 12,
     features: [
-      { id: 'tools', label: 'Q&A-Werkzeugleiste', selector: '.qna-sub-header' },
       { id: 'onair', label: 'Aktuell On-Air', selector: '.qna-spotlight-card' },
       { id: 'inbox', label: 'Fragen-Inbox & Moderation', selector: '.qna-inbox-card' },
       { id: 'round', label: 'Fragerunde & Personen', selector: '.qna-round-card' }
@@ -11039,15 +11150,11 @@ const CUSTOM_DASHBOARD_CATALOG = [
     defaultColSpan: 12,
     features: [
       { id: 'poll-live', label: 'Live-Umfrage', selector: '#panel-mode-polls .poll-active-card' },
-      { id: 'poll-presets', label: 'Umfrage-Schnellvorlagen', selector: '#panel-mode-polls .poll-presets-card' },
-      { id: 'poll-create', label: 'Umfrage erstellen', selector: '#panel-mode-polls .poll-creator-card' },
-      { id: 'poll-saved', label: 'Gespeicherte Umfragen', selector: '#panel-mode-polls .poll-saved-templates-card' },
+      { id: 'poll-manage', label: 'Umfrage erstellen & Vorlagen', selector: '#panel-mode-polls .poll-presets-card, #panel-mode-polls .poll-creator-card, #panel-mode-polls .poll-saved-templates-card' },
       { id: 'prediction-live', label: 'Live-Vorhersage', selector: '#panel-mode-predictions .poll-active-card' },
-      { id: 'prediction-presets', label: 'Vorhersage-Schnellvorlagen', selector: '#panel-mode-predictions .poll-presets-card' },
-      { id: 'prediction-create', label: 'Vorhersage erstellen', selector: '#panel-mode-predictions .poll-creator-card' },
-      { id: 'prediction-saved', label: 'Gespeicherte Vorhersagen', selector: '#panel-mode-predictions .poll-saved-templates-card' }
+      { id: 'prediction-manage', label: 'Vorhersage erstellen & Vorlagen', selector: '#panel-mode-predictions .poll-presets-card, #panel-mode-predictions .poll-creator-card, #panel-mode-predictions .poll-saved-templates-card' }
     ],
-    compactDefaults: ['poll-live', 'poll-create']
+    compactDefaults: ['poll-live', 'poll-manage']
   },
   {
     id: 'widget-timer',
@@ -11059,12 +11166,20 @@ const CUSTOM_DASHBOARD_CATALOG = [
     features: [
       { id: 'history', label: 'Gerauchte Köpfe & Historie', selector: '#panel-stats-history' },
       { id: 'analytics', label: 'Statistiken & Ranglisten', selector: '#panel-stats-analytics' },
-      { id: 'timer', label: 'Live Session- & Kohle-Timer', selector: '.live-session-bottom-bar' },
-      { id: 'overlay', label: 'OBS-Overlay-Verwaltung', selector: '.tool-sub-header .sub-header-actions' }
+      { id: 'timer', label: 'Live Session- & Kohle-Timer mit OBS', selector: '.live-session-bottom-bar, .tool-sub-header .sub-header-actions' }
     ],
     compactDefaults: ['timer']
   }
 ];
+
+const DASHBOARD_FEATURE_ALIASES = {
+  'widget-setup': { toolbar: 'setup', persons: 'setup', extras: 'setup', command: 'setup' },
+  'widget-quickactions': { favorites: 'library', commands: 'library' },
+  'widget-giveaways': { configuration: 'live', winner: 'live', participants: 'live', history: 'fulfillment', addresses: 'fulfillment' },
+  'widget-qna': { tools: 'inbox' },
+  'widget-polls': { 'poll-presets': 'poll-manage', 'poll-create': 'poll-manage', 'poll-saved': 'poll-manage', 'prediction-presets': 'prediction-manage', 'prediction-create': 'prediction-manage', 'prediction-saved': 'prediction-manage' },
+  'widget-timer': { overlay: 'timer' }
+};
 
 const DEFAULT_DASHBOARD_WIDGETS = [
   { id: 'widget-timer', colSpan: 12, collapsed: false },
@@ -11084,9 +11199,9 @@ const CUSTOM_DASHBOARD_FULL_VIEWS = {
 
 function isCustomDashboardLocked() {
   try {
-    return localStorage.getItem(CUSTOM_DASHBOARD_LOCK_KEY) === 'true';
+    return localStorage.getItem(CUSTOM_DASHBOARD_LOCK_KEY) !== 'false';
   } catch(e) {
-    return false;
+    return true;
   }
 }
 
@@ -11107,14 +11222,15 @@ function updateDashboardLockUI() {
 
   if (btnLock) {
     if (locked) {
-      btnLock.innerHTML = '🔒 Layout fixiert (Gesperrt)';
+      btnLock.innerHTML = '✎ Layout anpassen';
       btnLock.classList.add('is-locked');
-      btnLock.title = 'Klicken zum Entsperren (Verschieben & Ändern erlauben)';
+      btnLock.title = 'Bearbeitungsmodus öffnen';
     } else {
-      btnLock.innerHTML = '🔓 Layout entsperrt';
+      btnLock.innerHTML = '✓ Fertig';
       btnLock.classList.remove('is-locked');
-      btnLock.title = 'Klicken zum Sperren (Verschieben & Ändern verhindern)';
+      btnLock.title = 'Bearbeitungsmodus schließen';
     }
+    btnLock.setAttribute('aria-pressed', String(!locked));
   }
 
   if (grid) {
@@ -11127,6 +11243,7 @@ function updateDashboardLockUI() {
   [btnAdd, btnReset].forEach(button => {
     if (!button) return;
     button.disabled = locked;
+    button.classList.toggle('hidden', locked);
     button.setAttribute('aria-disabled', String(locked));
   });
 
@@ -11140,9 +11257,16 @@ function updateDashboardLockUI() {
   });
   document.querySelectorAll('.btn-widget-remove').forEach(button => {
     button.disabled = locked;
+    button.classList.toggle('hidden', locked);
     button.setAttribute('aria-disabled', String(locked));
     button.title = locked ? 'Layout entsperren, um das Modul zu entfernen' : 'Modul entfernen';
   });
+  document.querySelectorAll('.btn-widget-move').forEach(button => {
+    button.classList.toggle('hidden', locked);
+    button.disabled = locked;
+  });
+  grid?.querySelectorAll('.dashboard-panel').forEach(updateDashboardTabOverflow);
+  updateDashboardUndoUI();
 }
 
 function getCustomDashboardConfig() {
@@ -11153,6 +11277,16 @@ function getCustomDashboardConfig() {
       if (Array.isArray(parsed)) return parsed;
       if (parsed && Array.isArray(parsed.widgets)) return parsed.widgets;
       if (parsed && parsed.version === 2 && Object.prototype.hasOwnProperty.call(parsed, 'root')) {
+        const widgets = [];
+        const visit = node => {
+          if (!node) return;
+          if (node.type === 'panel') (node.tabs || []).forEach(widget => widgets.push(widget));
+          else if (node.type === 'split') { visit(node.first); visit(node.second); }
+        };
+        visit(parsed.root);
+        return widgets;
+      }
+      if (parsed && parsed.version === CUSTOM_DASHBOARD_LAYOUT_VERSION && Object.prototype.hasOwnProperty.call(parsed, 'root')) {
         const widgets = [];
         const visit = node => {
           if (!node) return;
@@ -11290,8 +11424,7 @@ function migrateDashboardLayoutToSharedModules(layout) {
         const catalogItem = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === widget.id);
         if (!catalogItem || seen.has(widget.id)) return null;
         seen.add(widget.id);
-        const validFeatureIds = new Set((catalogItem.features || []).map(feature => feature.id));
-        if (!Array.isArray(widget.features) || widget.features.some(feature => !validFeatureIds.has(feature))) delete widget.features;
+        if (Array.isArray(widget.features)) widget.features = getDashboardWidgetFeatures(widget, catalogItem);
         return widget;
       }).filter(Boolean);
       if (!node.tabs.length) return null;
@@ -11319,6 +11452,16 @@ function flattenDashboardWidgets(node, result = []) {
   return result;
 }
 
+function flattenDashboardPanels(node, result = []) {
+  if (!node) return result;
+  if (node.type === 'panel') result.push(node);
+  else {
+    flattenDashboardPanels(node.first, result);
+    flattenDashboardPanels(node.second, result);
+  }
+  return result;
+}
+
 function updateCustomDashboardWidget(widgetId, updates) {
   const layout = getCustomDashboardLayout();
   const widget = flattenDashboardWidgets(layout.root).find(item => item.id === widgetId);
@@ -11331,7 +11474,9 @@ function updateCustomDashboardWidget(widgetId, updates) {
 function getDashboardWidgetFeatures(widgetConfig, catalogItem) {
   if (!Array.isArray(widgetConfig?.features)) return null;
   const allowed = new Set((catalogItem?.features || []).map(feature => feature.id));
-  return widgetConfig.features.filter(featureId => allowed.has(featureId));
+  const aliases = DASHBOARD_FEATURE_ALIASES[widgetConfig.id] || {};
+  const normalized = [...new Set(widgetConfig.features.map(featureId => aliases[featureId] || featureId).filter(featureId => allowed.has(featureId)))];
+  return normalized.length ? normalized : [...(catalogItem?.compactDefaults || [])];
 }
 
 function applyDashboardFeatureSelection(widgetConfig, container) {
@@ -11347,17 +11492,61 @@ function applyDashboardFeatureSelection(widgetConfig, container) {
 
 const dashboardSourceViewHomes = new Map();
 
+function restoreDashboardSourceView(viewId) {
+  const home = dashboardSourceViewHomes.get(viewId);
+  const view = document.getElementById(viewId);
+  if (!home || !view || !home.placeholder.parentNode) return;
+  view.querySelectorAll('.dashboard-source-feature-hidden').forEach(element => element.classList.remove('dashboard-source-feature-hidden'));
+  view.classList.remove('dashboard-embedded-source-view');
+  delete view.dataset.dashboardEnabledFeatures;
+  home.placeholder.parentNode.insertBefore(view, home.placeholder.nextSibling);
+  view.classList.add('hidden');
+  dashboardSourceViewHomes.delete(viewId);
+}
+
 function restoreDashboardSourceViews() {
-  dashboardSourceViewHomes.forEach((home, viewId) => {
-    const view = document.getElementById(viewId);
-    if (!view || !home.placeholder.parentNode) return;
-    view.querySelectorAll('.dashboard-source-feature-hidden').forEach(element => element.classList.remove('dashboard-source-feature-hidden'));
-    view.classList.remove('dashboard-embedded-source-view');
-    delete view.dataset.dashboardEnabledFeatures;
-    home.placeholder.parentNode.insertBefore(view, home.placeholder.nextSibling);
-    view.classList.add('hidden');
-  });
-  dashboardSourceViewHomes.clear();
+  [...dashboardSourceViewHomes.keys()].forEach(restoreDashboardSourceView);
+}
+
+function syncDashboardSourceNavigation(view, widgetId, selected) {
+  if (!selected) return;
+  const enabled = new Set(selected);
+  const hide = (selector, visible) => view.querySelector(selector)?.classList.toggle('dashboard-source-feature-hidden', !visible);
+  if (widgetId === 'widget-setup') {
+    hide('#btn-toggle-notes', enabled.has('notes'));
+  } else if (widgetId === 'widget-quickactions') {
+    if (enabled.has('library') && !enabled.has('youtube')) view.querySelector('#sa-tab-1')?.click();
+    if (enabled.has('youtube') && !enabled.has('library')) view.querySelector('#sa-tab-0')?.click();
+  } else if (widgetId === 'widget-giveaways') {
+    const live = enabled.has('live');
+    const fulfillment = enabled.has('fulfillment');
+    if (fulfillment && !live) view.querySelector('[data-gw-workspace="addresses"]')?.click();
+    if (live && !fulfillment) view.querySelector('[data-gw-workspace="live"]')?.click();
+    hide('[data-gw-workspace="live"]', live && fulfillment);
+    hide('[data-gw-workspace="addresses"]', live && fulfillment);
+    hide('.giveaway-workspace-tabs', live && fulfillment);
+    hide('#btn-reset-giveaway', live);
+  } else if (widgetId === 'widget-qna') {
+    hide('.qna-sub-header .sub-header-actions', enabled.has('onair') || enabled.has('inbox'));
+  } else if (widgetId === 'widget-polls') {
+    const polls = enabled.has('poll-live') || enabled.has('poll-manage');
+    const predictions = enabled.has('prediction-live') || enabled.has('prediction-manage');
+    if (predictions && !polls) view.querySelector('#tab-nav-predictions')?.click();
+    if (polls && !predictions) view.querySelector('#tab-nav-polls')?.click();
+    hide('#tab-nav-polls', polls && predictions);
+    hide('#tab-nav-predictions', polls && predictions);
+    hide('.polls-full-switcher-container', polls && predictions);
+    hide('#panel-mode-polls .poll-empty-state .empty-hint', enabled.has('poll-manage'));
+    hide('#panel-mode-predictions .poll-empty-state .empty-hint', enabled.has('prediction-manage'));
+  } else if (widgetId === 'widget-timer') {
+    const history = enabled.has('history');
+    const analytics = enabled.has('analytics');
+    if (analytics && !history) view.querySelector('#tab-stats-analytics')?.click();
+    if (history && !analytics) view.querySelector('#tab-stats-history')?.click();
+    hide('#tab-stats-history', history && analytics);
+    hide('#tab-stats-analytics', history && analytics);
+    hide('.polls-segmented-nav', history && analytics);
+  }
 }
 
 function mountDashboardSourceView(widgetConfig, container, catalogItem) {
@@ -11382,6 +11571,7 @@ function mountDashboardSourceView(widgetConfig, container, catalogItem) {
       });
     });
   }
+  syncDashboardSourceNavigation(view, widgetConfig.id, selected);
 
   container.replaceChildren(view);
   view.classList.add('dashboard-embedded-source-view');
@@ -11396,6 +11586,36 @@ function saveCustomDashboardLayout(layout) {
     console.warn('Failed to save dashboard layout:', e);
   }
   renderCustomDashboardTile();
+}
+
+function updateDashboardUndoUI() {
+  const bar = document.getElementById('custom-dashboard-undo-bar');
+  const label = document.getElementById('custom-dashboard-undo-label');
+  const available = !isCustomDashboardLocked() && dashboardUndoStack.length > 0;
+  if (bar) bar.classList.toggle('hidden', !available);
+  if (label && available) label.textContent = dashboardUndoStack[dashboardUndoStack.length - 1].label;
+}
+
+function commitDashboardLayout(layout, label) {
+  try {
+    const previous = localStorage.getItem(CUSTOM_DASHBOARD_STORAGE_KEY);
+    dashboardUndoStack.push({ layout: previous ? JSON.parse(previous) : createDefaultDashboardLayout(), label });
+    if (dashboardUndoStack.length > 12) dashboardUndoStack.shift();
+  } catch (error) {
+    console.warn('Failed to remember previous dashboard layout:', error);
+  }
+  saveCustomDashboardLayout(layout);
+  updateDashboardUndoUI();
+}
+
+function undoDashboardLayout() {
+  if (isCustomDashboardLocked()) return;
+  const previous = dashboardUndoStack.pop();
+  if (!previous) return;
+  saveCustomDashboardLayout(previous.layout);
+  renderCustomDashboard();
+  updateDashboardUndoUI();
+  showToast(`↶ ${previous.label} rückgängig gemacht.`, 'info');
 }
 
 function findDashboardPanel(node, panelId) {
@@ -11450,15 +11670,27 @@ function getDashboardCollapsedHeight(node) {
 
 function clearDashboardDropState() {
   dashboardDropTarget = null;
-  document.querySelectorAll('.dashboard-dock-zone.is-active').forEach(zone => zone.classList.remove('is-active'));
   document.querySelectorAll('.dashboard-panel.is-drop-target').forEach(panel => panel.classList.remove('is-drop-target'));
+  document.querySelectorAll('.dashboard-panel.is-tab-drop-target').forEach(panel => panel.classList.remove('is-tab-drop-target'));
+  document.querySelectorAll('.dashboard-tab-drop-slot').forEach(slot => slot.remove());
+  document.querySelectorAll('.dashboard-dock-overlay[data-zone]').forEach(overlay => delete overlay.dataset.zone);
 }
 
-function dockDashboardWidget(layout, widgetId, targetPanelId, zone) {
+function dockDashboardWidget(layout, widgetId, targetPanelId, zone, tabIndex = null) {
   const widget = flattenDashboardWidgets(layout.root).find(item => item.id === widgetId);
   if (!widget) return false;
   const targetBeforeRemoval = findDashboardPanel(layout.root, targetPanelId);
-  if (!targetBeforeRemoval || (targetBeforeRemoval.tabs || []).some(tab => tab.id === widgetId) && zone === 'center') return false;
+  if (!targetBeforeRemoval) return false;
+  const samePanelIndex = (targetBeforeRemoval.tabs || []).findIndex(tab => tab.id === widgetId);
+  if (zone === 'center' && samePanelIndex >= 0) {
+    if (!Number.isInteger(tabIndex)) return false;
+    const insertion = Math.max(0, Math.min(targetBeforeRemoval.tabs.length - 1, tabIndex > samePanelIndex ? tabIndex - 1 : tabIndex));
+    if (insertion === samePanelIndex) return false;
+    targetBeforeRemoval.tabs.splice(samePanelIndex, 1);
+    targetBeforeRemoval.tabs.splice(insertion, 0, widget);
+    targetBeforeRemoval.activeId = widget.id;
+    return true;
+  }
 
   layout.root = removeDashboardWidget(layout.root, widgetId);
   const targetPanel = findDashboardPanel(layout.root, targetPanelId);
@@ -11467,7 +11699,8 @@ function dockDashboardWidget(layout, widgetId, targetPanelId, zone) {
     return true;
   }
   if (zone === 'center') {
-    targetPanel.tabs.push(widget);
+    const insertion = Number.isInteger(tabIndex) ? Math.max(0, Math.min(targetPanel.tabs.length, tabIndex)) : targetPanel.tabs.length;
+    targetPanel.tabs.splice(insertion, 0, widget);
     targetPanel.activeId = widget.id;
     return true;
   }
@@ -11480,10 +11713,151 @@ function dockDashboardWidget(layout, widgetId, targetPanelId, zone) {
   return true;
 }
 
+let dashboardSizeObserver = null;
+
+function getDashboardMinimumSize(node) {
+  if (!node) return { width: 0, height: 0 };
+  if (node.type === 'panel') {
+    const active = (node.tabs || []).find(tab => tab.id === node.activeId) || node.tabs?.[0];
+    const width = Math.max(360, ...(node.tabs || []).map(tab => tab.id === 'widget-setup' ? 500 : 360));
+    return { width, height: active?.collapsed ? 45 : active?.id === 'widget-setup' ? 520 : 420 };
+  }
+  const first = getDashboardMinimumSize(node.first);
+  const second = getDashboardMinimumSize(node.second);
+  return {
+    width: Math.max(first.width, second.width),
+    height: node.direction === 'column' ? first.height + second.height + 9 : Math.max(first.height, second.height)
+  };
+}
+
+function adaptDashboardLayout(grid, root) {
+  if (!root || !grid.clientWidth) return;
+  const naturalHeight = (node, element) => {
+    if (node.type === 'panel') {
+      if (isDashboardNodeCollapsed(node)) return 45;
+      const tabs = element.querySelector('.dashboard-panel-tabs');
+      const body = element.querySelector('.custom-widget-body');
+      return Math.max(getDashboardMinimumSize(node).height, Math.ceil((tabs?.offsetHeight || 43) + (body?.scrollHeight || 0) + 2));
+    }
+    const first = naturalHeight(node.first, element.children[0].firstElementChild);
+    const second = naturalHeight(node.second, element.children[2].firstElementChild);
+    if (node.direction === 'column' || element.classList.contains('is-auto-stacked')) {
+      const offset = isDashboardNodeCollapsed(node.first) ? 0 : Number(node.firstHeightOffset) || 0;
+      return (offset ? Math.max(240, first + offset) : first) + second + 9;
+    }
+    return Math.max(first, second);
+  };
+  const renderSizes = (node, element, width) => {
+    if (node.type === 'panel') return getDashboardMinimumSize(node);
+    const firstNode = node.first;
+    const secondNode = node.second;
+    const firstSize = getDashboardMinimumSize(firstNode);
+    const secondSize = getDashboardMinimumSize(secondNode);
+    const stacked = node.direction === 'row' && width < firstSize.width + secondSize.width + 9;
+    element.classList.toggle('is-auto-stacked', stacked);
+    const vertical = node.direction === 'column' || stacked;
+    const panes = element.children;
+    const firstPane = panes[0];
+    const secondPane = panes[2];
+    const ratio = Math.max(0.2, Math.min(0.8, Number(node.ratio) || 0.5));
+    const available = Math.max(0, width - 9);
+    const minimumRatio = vertical ? 0 : firstSize.width / Math.max(available, 1);
+    const maximumRatio = vertical ? 1 : 1 - secondSize.width / Math.max(available, 1);
+    const displayRatio = Math.max(minimumRatio, Math.min(maximumRatio, ratio));
+    const firstWidth = vertical ? width : available * displayRatio;
+    const secondWidth = vertical ? width : available - firstWidth;
+    const renderedFirst = renderSizes(firstNode, firstPane.firstElementChild, firstWidth);
+    const renderedSecond = renderSizes(secondNode, secondPane.firstElementChild, secondWidth);
+    const firstHeight = naturalHeight(firstNode, firstPane.firstElementChild);
+    const secondHeight = naturalHeight(secondNode, secondPane.firstElementChild);
+    const firstCollapsed = isDashboardNodeCollapsed(firstNode);
+    const secondCollapsed = isDashboardNodeCollapsed(secondNode);
+    if (vertical) {
+      const offset = firstCollapsed ? 0 : Number(node.firstHeightOffset) || 0;
+      const targetFirstHeight = Math.max(240, firstHeight + offset);
+      firstPane.style.minHeight = offset ? '0' : `${firstHeight}px`;
+      secondPane.style.minHeight = `${secondHeight}px`;
+      firstPane.style.height = offset ? `${targetFirstHeight}px` : '';
+      secondPane.style.height = '';
+      firstPane.style.overflowY = offset && targetFirstHeight < firstHeight ? 'auto' : 'visible';
+      secondPane.style.overflowY = 'visible';
+      firstPane.style.flex = firstCollapsed ? `0 0 ${getDashboardCollapsedHeight(firstNode)}px` : offset ? `0 0 ${targetFirstHeight}px` : `1 1 ${ratio * 100}%`;
+      secondPane.style.flex = secondCollapsed ? `0 0 ${getDashboardCollapsedHeight(secondNode)}px` : `1 1 ${(1 - ratio) * 100}%`;
+    } else {
+      firstPane.style.minHeight = '';
+      secondPane.style.minHeight = '';
+      firstPane.style.height = '';
+      secondPane.style.height = '';
+      firstPane.style.overflowY = '';
+      secondPane.style.overflowY = '';
+      firstPane.style.flex = `0 0 ${firstWidth}px`;
+      secondPane.style.flex = `0 0 ${secondWidth}px`;
+    }
+    return {
+      width: vertical ? Math.max(renderedFirst.width, renderedSecond.width) : renderedFirst.width + renderedSecond.width + 9,
+      height: vertical ? firstHeight + secondHeight + 9 : Math.max(firstHeight, secondHeight)
+    };
+  };
+  renderSizes(root, grid.firstElementChild, Math.max(0, grid.clientWidth - 16));
+  grid.querySelectorAll('.dashboard-panel').forEach(updateDashboardTabOverflow);
+}
+
+function updateDashboardTabOverflow(shell) {
+  const bar = shell.querySelector('.dashboard-panel-tabs');
+  const tabs = [...shell.querySelectorAll('.dashboard-panel-tab-list > .dashboard-panel-tab')];
+  const more = shell.querySelector('.dashboard-tabs-more-wrap');
+  const actions = shell.querySelector('.dashboard-panel-actions');
+  if (!bar || !more || !actions || tabs.length < 2) {
+    if (more) more.classList.add('hidden');
+    return;
+  }
+  const widths = tabs.map(tab => Math.min(210, Math.max(75, 38 + tab.textContent.trim().length * 7.5)));
+  const available = Math.max(80, bar.clientWidth - actions.offsetWidth - 16);
+  const needsMenu = widths.reduce((total, width) => total + width, 0) > available;
+  const selected = new Set();
+  const active = Math.max(0, tabs.findIndex(tab => tab.classList.contains('is-active')));
+  selected.add(active);
+  let used = widths[active];
+  if (!needsMenu) tabs.forEach((_, index) => selected.add(index));
+  else {
+    const budget = available - 56;
+    for (let distance = 1; distance < tabs.length; distance += 1) {
+      for (const index of [active + distance, active - distance]) {
+        if (index < 0 || index >= tabs.length || selected.has(index)) continue;
+        if (used + widths[index] <= budget) {
+          selected.add(index);
+          used += widths[index];
+        }
+      }
+    }
+  }
+  const hidden = tabs.filter((tab, index) => {
+    const isHidden = !selected.has(index);
+    tab.classList.toggle('hidden', isHidden);
+    return isHidden;
+  });
+  more.classList.toggle('hidden', hidden.length === 0);
+  const toggle = more.querySelector('.dashboard-tabs-more-button');
+  const menu = more.querySelector('.dashboard-tabs-more-menu');
+  if (!toggle || !menu) return;
+  toggle.textContent = `+${hidden.length}`;
+  toggle.setAttribute('aria-label', `${hidden.length} weitere Tabs anzeigen`);
+  menu.replaceChildren();
+  hidden.forEach(tab => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    const catalog = CUSTOM_DASHBOARD_CATALOG.find(entry => entry.id === tab.dataset.widgetId);
+    item.textContent = catalog ? `${catalog.icon} ${catalog.title}` : tab.textContent.trim();
+    item.addEventListener('click', () => tab.click());
+    menu.appendChild(item);
+  });
+}
+
 function renderCustomDashboard() {
   const grid = document.getElementById('custom-dashboard-grid');
   if (!grid) return;
 
+  if (dashboardSizeObserver) dashboardSizeObserver.disconnect();
   restoreDashboardSourceViews();
   grid.innerHTML = '';
   const layout = getCustomDashboardLayout();
@@ -11504,6 +11878,10 @@ function renderCustomDashboard() {
 
     const tabbar = document.createElement('div');
     tabbar.className = 'dashboard-panel-tabs';
+    const tabList = document.createElement('div');
+    tabList.className = 'dashboard-panel-tab-list';
+    tabList.setAttribute('role', 'tablist');
+    tabList.setAttribute('aria-label', 'Module in dieser Fenstergruppe');
     validTabs.forEach(tab => {
       const catalogItem = CUSTOM_DASHBOARD_CATALOG.find(cat => cat.id === tab.id);
       const button = document.createElement('button');
@@ -11511,11 +11889,23 @@ function renderCustomDashboard() {
       button.className = `dashboard-panel-tab${tab.id === active.id ? ' is-active' : ''}`;
       button.draggable = !locked;
       button.dataset.widgetId = tab.id;
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', String(tab.id === active.id));
+      button.setAttribute('aria-controls', `dashboard-body-${panel.id}`);
       button.innerHTML = `<span class="widget-drag-handle" title="Ziehen und andocken">⠿</span><span>${catalogItem.icon}</span><span>${escapeHtml(catalogItem.title)}</span>`;
       button.addEventListener('click', () => {
+        if (panel.activeId === tab.id) return;
+        const restoreFocus = document.activeElement === button;
+        const previousView = CUSTOM_DASHBOARD_FULL_VIEWS[panel.activeId];
+        if (previousView) restoreDashboardSourceView(previousView);
+        if (dashboardSizeObserver) dashboardSizeObserver.unobserve(shell.querySelector('.custom-widget-body'));
         panel.activeId = tab.id;
         saveCustomDashboardLayout(layout);
-        renderCustomDashboard();
+        const replacement = renderPanel(panel);
+        shell.replaceWith(replacement);
+        if (restoreFocus) replacement.querySelector(`.dashboard-panel-tab[data-widget-id="${tab.id}"]`)?.focus({ preventScroll: true });
+        if (dashboardSizeObserver) dashboardSizeObserver.observe(replacement.querySelector('.custom-widget-body'));
+        adaptDashboardLayout(grid, layout.root);
       });
       button.addEventListener('dragstart', event => {
         if (locked) return event.preventDefault();
@@ -11529,44 +11919,86 @@ function renderCustomDashboard() {
         shell.classList.remove('is-dragging-source');
         clearDashboardDropState();
       });
-      tabbar.appendChild(button);
+      tabList.appendChild(button);
     });
+    tabbar.appendChild(tabList);
+
+    const more = document.createElement('div');
+    more.className = 'dashboard-tabs-more-wrap hidden';
+    more.innerHTML = '<button type="button" class="btn-widget-action dashboard-tabs-more-button" aria-expanded="false" aria-haspopup="true">+0</button><div class="dashboard-tabs-more-menu hidden"></div>';
+    more.querySelector('button').addEventListener('click', () => {
+      const menu = more.querySelector('.dashboard-tabs-more-menu');
+      const expanded = menu.classList.toggle('hidden') === false;
+      more.querySelector('button').setAttribute('aria-expanded', String(expanded));
+    });
+    more.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      more.querySelector('.dashboard-tabs-more-menu').classList.add('hidden');
+      more.querySelector('button').setAttribute('aria-expanded', 'false');
+      more.querySelector('button').focus();
+    });
+    tabbar.appendChild(more);
 
     const actions = document.createElement('div');
     actions.className = 'dashboard-panel-actions';
-    actions.innerHTML = `<button type="button" class="btn-widget-action btn-widget-open-full" title="Vollständiges Werkzeug mit allen Funktionen öffnen">↗</button><button type="button" class="btn-widget-action btn-widget-collapse" title="${active.collapsed ? 'Inhalt anzeigen' : 'Inhalt einklappen'}">${active.collapsed ? '▣' : '—'}</button><button type="button" class="btn-widget-action btn-widget-remove" title="Modul entfernen">✕</button>`;
+    actions.innerHTML = `<button type="button" class="btn-widget-action btn-widget-open-full" title="Vollständiges Werkzeug mit allen Funktionen öffnen" aria-label="Vollständiges Modul öffnen">↗</button><button type="button" class="btn-widget-action btn-widget-collapse" title="${active.collapsed ? 'Inhalt anzeigen' : 'Inhalt einklappen'}" aria-label="${active.collapsed ? 'Modul ausklappen' : 'Modul einklappen'}">${active.collapsed ? '▣' : '—'}</button><button type="button" class="btn-widget-action btn-widget-move" title="Modul per Auswahl verschieben" aria-label="Modul verschieben">⇄</button><button type="button" class="btn-widget-action btn-widget-remove" title="Modul entfernen" aria-label="Modul entfernen">✕</button>`;
     tabbar.appendChild(actions);
     shell.appendChild(tabbar);
 
     const body = document.createElement('div');
     body.className = `custom-widget-body${active.collapsed ? ' hidden' : ''}`;
+    body.id = `dashboard-body-${panel.id}`;
+    body.setAttribute('role', 'tabpanel');
     body.dataset.widgetId = active.id;
     if (!active.collapsed) renderWidgetContent(active, body);
     shell.appendChild(body);
 
     const overlay = document.createElement('div');
     overlay.className = 'dashboard-dock-overlay';
-    overlay.innerHTML = `
-      <div class="dashboard-dock-zone zone-top" data-zone="top"><span>Oben</span></div>
-      <div class="dashboard-dock-zone zone-right" data-zone="right"><span>Rechts</span></div>
-      <div class="dashboard-dock-zone zone-bottom" data-zone="bottom"><span>Unten</span></div>
-      <div class="dashboard-dock-zone zone-left" data-zone="left"><span>Links</span></div>
-      <div class="dashboard-dock-zone zone-center" data-zone="center"><span>Als Tab</span></div>`;
+    overlay.innerHTML = '<div class="dashboard-dock-preview" aria-hidden="true"></div><div class="dashboard-dock-caption" aria-hidden="true"></div>';
     shell.appendChild(overlay);
 
     shell.addEventListener('dragover', event => {
       if (locked || !draggedWidgetId) return;
       event.preventDefault();
+      if (event.target.closest('.dashboard-panel-tabs')) {
+        document.querySelectorAll('.dashboard-tab-drop-slot').forEach(slot => { if (!tabList.contains(slot)) slot.remove(); });
+        document.querySelectorAll('.dashboard-panel.is-tab-drop-target').forEach(panelElement => { if (panelElement !== shell) panelElement.classList.remove('is-tab-drop-target'); });
+        shell.classList.remove('is-drop-target');
+        shell.classList.add('is-tab-drop-target');
+        delete overlay.dataset.zone;
+        const hoveredTab = event.target.closest('.dashboard-panel-tab');
+        const afterHovered = hoveredTab && event.clientX >= hoveredTab.getBoundingClientRect().left + hoveredTab.getBoundingClientRect().width / 2;
+        const insertBefore = hoveredTab ? (afterHovered ? hoveredTab.nextElementSibling : hoveredTab) : null;
+        const hoveredIndex = hoveredTab ? panel.tabs.findIndex(tab => tab.id === hoveredTab.dataset.widgetId) : -1;
+        const tabIndex = hoveredIndex < 0 ? panel.tabs.length : hoveredIndex + (afterHovered ? 1 : 0);
+        const slot = tabList.querySelector('.dashboard-tab-drop-slot') || document.createElement('span');
+        slot.className = 'dashboard-tab-drop-slot';
+        slot.textContent = '+ Als Tab';
+        tabList.insertBefore(slot, insertBefore?.classList.contains('dashboard-panel-tab') ? insertBefore : null);
+        dashboardDropTarget = { panelId: panel.id, zone: 'center', tabIndex };
+        return;
+      }
+      document.querySelectorAll('.dashboard-tab-drop-slot').forEach(slot => slot.remove());
+      document.querySelectorAll('.dashboard-panel.is-tab-drop-target').forEach(panelElement => panelElement.classList.remove('is-tab-drop-target'));
       shell.classList.add('is-drop-target');
       const rect = shell.getBoundingClientRect();
-      const px = (event.clientX - rect.left) / Math.max(rect.width, 1);
-      const py = (event.clientY - rect.top) / Math.max(rect.height, 1);
+      const px = event.clientX - rect.left;
+      const py = event.clientY - rect.top;
+      const edgeX = Math.min(100, rect.width * 0.25);
+      const edgeY = Math.min(100, rect.height * 0.25);
       let zone = 'center';
-      if (px < 0.25) zone = 'left';
-      else if (px > 0.75) zone = 'right';
-      else if (py < 0.25) zone = 'top';
-      else if (py > 0.75) zone = 'bottom';
-      overlay.querySelectorAll('.dashboard-dock-zone').forEach(item => item.classList.toggle('is-active', item.dataset.zone === zone));
+      if (px < edgeX) zone = 'left';
+      else if (px > rect.width - edgeX) zone = 'right';
+      else if (py < edgeY) zone = 'top';
+      else if (py > rect.height - edgeY) zone = 'bottom';
+      overlay.dataset.zone = zone;
+      const label = ({ left: 'Links andocken', right: 'Rechts andocken', top: 'Darüber andocken', bottom: 'Darunter andocken', center: 'Als Tab hinzufügen' })[zone];
+      overlay.querySelector('.dashboard-dock-preview').setAttribute('aria-label', label);
+      const caption = overlay.querySelector('.dashboard-dock-caption');
+      caption.textContent = label;
+      caption.style.left = `${Math.max(8, Math.min(rect.width - 160, px + 12))}px`;
+      caption.style.top = `${Math.max(8, py - 43)}px`;
       dashboardDropTarget = { panelId: panel.id, zone };
     });
     shell.addEventListener('dragleave', event => {
@@ -11576,8 +12008,8 @@ function renderCustomDashboard() {
       if (locked || !draggedWidgetId || !dashboardDropTarget) return;
       event.preventDefault();
       const movedTitle = CUSTOM_DASHBOARD_CATALOG.find(cat => cat.id === draggedWidgetId)?.title || 'Modul';
-      if (dockDashboardWidget(layout, draggedWidgetId, dashboardDropTarget.panelId, dashboardDropTarget.zone)) {
-        saveCustomDashboardLayout(layout);
+      if (dockDashboardWidget(layout, draggedWidgetId, dashboardDropTarget.panelId, dashboardDropTarget.zone, dashboardDropTarget.tabIndex)) {
+        commitDashboardLayout(layout, 'Modul verschieben');
         showToast(`📍 „${movedTitle}“ neu angedockt.`, 'success');
       }
       draggedWidgetId = null;
@@ -11587,20 +12019,21 @@ function renderCustomDashboard() {
 
     actions.querySelector('.btn-widget-collapse').addEventListener('click', () => {
       active.collapsed = !active.collapsed;
-      saveCustomDashboardLayout(layout);
+      commitDashboardLayout(layout, active.collapsed ? 'Modul einklappen' : 'Modul ausklappen');
       renderCustomDashboard();
     });
     actions.querySelector('.btn-widget-open-full').addEventListener('click', () => {
       const targetView = CUSTOM_DASHBOARD_FULL_VIEWS[active.id];
       if (targetView) showView(targetView);
     });
+    actions.querySelector('.btn-widget-move').addEventListener('click', () => openDashboardMoveModal(active.id));
     actions.querySelector('.btn-widget-remove').addEventListener('click', () => {
       if (isCustomDashboardLocked()) {
         showToast('🔒 Layout entsperren, um ein Modul zu entfernen.', 'info');
         return;
       }
       layout.root = removeDashboardWidget(layout.root, active.id);
-      saveCustomDashboardLayout(layout);
+      commitDashboardLayout(layout, 'Modul entfernen');
       renderCustomDashboard();
       showToast(`🗑️ „${CUSTOM_DASHBOARD_CATALOG.find(cat => cat.id === active.id)?.title || 'Modul'}“ entfernt.`, 'info');
     });
@@ -11640,18 +12073,24 @@ function renderCustomDashboard() {
       if (isCustomDashboardLocked() || hasVerticalCollapse) return;
       event.preventDefault();
       const rect = split.getBoundingClientRect();
+      const startY = event.clientY;
+      const startFirstHeight = first.getBoundingClientRect().height;
+      const startOffset = Number(node.firstHeightOffset) || 0;
+      let changed = false;
       split.classList.add('is-resizing');
       const move = ev => {
-        const raw = node.direction === 'row' ? (ev.clientX - rect.left) / rect.width : (ev.clientY - rect.top) / rect.height;
+        const vertical = node.direction === 'column' || split.classList.contains('is-auto-stacked');
+        const raw = vertical ? (ev.clientY - rect.top) / rect.height : (ev.clientX - rect.left) / rect.width;
         node.ratio = Math.max(0.2, Math.min(0.8, raw));
-        first.style.flexBasis = `${node.ratio * 100}%`;
-        second.style.flexBasis = `${(1 - node.ratio) * 100}%`;
+        if (vertical) node.firstHeightOffset = Math.max(240 - (startFirstHeight - startOffset), startOffset + ev.clientY - startY);
+        changed = true;
+        adaptDashboardLayout(grid, layout.root);
       };
       const up = () => {
         split.classList.remove('is-resizing');
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
-        saveCustomDashboardLayout(layout);
+        if (changed) commitDashboardLayout(layout, 'Bereichsgröße ändern');
       };
       document.addEventListener('mousemove', move);
       document.addEventListener('mouseup', up);
@@ -11670,6 +12109,13 @@ function renderCustomDashboard() {
     empty.innerHTML = '<span class="add-slot-plus">＋</span><strong>Erstes Werkzeug hinzufügen</strong><span>Stelle dir hier deine persönliche Arbeitsfläche zusammen.</span>';
     empty.addEventListener('click', openAddWidgetModal);
     grid.appendChild(empty);
+  }
+
+  if (layout.root) {
+    adaptDashboardLayout(grid, layout.root);
+    dashboardSizeObserver = new ResizeObserver(() => adaptDashboardLayout(grid, layout.root));
+    dashboardSizeObserver.observe(grid);
+    grid.querySelectorAll('.dashboard-panel > .custom-widget-body').forEach(body => dashboardSizeObserver.observe(body));
   }
 
   updateDashboardLockUI();
@@ -12436,7 +12882,7 @@ function renderWidgetContent(widgetObj, container) {
     case 'widget-quickactions': {
       const quickActionCatalog = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === 'widget-quickactions');
       const selectedTools = getDashboardWidgetFeatures(wConfig, quickActionCatalog);
-      const availableTools = selectedTools?.length ? selectedTools : ['youtube', 'commands', 'streaminfo', 'clipping', 'raid'];
+      const availableTools = selectedTools?.length ? selectedTools.map(id => id === 'library' ? 'commands' : id) : ['youtube', 'commands', 'streaminfo', 'clipping', 'raid'];
       const activeTool = availableTools.includes(wConfig.subTool) ? wConfig.subTool : availableTools[0];
 
       container.innerHTML = `
@@ -12890,6 +13336,54 @@ function renderWidgetContent(widgetObj, container) {
   applyDashboardFeatureSelection(wConfig, container);
 }
 
+function openDashboardMoveModal(widgetId) {
+  if (isCustomDashboardLocked()) return;
+  const modal = document.getElementById('modal-move-dashboard-widget');
+  const target = document.getElementById('dashboard-move-target');
+  const zone = document.getElementById('dashboard-move-zone');
+  if (!modal || !target || !zone) return;
+  const layout = getCustomDashboardLayout();
+  const panels = flattenDashboardPanels(layout.root).filter(panel => !(panel.tabs || []).some(tab => tab.id === widgetId));
+  const catalog = CUSTOM_DASHBOARD_CATALOG.find(item => item.id === widgetId);
+  document.getElementById('move-dashboard-widget-title').textContent = `${catalog?.title || 'Modul'} verschieben`;
+  target.replaceChildren();
+  panels.forEach(panel => {
+    const option = document.createElement('option');
+    option.value = panel.id;
+    option.textContent = (panel.tabs || []).map(tab => CUSTOM_DASHBOARD_CATALOG.find(item => item.id === tab.id)?.title).filter(Boolean).join(' / ');
+    target.appendChild(option);
+  });
+  zone.value = panels.length ? 'center' : 'end';
+  document.getElementById('dashboard-move-target-label').classList.toggle('hidden', !panels.length);
+  modal.dataset.widgetId = widgetId;
+  modal.classList.remove('hidden');
+  zone.focus();
+}
+
+function closeAddWidgetModal() {
+  document.getElementById('modal-add-dashboard-widget')?.classList.add('hidden');
+  document.getElementById('add-widget-catalog-list')?.replaceChildren();
+}
+
+function cloneDashboardModulePreview(source) {
+  const clone = source.cloneNode(true);
+  clone.removeAttribute('hidden');
+  clone.classList.remove('hidden');
+  [clone, ...clone.querySelectorAll('*')].forEach(element => {
+    element.removeAttribute('id');
+    element.removeAttribute('name');
+    element.removeAttribute('for');
+    element.removeAttribute('tabindex');
+    element.removeAttribute('data-dashboard-enabled-features');
+    element.classList.remove('dashboard-source-feature-hidden', 'dashboard-feature-hidden');
+    [...element.attributes].forEach(attribute => {
+      if (attribute.name.startsWith('on')) element.removeAttribute(attribute.name);
+    });
+  });
+  clone.querySelectorAll('script, iframe, video, audio').forEach(element => element.remove());
+  return clone;
+}
+
 function openAddWidgetModal() {
   if (isCustomDashboardLocked()) {
     showToast('🔒 Layout entsperren, um ein Modul hinzuzufügen.', 'info');
@@ -12902,6 +13396,11 @@ function openAddWidgetModal() {
   const layout = getCustomDashboardLayout();
   const currentWidgets = flattenDashboardWidgets(layout.root);
   const activeIds = new Set(currentWidgets.map(w => w.id));
+  const panelTargets = flattenDashboardPanels(layout.root);
+  const targetOptions = panelTargets.map(panel => {
+    const titles = (panel.tabs || []).map(tab => CUSTOM_DASHBOARD_CATALOG.find(cat => cat.id === tab.id)?.title).filter(Boolean);
+    return `<option value="${escapeHtml(panel.id)}">${escapeHtml(titles.join(' / '))}</option>`;
+  }).join('');
 
   list.innerHTML = '';
   CUSTOM_DASHBOARD_CATALOG.forEach(cat => {
@@ -12932,17 +13431,40 @@ function openAddWidgetModal() {
           <input type="radio" name="dashboard-mode-${cat.id}" value="full" ${isCompact ? '' : 'checked'}>
           <span><strong>Gesamtes Modul</strong><small>Alle Funktionen anzeigen</small></span>
         </label>
+        <div class="catalog-full-module-preview${isCompact ? ' hidden' : ''}" aria-label="Vollständige Vorschau: ${escapeHtml(cat.title)}"></div>
         ${cat.features?.length ? `
           <label class="catalog-widget-mode">
             <input type="radio" name="dashboard-mode-${cat.id}" value="compact" ${isCompact ? 'checked' : ''}>
             <span><strong>Ausgewählte Funktionen</strong><small>Nur das anzeigen, was du wirklich brauchst</small></span>
           </label>
-          <div class="catalog-widget-features">
+          <div class="catalog-widget-features${isCompact ? '' : ' hidden'}">
+            <p class="catalog-feature-instruction">Klicke auf einen Bereich der Modulvorschau, um ihn für dein Dashboard auszuwählen.</p>
             ${cat.features.map(feature => `
-              <label>
-                <input type="checkbox" value="${escapeHtml(feature.id)}" ${initialFeatures.includes(feature.id) ? 'checked' : ''} ${isCompact ? '' : 'disabled'}>
-                <span>${escapeHtml(feature.label)}</span>
-              </label>`).join('')}
+              <div class="catalog-feature-tile">
+                <div class="catalog-feature-card${initialFeatures.includes(feature.id) ? ' is-selected' : ''}" role="checkbox" tabindex="${isCompact ? '0' : '-1'}" aria-checked="${initialFeatures.includes(feature.id)}" aria-disabled="${!isCompact}" aria-label="${escapeHtml(feature.label)}" data-feature-id="${escapeHtml(feature.id)}">
+                  <input type="checkbox" value="${escapeHtml(feature.id)}" ${initialFeatures.includes(feature.id) ? 'checked' : ''} tabindex="-1" aria-hidden="true">
+                  <span class="catalog-feature-card-title"><span class="catalog-feature-check">✓</span>${escapeHtml(feature.label)}</span>
+                  <div class="catalog-feature-thumbnail" aria-hidden="true"></div>
+                </div>
+                <button type="button" class="catalog-feature-expand" aria-expanded="false">Vorschau vergrößern</button>
+              </div>`).join('')}
+          </div>` : ''}
+        ${!isAdded && panelTargets.length ? `
+          <div class="catalog-widget-placement">
+            <label>Platzierung
+              <select class="catalog-widget-placement-mode">
+                <option value="end">Als neue Zeile unten</option>
+                <option value="center">Als Tab in einer Gruppe</option>
+                <option value="left">Links neben einer Gruppe</option>
+                <option value="right">Rechts neben einer Gruppe</option>
+                <option value="top">Über einer Gruppe</option>
+                <option value="bottom">Unter einer Gruppe</option>
+              </select>
+            </label>
+            <label class="catalog-widget-placement-target hidden">Zielgruppe
+              <select>${targetOptions}</select>
+            </label>
+            <span class="catalog-widget-placement-preview">Das Modul erscheint unter dem Dashboard.</span>
           </div>` : ''}
         <button type="button" class="btn btn-sm btn-primary catalog-widget-save">
           ${isAdded ? 'Auswahl speichern' : '➕ Modul hinzufügen'}
@@ -12955,21 +13477,81 @@ function openAddWidgetModal() {
       list.querySelectorAll('details.catalog-widget-item[open]').forEach(otherItem => {
         if (otherItem !== item) otherItem.open = false;
       });
-      requestAnimationFrame(() => item.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+      item.querySelectorAll('.catalog-feature-card').forEach(card => {
+        const feature = cat.features.find(entry => entry.id === card.dataset.featureId);
+        const sources = feature ? [...(document.getElementById(cat.sourceView)?.querySelectorAll(feature.selector) || [])] : [];
+        const thumbnail = card.querySelector('.catalog-feature-thumbnail');
+        if (!sources.length || !thumbnail || thumbnail.childElementCount) return;
+        const group = document.createElement('div');
+        group.className = 'catalog-feature-group-preview';
+        sources.forEach(source => group.appendChild(cloneDashboardModulePreview(source)));
+        thumbnail.appendChild(group);
+      });
+      const fullPreview = item.querySelector('.catalog-full-module-preview');
+      const fullSource = document.getElementById(cat.sourceView);
+      if (fullSource && fullPreview && !fullPreview.childElementCount) fullPreview.appendChild(cloneDashboardModulePreview(fullSource));
+      requestAnimationFrame(() => {
+        const listRect = list.getBoundingClientRect();
+        list.scrollTop += item.getBoundingClientRect().top - listRect.top;
+      });
     });
 
     const modeInputs = [...item.querySelectorAll(`input[name="dashboard-mode-${cat.id}"]`)];
     const featureInputs = [...item.querySelectorAll('.catalog-widget-features input[type="checkbox"]')];
+    const featureCards = [...item.querySelectorAll('.catalog-feature-card')];
     const syncFeatureInputs = () => {
       const compact = modeInputs.find(input => input.checked)?.value === 'compact';
-      featureInputs.forEach(input => { input.disabled = !compact; });
+      item.querySelector('.catalog-full-module-preview')?.classList.toggle('hidden', compact);
+      item.querySelector('.catalog-widget-features')?.classList.toggle('hidden', !compact);
+      featureCards.forEach(card => {
+        card.setAttribute('aria-disabled', String(!compact));
+        card.tabIndex = compact ? 0 : -1;
+      });
     };
     modeInputs.forEach(input => input.addEventListener('change', syncFeatureInputs));
+    featureCards.forEach(card => {
+      const toggle = () => {
+        if (card.getAttribute('aria-disabled') === 'true') return;
+        const input = card.querySelector('input');
+        input.checked = !input.checked;
+        card.classList.toggle('is-selected', input.checked);
+        card.setAttribute('aria-checked', String(input.checked));
+      };
+      card.addEventListener('click', toggle);
+      card.addEventListener('keydown', event => {
+        if (event.key !== ' ' && event.key !== 'Enter') return;
+        event.preventDefault();
+        toggle();
+      });
+    });
+    item.querySelectorAll('.catalog-feature-expand').forEach(button => {
+      button.addEventListener('click', () => {
+        const expanded = button.getAttribute('aria-expanded') !== 'true';
+        button.setAttribute('aria-expanded', String(expanded));
+        button.textContent = expanded ? 'Vorschau verkleinern' : 'Vorschau vergrößern';
+        button.closest('.catalog-feature-tile').classList.toggle('is-expanded', expanded);
+      });
+    });
+
+    const placementMode = item.querySelector('.catalog-widget-placement-mode');
+    const placementTarget = item.querySelector('.catalog-widget-placement-target');
+    const placementPreview = item.querySelector('.catalog-widget-placement-preview');
+    const syncPlacement = () => {
+      if (!placementMode || !placementTarget || !placementPreview) return;
+      const isEnd = placementMode.value === 'end';
+      placementTarget.classList.toggle('hidden', isEnd);
+      const target = placementTarget.querySelector('select');
+      placementPreview.textContent = isEnd
+        ? 'Das Modul erscheint unter dem Dashboard.'
+        : `Das Modul erscheint ${({center:'als Tab in',left:'links neben',right:'rechts neben',top:'über',bottom:'unter'})[placementMode.value]} „${target.selectedOptions[0]?.textContent || 'der Gruppe'}“.`;
+    };
+    placementMode?.addEventListener('change', syncPlacement);
+    placementTarget?.querySelector('select')?.addEventListener('change', syncPlacement);
 
     const btn = item.querySelector('.catalog-widget-save');
     btn.addEventListener('click', () => {
       if (isCustomDashboardLocked()) {
-        modal.classList.add('hidden');
+        closeAddWidgetModal();
         showToast('🔒 Layout entsperren, um ein Modul hinzuzufügen.', 'info');
         return;
       }
@@ -12983,10 +13565,10 @@ function openAddWidgetModal() {
         if (mode === 'compact') existingWidget.features = features;
         else delete existingWidget.features;
         if (cat.id === 'widget-quickactions' && Array.isArray(existingWidget.features) && !existingWidget.features.includes(existingWidget.subTool)) {
-          existingWidget.subTool = existingWidget.features[0];
+          existingWidget.subTool = existingWidget.features[0] === 'library' ? 'commands' : existingWidget.features[0];
         }
-        saveCustomDashboardLayout(layout);
-        modal.classList.add('hidden');
+        commitDashboardLayout(layout, 'Modulauswahl ändern');
+        closeAddWidgetModal();
         renderCustomDashboard();
         showToast(`✅ Auswahl für „${cat.title}“ gespeichert.`, 'success');
         return;
@@ -12997,11 +13579,17 @@ function openAddWidgetModal() {
         collapsed: false
       };
       if (mode === 'compact') newWidget.features = features;
-      if (cat.id === 'widget-quickactions' && Array.isArray(newWidget.features)) newWidget.subTool = newWidget.features[0];
+      if (cat.id === 'widget-quickactions' && Array.isArray(newWidget.features)) newWidget.subTool = newWidget.features[0] === 'library' ? 'commands' : newWidget.features[0];
       const newPanel = makeDashboardPanel(newWidget);
-      layout.root = layout.root ? makeDashboardSplit('row', layout.root, newPanel, 0.7) : newPanel;
-      saveCustomDashboardLayout(layout);
-      modal.classList.add('hidden');
+      if (layout.root) {
+        layout.root = makeDashboardSplit('column', layout.root, newPanel, 0.65);
+        if (placementMode?.value !== 'end') {
+          const targetId = placementTarget?.querySelector('select')?.value;
+          if (targetId) dockDashboardWidget(layout, newWidget.id, targetId, placementMode.value);
+        }
+      } else layout.root = newPanel;
+      commitDashboardLayout(layout, 'Modul hinzufügen');
+      closeAddWidgetModal();
       renderCustomDashboard();
       showToast(`✨ „${cat.title}“ zu deinem Dashboard hinzugefügt!`, 'success');
     });
@@ -13010,24 +13598,56 @@ function openAddWidgetModal() {
   });
 
   modal.classList.remove('hidden');
+  requestAnimationFrame(() => list.querySelector('summary')?.focus());
 }
 
 function setupCustomDashboardListeners() {
   const btnLock = document.getElementById('btn-custom-dashboard-lock');
   const btnAdd = document.getElementById('btn-custom-dashboard-add-widget');
   const btnReset = document.getElementById('btn-custom-dashboard-reset-layout');
+  const btnUndo = document.getElementById('btn-custom-dashboard-undo');
   const modalAdd = document.getElementById('modal-add-dashboard-widget');
   const btnCloseModal = document.getElementById('btn-close-add-widget-modal');
+  const modalMove = document.getElementById('modal-move-dashboard-widget');
+  const btnCloseMove = document.getElementById('btn-close-move-dashboard-widget');
+  const btnConfirmMove = document.getElementById('btn-confirm-move-dashboard-widget');
+  const moveZone = document.getElementById('dashboard-move-zone');
+  const dashboardView = document.getElementById('view-custom-dashboard');
+
+  dashboardView?.addEventListener('dragover', event => {
+    if (!draggedWidgetId) return;
+    const bounds = dashboardView.getBoundingClientRect();
+    if (event.clientY > bounds.bottom - 70) dashboardView.scrollTop += 22;
+    else if (event.clientY < bounds.top + 70) dashboardView.scrollTop -= 22;
+  });
 
   if (btnLock) {
     btnLock.addEventListener('click', () => {
       const nowLocked = !isCustomDashboardLocked();
       setCustomDashboardLocked(nowLocked);
-      showToast(nowLocked ? '🔒 Dashboard-Layout fixiert (Gesperrt)' : '🔓 Dashboard-Layout entsperrt (Verschieben & Ändern aktiv)', 'info');
+      showToast(nowLocked ? '✓ Dashboard-Ansicht aktiv' : '✎ Dashboard-Layout bearbeiten', 'info');
     });
   }
 
   if (btnAdd) btnAdd.addEventListener('click', openAddWidgetModal);
+  if (btnUndo) btnUndo.addEventListener('click', undoDashboardLayout);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && modalMove && !modalMove.classList.contains('hidden')) {
+      modalMove.classList.add('hidden');
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Escape' && modalAdd && !modalAdd.classList.contains('hidden')) {
+      closeAddWidgetModal();
+      btnAdd?.focus();
+      event.preventDefault();
+      return;
+    }
+    if (currentActiveView !== 'view-custom-dashboard' || !event.ctrlKey || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'z') return;
+    if (event.target.closest('input, textarea, select, [contenteditable="true"]') || !dashboardUndoStack.length || isCustomDashboardLocked()) return;
+    event.preventDefault();
+    undoDashboardLayout();
+  });
   window.addEventListener('swg:view-changed', event => {
     if (event.detail !== 'view-custom-dashboard') restoreDashboardSourceViews();
   });
@@ -13036,16 +13656,48 @@ function setupCustomDashboardListeners() {
     if (suggestions && !event.target.closest('.cw-yt-search-wrapper')) {
       suggestions.classList.add('hidden');
     }
+    if (!event.target.closest('.dashboard-tabs-more-wrap')) {
+      document.querySelectorAll('.dashboard-tabs-more-menu').forEach(menu => menu.classList.add('hidden'));
+      document.querySelectorAll('.dashboard-tabs-more-button').forEach(button => button.setAttribute('aria-expanded', 'false'));
+    }
   });
   window.addEventListener('swg:quick-commands-changed', () => {
     refreshDashboardWidgets('widget-quickactions');
   });
   if (btnCloseModal && modalAdd) {
-    btnCloseModal.addEventListener('click', () => modalAdd.classList.add('hidden'));
+    btnCloseModal.addEventListener('click', closeAddWidgetModal);
     modalAdd.addEventListener('click', (e) => {
-      if (e.target === modalAdd) modalAdd.classList.add('hidden');
+      if (e.target === modalAdd) closeAddWidgetModal();
     });
   }
+  moveZone?.addEventListener('change', () => {
+    document.getElementById('dashboard-move-target-label')?.classList.toggle('hidden', moveZone.value === 'end');
+  });
+  btnCloseMove?.addEventListener('click', () => modalMove?.classList.add('hidden'));
+  modalMove?.addEventListener('click', event => {
+    if (event.target === modalMove) modalMove.classList.add('hidden');
+  });
+  btnConfirmMove?.addEventListener('click', () => {
+    if (!modalMove || isCustomDashboardLocked()) return;
+    const widgetId = modalMove.dataset.widgetId;
+    const layout = getCustomDashboardLayout();
+    const zone = moveZone.value;
+    let moved = false;
+    if (zone === 'end') {
+      const widget = flattenDashboardWidgets(layout.root).find(item => item.id === widgetId);
+      if (widget && flattenDashboardWidgets(layout.root).length > 1) {
+        layout.root = removeDashboardWidget(layout.root, widgetId);
+        layout.root = makeDashboardSplit('column', layout.root, makeDashboardPanel(widget), 0.65);
+        moved = true;
+      }
+    } else {
+      moved = dockDashboardWidget(layout, widgetId, document.getElementById('dashboard-move-target')?.value, zone);
+    }
+    modalMove.classList.add('hidden');
+    if (!moved) return;
+    commitDashboardLayout(layout, 'Modul verschieben');
+    renderCustomDashboard();
+  });
 
   if (btnReset) {
     btnReset.addEventListener('click', () => {
@@ -13053,12 +13705,13 @@ function setupCustomDashboardListeners() {
         showToast('🔒 Layout entsperren, um es zurückzusetzen.', 'info');
         return;
       }
-      saveCustomDashboardLayout(createDefaultDashboardLayout());
+      commitDashboardLayout(createDefaultDashboardLayout(), 'Layout zurücksetzen');
       renderCustomDashboard();
       showToast('📐 Layout auf das Standard-Cockpit zurückgesetzt!', 'info');
     });
   }
 
   updateDashboardLockUI();
+  updateDashboardUndoUI();
   renderCustomDashboardTile();
 }

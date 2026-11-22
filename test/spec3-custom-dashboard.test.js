@@ -59,6 +59,28 @@ test('CUSTOM_DASHBOARD_CATALOG maps the seven real workspace modules in navigati
 
 });
 
+test('feature choices are complete workflows and saved choices map to them', () => {
+  const catalog = eval(rendererCode.match(/const CUSTOM_DASHBOARD_CATALOG = (\[[\s\S]*?\]);/)[1]);
+  const ids = Object.fromEntries(catalog.map(item => [item.id, item.features.map(feature => feature.id)]));
+  assert.deepEqual(ids['widget-setup'], ['setup', 'notes']);
+  assert.deepEqual(ids['widget-quickactions'], ['streaminfo', 'clipping', 'library', 'youtube', 'raid']);
+  assert.deepEqual(ids['widget-giveaways'], ['live', 'fulfillment']);
+  assert.deepEqual(ids['widget-qna'], ['onair', 'inbox', 'round']);
+  assert.deepEqual(ids['widget-polls'], ['poll-live', 'poll-manage', 'prediction-live', 'prediction-manage']);
+  assert.deepEqual(ids['widget-timer'], ['history', 'analytics', 'timer']);
+
+  const aliases = eval('(' + rendererCode.match(/const DASHBOARD_FEATURE_ALIASES = (\{[\s\S]*?\n\});/)[1] + ')');
+  const context = { DASHBOARD_FEATURE_ALIASES: aliases };
+  vm.createContext(context);
+  vm.runInContext(rendererCode.match(/function getDashboardWidgetFeatures\(widgetConfig, catalogItem\) \{[\s\S]*?^\}/m)[0], context);
+  const normalize = (id, oldFeatures) => Array.from(context.getDashboardWidgetFeatures({ id, features: oldFeatures }, catalog.find(item => item.id === id)));
+  assert.deepEqual(normalize('widget-setup', ['toolbar', 'persons', 'command']), ['setup']);
+  assert.deepEqual(normalize('widget-quickactions', ['favorites', 'commands']), ['library']);
+  assert.deepEqual(normalize('widget-giveaways', ['winner', 'participants', 'addresses']), ['live', 'fulfillment']);
+  assert.deepEqual(normalize('widget-polls', ['poll-presets', 'prediction-saved']), ['poll-manage', 'prediction-manage']);
+  assert.deepEqual(normalize('widget-timer', ['overlay']), ['timer']);
+});
+
 test('Custom Dashboard config persists in localStorage and defaults gracefully', () => {
   let storage = {};
   const mockLocalStorage = {
@@ -74,6 +96,7 @@ test('Custom Dashboard config persists in localStorage and defaults gracefully',
       { id: 'widget-modchat', colSpan: 12, collapsed: false }
     ],
     CUSTOM_DASHBOARD_STORAGE_KEY: 'swg_custom_dashboard_config',
+    CUSTOM_DASHBOARD_LAYOUT_VERSION: 3,
     renderCustomDashboardTile: () => {},
     console: { warn: () => {} }
   };
@@ -108,6 +131,13 @@ test('Custom Dashboard config persists in localStorage and defaults gracefully',
   assert.equal(reloaded[0].colSpan, 8);
   assert.equal(reloaded[0].collapsed, true);
   assert.equal(reloaded[1].id, 'widget-modchat');
+
+  mockLocalStorage.setItem('swg_custom_dashboard_config', JSON.stringify({ version: 3, root: {
+    type: 'split', first: { type: 'panel', tabs: [{ id: 'widget-setup' }, { id: 'widget-qna' }] },
+    second: { type: 'panel', tabs: [{ id: 'widget-modchat' }] }
+  } }));
+  const current = vm.runInContext('getCustomDashboardConfig()', context);
+  assert.deepEqual(Array.from(current, widget => widget.id), ['widget-setup', 'widget-qna', 'widget-modchat']);
 });
 
 test('Header has Lock/Unlock button and renderer handles lock state persistence', () => {
@@ -136,8 +166,8 @@ test('Header has Lock/Unlock button and renderer handles lock state persistence'
   vm.runInContext(matchIsLocked[0], context);
   vm.runInContext(matchSetLocked[0], context);
 
-  // Defaults to false (unlocked)
-  assert.equal(vm.runInContext('isCustomDashboardLocked()', context), false);
+  // Defaults to view mode (locked)
+  assert.equal(vm.runInContext('isCustomDashboardLocked()', context), true);
 
   // Lock the dashboard
   vm.runInContext('setCustomDashboardLocked(true)', context);
@@ -185,15 +215,14 @@ test('dashboard uses Premiere-style directional docking, tab groups, and persist
   const stylesCss = fs.readFileSync(path.join(__dirname, '../src/renderer/styles.css'), 'utf8');
   assert.match(rendererCode, /CUSTOM_DASHBOARD_LAYOUT_VERSION = 3/);
   assert.match(rendererCode, /function makeDashboardSplit\(direction, first, second/);
-  assert.match(rendererCode, /function dockDashboardWidget\(layout, widgetId, targetPanelId, zone\)/);
-  assert.match(rendererCode, /data-zone="left"/);
-  assert.match(rendererCode, /data-zone="right"/);
-  assert.match(rendererCode, /data-zone="top"/);
-  assert.match(rendererCode, /data-zone="bottom"/);
-  assert.match(rendererCode, /data-zone="center"/);
-  assert.match(rendererCode, /targetPanel\.tabs\.push\(widget\)/, 'Center drop must create a tab group');
+  assert.match(rendererCode, /function dockDashboardWidget\(layout, widgetId, targetPanelId, zone, tabIndex = null\)/);
+  assert.match(rendererCode, /dashboard-tab-drop-slot/, 'Tabs can be inserted beside an existing tab');
+  assert.match(rendererCode, /overlay\.dataset\.zone = zone/);
+  assert.match(rendererCode, /dashboard-dock-preview/);
+  assert.doesNotMatch(rendererCode, /dashboard-dock-zone zone-/, 'Only the new dock preview is rendered');
+  assert.match(rendererCode, /targetPanel\.tabs\.splice\(insertion, 0, widget\)/, 'Center drop must create a tab group at the chosen position');
   assert.match(rendererCode, /node\.ratio = Math\.max\(0\.2, Math\.min\(0\.8, raw\)\)/, 'Divider resize ratio must be bounded');
-  assert.match(stylesCss, /\.dashboard-dock-zone\.is-active/);
+  assert.doesNotMatch(stylesCss, /\.dashboard-dock-zone\.is-active/);
   assert.match(stylesCss, /\.dashboard-split-divider/);
   assert.match(rendererCode, /function isDashboardNodeCollapsed\(node\)/);
   assert.match(rendererCode, /getDashboardCollapsedHeight\(node\.first\)/);

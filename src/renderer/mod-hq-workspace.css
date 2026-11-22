@@ -887,3 +887,16 @@
     grid-column: 1;
   }
 }
+
+/* Embedded chat follows its panel width, not the Electron window width. */
+@container (max-width: 760px) {
+  .dashboard-embedded-source-view#view-modchat .modhq-grid-container,
+  .dashboard-embedded-source-view#view-modchat .hq-tools-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dashboard-embedded-source-view#view-modchat .modhq-chat-panel,
+  .dashboard-embedded-source-view#view-modchat .hq-public.modhq-chat-panel {
+    height: 560px !important;
+  }
+}

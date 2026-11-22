@@ -17,6 +17,11 @@ test('release notes appear once for the matching unseen version', () => {
   assert.equal(firstLaunch.release.version, '8.0.2');
   assert.ok(firstLaunch.release.items.length > 0);
 
+  const from801 = resolveReleaseNotes('8.0.2', notes, '8.0.1');
+  assert.equal(from801.shouldShow, true);
+  assert.ok(from801.release.items.some(item => item.title.includes('ChatGames')));
+  assert.ok(from801.release.items.some(item => item.title.includes('Setup aus dem Chat')));
+
   const alreadySeen = resolveReleaseNotes('8.0.2', notes, '8.0.2');
   assert.equal(alreadySeen.shouldShow, false);
 

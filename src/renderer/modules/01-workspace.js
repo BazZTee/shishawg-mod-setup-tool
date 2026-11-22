@@ -76,6 +76,7 @@ const catalogListItems = document.getElementById('catalog-list-items');
 const btnImportMenu = document.getElementById('btn-import-menu');
 const importDropdownMenu = document.getElementById('import-dropdown-menu');
 const btnOpenPasteModal = document.getElementById('btn-open-paste-modal');
+const btnImportHookahTools = document.getElementById('btn-import-hookahtools');
 const pasteModal = document.getElementById('paste-modal');
 const btnClosePasteModal = document.getElementById('btn-close-paste-modal');
 const inputPasteText = document.getElementById('input-paste-text');
@@ -254,13 +255,22 @@ async function applyActiveStreamerProfile(saveToBackend = true) {
 
   // 7. Re-bind Channel Points Listener
   try {
-    ipcRenderer.invoke('channelpoints:start-listener', { channel: prof.targetChannel }).catch(() => {});
+    startChannelPointsListenerWithNotice(prof.targetChannel);
   } catch(e) {}
 
   if (saveToBackend) {
     showToast(`🎮 Aktiver Streamer: ${prof.name} (#${prof.targetChannel})`, 'success');
   }
   updateTwitchUI();
+}
+
+function startChannelPointsListenerWithNotice(channel) {
+  ipcRenderer.invoke('channelpoints:start-listener', { channel })
+    .then(res => {
+      // Missing mod rights are expected before login; only surface configuration problems.
+      if (res && res.success === false && /Bot-Name/.test(res.error || '')) showToast(res.error, 'error');
+    })
+    .catch(() => {});
 }
 
 function setupProfileEventListeners() {
@@ -630,7 +640,7 @@ async function initApp() {
   startModPresenceTracking();
 
   // Auto-start Channel Points (Kohle Stücke) listener
-  ipcRenderer.invoke('channelpoints:start-listener', { channel: state.targetChannel }).catch(() => {});
+  startChannelPointsListenerWithNotice(state.targetChannel);
   ipcRenderer.on('channelpoints:new-redemption', (event, item) => {
     playNotificationSound();
     showToast(`⬛ Kanalpunkte eingelöst: @${item.user_name || item.user_login} hat Kohle Stücke eingelöst!`, 'success');
@@ -869,15 +879,55 @@ function setupHubNavigation() {
 
 // Check Live Stream Status
 let wasStreamLiveBefore = false;
+let streamStatusChannel = '';
+let consecutiveOfflineChecks = 0;
+let isAutoArchivingStreamEnd = false;
+// F28: A stream only counts as ended after this many confirmed offline answers in a row.
+const STREAM_OFFLINE_CONFIRMATIONS = 2;
+
+function showUnknownStreamStatus(channel) {
+  streamStatusDot.className = 'status-indicator-dot grey';
+  streamStatusText.textContent = `#${channel}: Status unbekannt`;
+  if (streamStatusPill) streamStatusPill.title = `Der Live-Status von #${channel} konnte gerade nicht abgefragt werden.`;
+}
+
+async function archiveSessionAfterStreamEnd() {
+  if (isAutoArchivingStreamEnd) return;
+  if (typeof statsState === 'undefined' || !statsState.isRunning || statsState.sessionElapsedSeconds < 120 || !statsState.activeSetup || !statsState.activeSetup.tobacco) return;
+  isAutoArchivingStreamEnd = true;
+  try {
+    const saved = await autoArchiveFinishedSession(statsState.activeSetup, statsState.sessionElapsedSeconds, statsState.coalRotations, statsState.sessionStartTime);
+    if (saved) {
+      resetActiveTimer();
+      showToast('Stream ist offline gegangen: Aktiver Kopf wurde automatisch archiviert! 🏁', 'info');
+    } else {
+      showToast('Stream ist offline, aber der Kopf konnte nicht archiviert werden. Der Timer läuft weiter – bitte manuell beenden.', 'error');
+    }
+  } finally {
+    isAutoArchivingStreamEnd = false;
+  }
+}
 
 async function checkLiveStreamStatus() {
   if (!streamStatusText || !streamStatusDot) return;
   const channel = (targetChannelInput ? targetChannelInput.value.trim() : state.targetChannel) || 'marved';
+  if (channel.toLowerCase() !== streamStatusChannel) {
+    // A different channel's offline state must never end the previous channel's session.
+    streamStatusChannel = channel.toLowerCase();
+    wasStreamLiveBefore = false;
+    consecutiveOfflineChecks = 0;
+  }
 
   try {
     const res = await ipcRenderer.invoke('twitch:check-stream-status', channel);
-    if (res && res.live) {
+    if (channel.toLowerCase() !== streamStatusChannel) return;
+    if (!res || res.success === false) {
+      showUnknownStreamStatus(channel);
+      return;
+    }
+    if (res.live) {
       wasStreamLiveBefore = true;
+      consecutiveOfflineChecks = 0;
       streamStatusDot.className = 'status-indicator-dot red pulse';
       const viewers = res.viewer_count !== undefined ? ` (${res.viewer_count.toLocaleString('de-DE')} 👁️)` : '';
       const game = res.game_name ? ` • ${res.game_name}` : '';
@@ -887,12 +937,12 @@ async function checkLiveStreamStatus() {
       }
     } else {
       if (wasStreamLiveBefore) {
-        // Stream just went offline! Auto-archive any active smoking head session
-        wasStreamLiveBefore = false;
-        if (typeof statsState !== 'undefined' && statsState.isRunning && statsState.sessionElapsedSeconds >= 120 && statsState.activeSetup && statsState.activeSetup.tobacco) {
-          autoArchiveFinishedSession(statsState.activeSetup, statsState.sessionElapsedSeconds, statsState.coalRotations, statsState.sessionStartTime);
-          resetActiveTimer();
-          showToast('Stream ist offline gegangen: Aktiver Kopf wurde automatisch archiviert! 🏁', 'info');
+        consecutiveOfflineChecks += 1;
+        if (consecutiveOfflineChecks >= STREAM_OFFLINE_CONFIRMATIONS) {
+          // Confirmed stream end: archive first, reset the timer only after it was stored.
+          wasStreamLiveBefore = false;
+          consecutiveOfflineChecks = 0;
+          archiveSessionAfterStreamEnd();
         }
       }
 
@@ -903,8 +953,7 @@ async function checkLiveStreamStatus() {
       }
     }
   } catch (err) {
-    streamStatusDot.className = 'status-indicator-dot grey';
-    streamStatusText.textContent = `#${channel}: Offline`;
+    showUnknownStreamStatus(channel);
   }
 }
 

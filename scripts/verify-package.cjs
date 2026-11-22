@@ -11,15 +11,18 @@ required.push('src/renderer/liquid-controls.js','src/renderer/disclosure-motion.
 required.push('src/renderer/liquid-selection.js');
 required.push('src/renderer/shell-layout.css');
 required.push('src/main/startup-window.js');
+required.push('src/shared/release-notes.json');
 required.push('src/renderer/startup-presentation.js');
 required.push('src/renderer/toggle-motion.js');
+required.push('src/renderer/mod-direct-chat.js','src/renderer/mod-direct-chat.css');
+required.push('src/renderer/chatgames.js','src/renderer/chatgames-commands.js','src/renderer/chatgames.css');
 for (const file of required) {
   const localPath = path.join(...file.split('/'));
   assert.deepEqual(asar.extractFile(archive,localPath),fs.readFileSync(path.join(root,localPath)),`Packaged file differs: ${file}`);
 }
 const pkg = JSON.parse(asar.extractFile(archive,'package.json'));
-assert.equal(pkg.name,'shishawg-mod-setup-tool-chat-gpt');
-assert.equal(pkg.swgTestBuild,true);
+assert.equal(pkg.name,'shishawg-mod-setup-tool');
+assert.equal(pkg.version,'8.0.2');
 const files = asar.listPackage(archive);
 assert.equal(files.some(file=>file.split(path.sep).includes('test')),false);
 console.log(JSON.stringify({verifiedFiles:required.length,packagedEntries:files.length,identity:pkg.name,testFixturesIncluded:false}));

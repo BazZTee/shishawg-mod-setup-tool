@@ -409,7 +409,11 @@ async function autoArchiveFinishedSession(setup, durationSecs, coalRotations, st
       showToast(`⚠️ ${detail}: ${result.error || 'Unbekannter Fehler'}`, 'error');
     }
     await loadStatsState();
-  } catch(e) {}
+    // Callers may only reset the running timer once the session is stored somewhere.
+    return Boolean(result && (result.success || result.localSaved));
+  } catch(e) {
+    return false;
+  }
 }
 
 function resetActiveTimer(persistState = true) {

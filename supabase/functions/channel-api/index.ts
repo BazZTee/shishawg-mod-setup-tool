@@ -170,10 +170,19 @@ async function listGiveaways(channel: string) {
   return (data || []).map((row: any) => ({ ...row, address: decryptAddress(row.address) }));
 }
 
-async function upsertGiveaway(channel: string, winner: any) {
+async function upsertGiveaway(channel: string, winner: any, createOnly = false) {
   const row = { ...winner, channel };
   await assertNoCrossChannelIdConflict('giveaway_winners', 'channel', row, channel);
   if (row.address && typeof row.address === 'object') row.address = encryptAddress(row.address);
+  if (createOnly) {
+    // Repeated delivery of the same redemption keeps the existing status, claim and address.
+    const { error } = await admin.from('giveaway_winners').upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+    if (error) throw error;
+    const { data: existing, error: readError } = await admin.from('giveaway_winners')
+      .select('*').eq('id', row.id).eq('channel', channel).single();
+    if (readError) throw readError;
+    return { ...existing, address: decryptAddress(existing.address) };
+  }
   const { data, error } = await admin.from('giveaway_winners').upsert(row, { onConflict: 'id' }).select('*').single();
   if (error) throw error;
   return { ...data, address: decryptAddress(data.address) };
@@ -208,6 +217,54 @@ async function listPresence(channel: string) {
     .limit(500);
   if (error) throw error;
   return data || [];
+}
+
+// Direct messages never pass through the generic channel-scoped database action.
+// Both participants are derived from a validated Twitch identity or a recorded mod login.
+function twitchId(value: unknown) {
+  const id = String(value || '').trim();
+  if (!/^\d{1,30}$/.test(id)) throw new Error('Ungültige Twitch-Nutzer-ID.');
+  return id;
+}
+
+async function directMessageRecipient(channel: string, senderId: string, requestedId: unknown) {
+  const recipientId = twitchId(requestedId);
+  if (recipientId === senderId) throw new Error('Du kannst dir selbst keine Direktnachricht senden.');
+  const { data, error } = await admin.from('mod_presence')
+    .select('twitch_user_id,login').eq('channel', channel)
+    .eq('twitch_user_id', recipientId).maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Dieser Mod ist für den Kanal noch nicht registriert.');
+  return data;
+}
+
+async function listDirectMessages(channel: string, user: any, recipientId: unknown) {
+  const senderId = twitchId(user.user_id);
+  const recipient = await directMessageRecipient(channel, senderId, recipientId);
+  const { data, error } = await admin.from('mod_direct_messages')
+    .select('id,sender_user_id,recipient_user_id,sender_login,recipient_login,message,created_at')
+    .eq('channel', channel)
+    .or(`and(sender_user_id.eq.${senderId},recipient_user_id.eq.${recipient.twitch_user_id}),and(sender_user_id.eq.${recipient.twitch_user_id},recipient_user_id.eq.${senderId})`)
+    .order('created_at', { ascending: false }).limit(100);
+  if (error) throw error;
+  return (data || []).reverse();
+}
+
+async function sendDirectMessage(channel: string, user: any, body: any) {
+  const senderId = twitchId(user.user_id);
+  const recipient = await directMessageRecipient(channel, senderId, body.recipientId);
+  const message = String(body.message || '').trim();
+  if (!message || message.length > 1000) throw new Error('Die Nachricht muss 1 bis 1000 Zeichen enthalten.');
+  const { data, error } = await admin.from('mod_direct_messages').insert({
+    channel,
+    sender_user_id: senderId,
+    recipient_user_id: recipient.twitch_user_id,
+    sender_login: cleanChannel(user.login),
+    recipient_login: recipient.login,
+    message,
+  }).select('id,sender_user_id,recipient_user_id,sender_login,recipient_login,message,created_at').single();
+  if (error) throw error;
+  return data;
 }
 
 async function submitClaim(body: any, twitchToken: string) {
@@ -276,7 +333,7 @@ Deno.serve(async (request) => {
     }
 
     if (body.action === 'giveaways.list') return json(200, { data: await listGiveaways(channel) });
-    if (body.action === 'giveaways.upsert') return json(200, { data: await upsertGiveaway(channel, body.winner || {}) });
+    if (body.action === 'giveaways.upsert') return json(200, { data: await upsertGiveaway(channel, body.winner || {}, body.createOnly === true) });
     if (body.action === 'giveaways.delete') {
       const { error } = await admin.from('giveaway_winners').delete().eq('id', body.id).eq('channel', channel);
       if (error) throw error;
@@ -284,6 +341,8 @@ Deno.serve(async (request) => {
     }
     if (body.action === 'presence.heartbeat') return json(200, { data: await heartbeatPresence(channel, twitchUser, body) });
     if (body.action === 'presence.list') return json(200, { data: await listPresence(channel) });
+    if (body.action === 'direct.list') return json(200, { data: await listDirectMessages(channel, twitchUser, body.recipientId) });
+    if (body.action === 'direct.send') return json(200, { data: await sendDirectMessage(channel, twitchUser, body) });
     if (body.action === 'db') return json(200, { data: await runDatabaseAction(body, channel) });
     return json(400, { error: 'Unbekannte Aktion.' });
   } catch (error) {

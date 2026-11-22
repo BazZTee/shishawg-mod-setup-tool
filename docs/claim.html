@@ -370,6 +370,12 @@
       } catch(e) {}
     }
 
+    // F02: URL and OAuth state are attacker-controlled. Only real Twitch logins pass.
+    const TWITCH_LOGIN_RE = /^[a-z0-9_]{1,25}$/;
+    if (!TWITCH_LOGIN_RE.test(targetUser)) targetUser = '';
+    if (!TWITCH_LOGIN_RE.test(channel)) channel = 'marved';
+    if (accessToken) history.replaceState(null, '', window.location.pathname + window.location.search);
+
     if (!winId) winId = 'gw-' + Date.now();
 
     const inferredPoints = prize.toLowerCase().includes('kohle') || prize.toLowerCase().includes('zauber') || prize.toLowerCase().includes('punkte') || prize.toLowerCase().includes('würfel') || prize.toLowerCase().includes('wuerfel') || prize.toLowerCase().includes('cube');
@@ -387,7 +393,10 @@
 
     const winnerTargetEl = document.querySelector('.winner-target');
     if (winnerTargetEl) {
-      winnerTargetEl.innerHTML = (isPoints ? 'Eingelöst von: ' : 'Ausgelost für: ') + `<strong id="disp-winner-name">${targetUser ? ('@' + targetUser) : '@Gewinner'}</strong>`;
+      const winnerNameEl = document.createElement('strong');
+      winnerNameEl.id = 'disp-winner-name';
+      winnerNameEl.textContent = targetUser ? ('@' + targetUser) : '@Gewinner';
+      winnerTargetEl.replaceChildren(isPoints ? 'Eingelöst von: ' : 'Ausgelost für: ', winnerNameEl);
     }
 
     document.getElementById('disp-prize').textContent = prize;
@@ -432,9 +441,13 @@
             // Strict Validation: logged in account MUST match targetUser
             if (targetUser && loggedInLogin !== targetUser) {
               errorBox.classList.remove('hidden');
-              errorBox.innerHTML = `⛔ <strong>Zugriff verweigert!</strong><br>` +
-                                   `Du bist mit dem Twitch-Account <strong>@${user.display_name}</strong> eingeloggt.<br>` +
-                                   `Dieser Gewinn ist jedoch exklusiv für <strong>@${targetUser}</strong> hinterlegt.`;
+              const strong = (text) => { const el = document.createElement('strong'); el.textContent = text; return el; };
+              errorBox.replaceChildren(
+                '⛔ ', strong('Zugriff verweigert!'), document.createElement('br'),
+                'Du bist mit dem Twitch-Account ', strong('@' + (user.display_name || user.login || '')), ' eingeloggt.',
+                document.createElement('br'),
+                'Dieser Gewinn ist jedoch exklusiv für ', strong('@' + targetUser), ' hinterlegt.'
+              );
               authSection.classList.add('hidden');
               return;
             }

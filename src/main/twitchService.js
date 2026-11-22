@@ -1285,12 +1285,20 @@ class TwitchService {
   }
 
   // --- Channel Points Rewards (Kohle-Stücke) Live Monitor ---
-  startChannelPointsListener(channel = this.targetChannel, autoChat = true) {
+  startChannelPointsListener(channel = this.targetChannel, autoChat = true, botLogin = '') {
     const chan = (channel || this.targetChannel || 'marved').toLowerCase().replace('#', '').trim();
+    const announcer = String(botLogin || '').replace(/^@/, '').toLowerCase().trim();
+    if (!/^[a-z0-9_]{3,25}$/.test(announcer)) {
+      this.removeMessageHandler('channelpoints');
+      return { success: false, error: 'Für diesen Kanal ist kein gültiger Bot-Name hinterlegt. Bitte im Profil eintragen.' };
+    }
 
     this.connectIRC(chan);
 
     this.addMessageHandler('channelpoints', async (parsedMsg, raw) => {
+      // F13: Only the configured bot account may announce redemptions. Twitch sets the
+      // IRC sender, so viewers cannot impersonate it by typing the same sentence.
+      if (String(parsedMsg.login || '').toLowerCase() !== announcer) return;
       const text = (parsedMsg.text || '').trim();
       if (!text) return;
 
@@ -1319,15 +1327,15 @@ class TwitchService {
 
         if (!isPhysicalReward) return;
 
-        const dedupeKey = `${redeemedUser.toLowerCase()}_${prizeLower}_${Math.floor(Date.now() / 60000)}`;
-        if (this.channelPointsProcessed.has(dedupeKey)) return;
-        this.channelPointsProcessed.add(dedupeKey);
+        // F14: The bot message's IRC id is identical for every mod client, so it is a
+        // stable event key. The fallback keeps the prize in the key to avoid collisions.
+        const uniqueId = TwitchService.channelPointsWinnerId(chan, redeemedUser, prizeTitle, parsedMsg.tags?.id);
+        if (this.channelPointsProcessed.has(uniqueId)) return;
+        this.channelPointsProcessed.add(uniqueId);
         if (this.channelPointsProcessed.size > 200) {
           const first = this.channelPointsProcessed.values().next().value;
           this.channelPointsProcessed.delete(first);
         }
-
-        const uniqueId = `kp_${redeemedUser.toLowerCase()}_${Math.floor(Date.now() / (1000 * 60))}`;
 
         const redemptionItem = {
           id: uniqueId,
@@ -1340,9 +1348,9 @@ class TwitchService {
           channel: chan
         };
 
-        // Save to Supabase database (deterministic ID prevents duplicate rows across multiple online mods)
+        // Create only: a second mod processing the same event must not reset status or address.
         try {
-          await supabaseService.saveGiveawayWinner(redemptionItem, chan);
+          await supabaseService.saveGiveawayWinner(redemptionItem, chan, { createOnly: true });
         } catch(e) {
           console.error('Failed to save channel points redemption to Supabase:', e);
         }
@@ -1394,6 +1402,16 @@ class TwitchService {
     });
 
     return { success: true, channel: chan };
+  }
+
+  static channelPointsWinnerId(channel, user, prize, ircMessageId, now = Date.now()) {
+    const chan = String(channel || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    const msgId = String(ircMessageId || '').toLowerCase();
+    if (/^[0-9a-f-]{8,64}$/.test(msgId)) return `kp_${chan}_${msgId}`;
+    const prizeHash = require('crypto').createHash('sha256')
+      .update(String(prize || '').toLowerCase().trim()).digest('hex').slice(0, 10);
+    const login = String(user || '').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    return `kp_${chan}_${login}_${Math.floor(now / 60000)}_${prizeHash}`;
   }
 
   stopChannelPointsListener() {

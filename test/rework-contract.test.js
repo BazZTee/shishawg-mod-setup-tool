@@ -19,7 +19,7 @@ test('all 157 original renderer functions remain available', () => {
 });
 test('all 94 original main-process operations and all event subscriptions survive', () => {
   const mainChannels = matches(read('src/main/main.js'), /ipcMain\.handle\(['"]([^'"]+)['"]/g);
-  assert.deepEqual(mainChannels,contract.mainChannels);
+  for (const channel of contract.mainChannels) assert.ok(mainChannels.includes(channel), `Missing operation: ${channel}`);
   const bridge = require('../src/shared/ipc-contract.json');
   const renderer = read('src/renderer/renderer.js');
   for (const channel of matches(renderer,/ipcRenderer\.invoke\(['"]([^'"]+)['"]/g)) assert.ok(bridge.invoke.includes(channel),channel);

@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="shell-layout.css">
   <link rel="stylesheet" href="stream-actions.css">
   <link rel="stylesheet" href="mod-hq-workspace.css">
+  <link rel="stylesheet" href="mod-direct-chat.css">
+  <link rel="stylesheet" href="chatgames.css">
 </head>
 <body class="swg-workspace">
   <div class="app-container">
@@ -210,6 +212,41 @@
         </div>
       </div>
 
+      <div id="view-chatgames" class="hub-view-pane hidden">
+        <div class="tool-sub-header">
+          <button type="button" class="btn btn-secondary btn-back-hub">🏠 Hauptmenü</button>
+          <span class="tool-breadcrumb">Dashboard ➔ <strong>🎮 ChatGames</strong></span>
+        </div>
+        <div class="cg-shell">
+          <div class="cg-hero">
+            <div><span class="cg-eyebrow">SHISHAWG · SPIELEKONSOLE</span><h2>ChatGames</h2><p>Wähle ein Spiel. Bei aktivem Chat-Versand öffnet die Auswahl dessen Lobby per Twitch-Chat.</p></div>
+            <div class="cg-hero-actions">
+              <a href="https://chatgames.pro/de/modguide" target="_blank" rel="noopener noreferrer">Modguide öffnen ↗</a>
+              <label class="toggle-switch cg-chat-toggle" title="Ausschalten, um Spielauswahl und Befehle ohne Chat-Nachricht zu testen">
+                <input type="checkbox" id="cg-send-chat" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Chat-Nachrichten senden</span>
+              </label>
+            </div>
+          </div>
+          <div id="cg-status" class="cg-status" role="status" aria-live="polite">Noch kein Spiel in dieser Ansicht gewählt.</div>
+          <section id="cg-picker" class="cg-picker" aria-label="Spiele auswählen">
+            <div class="cg-picker-heading"><h3>Spiel wählen</h3><span>21 Spiele · Klick öffnet Spiel-Lobby</span></div>
+            <div id="cg-games" class="cg-games"></div>
+            <section class="cg-panel cg-general-panel"><h3>Allgemeine Befehle</h3><div id="cg-general" class="cg-command-list"></div></section>
+          </section>
+          <div id="cg-lobby" class="cg-lobby hidden" aria-label="Spiel-Lobby">
+            <div class="cg-lobby-heading">
+              <button type="button" id="cg-back-games" class="cg-back-games">← Alle Spiele</button>
+              <div><span class="cg-eyebrow">SPIEL-LOBBY</span><h3 id="cg-lobby-title">Spiel</h3><p id="cg-lobby-help">Stelle das Spiel ein und starte es mit !start.</p></div>
+            </div>
+            <section class="cg-panel cg-settings-panel"><h3>Spieleinstellungen</h3><p class="cg-hint">Einstellungen wirken laut Modguide im geöffneten Spielmenü.</p><div id="cg-settings" class="cg-command-list"></div></section>
+            <section class="cg-panel cg-controls-panel"><h3>Spielsteuerung</h3><div id="cg-controls" class="cg-command-list"></div></section>
+            <details id="cg-viewer-panel" class="cg-panel cg-reference hidden"><summary>Zuschauerbefehle für dieses Spiel</summary><p class="cg-hint">Diese Befehle sind für Zuschauer gedacht. Als Mod kannst du sie ebenfalls aus deinem Twitch-Konto senden.</p><div id="cg-viewer" class="cg-command-list"></div></details>
+          </div>
+        </div>
+      </div>
+
       <!-- ============================================== -->
       <!-- VIEW 1: SETUP-MANAGER (Original Tool) -->
       <!-- ============================================== -->
@@ -247,6 +284,9 @@
                 </button>
                 <button id="btn-open-paste-modal" class="dropdown-item" title="Setup-Text aus der Zwischenablage oder händisch einfügen">
                   📋 Setup aus Text / Zwischenablage einfügen
+                </button>
+                <button id="btn-import-hookahtools" class="dropdown-item" title="Marvs Live-Mix der letzten 30 Minuten mit Tabaksorten und Mischverhältnis übernehmen">
+                  🌐 Von HookahTools (Marv)
                 </button>
               </div>
             </div>
@@ -1946,8 +1986,8 @@
             <span class="tool-breadcrumb">Dashboard ➔ <strong>✨ Mein Mod-Dashboard</strong></span>
           </div>
           <div class="sub-header-actions" style="display:flex; gap:8px; align-items:center;">
-            <button id="btn-custom-dashboard-lock" class="btn btn-sm btn-secondary" title="Dashboard sperren / entsperren (Verhindert versehentliches Verschieben & Verändern)">
-              🔓 Layout entsperrt
+            <button id="btn-custom-dashboard-lock" class="btn btn-sm btn-secondary" title="Bearbeitungsmodus öffnen" aria-pressed="false">
+              ✎ Layout anpassen
             </button>
             <button id="btn-custom-dashboard-add-widget" class="btn btn-sm btn-primary" style="background:#ffca28; color:#121218; font-weight:700;">
               ➕ Modul hinzufügen
@@ -1959,8 +1999,14 @@
         </div>
 
         <div id="custom-dashboard-layout-hint" class="dashboard-layout-hint" aria-live="polite">
-          <span>↔️ <strong>Werkzeug am Reiter ziehen:</strong> an einer Kante teilen, in der Mitte als Tab gruppieren.</span>
+          <span>↔️ <strong>Werkzeug am Reiter ziehen:</strong> an einer Kante teilen, neben einem Reiter oder in der Mitte als Tab gruppieren.</span>
           <span>⋮ <strong>Trennlinie ziehen:</strong> Bereiche stufenlos vergrößern.</span>
+          <span>↕️ Schmale Bereiche ordnen sich untereinander an. Die ganze Seite scrollt mit.</span>
+        </div>
+
+        <div id="custom-dashboard-undo-bar" class="dashboard-undo-bar hidden" role="status">
+          <span id="custom-dashboard-undo-label"></span>
+          <button id="btn-custom-dashboard-undo" type="button" class="btn btn-sm btn-secondary">↶ Rückgängig</button>
         </div>
 
         <!-- Interactive dockable workspace -->
@@ -1983,6 +2029,30 @@
             <div id="add-widget-catalog-list" class="dashboard-widget-picker-list">
               <!-- Dynamically populated list of available modules -->
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="modal-move-dashboard-widget" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="move-dashboard-widget-title">
+        <div class="modal-card dashboard-move-modal">
+          <div class="modal-header">
+            <h3 id="move-dashboard-widget-title">Modul verschieben</h3>
+            <button id="btn-close-move-dashboard-widget" class="btn-icon" aria-label="Dialog schließen">✕</button>
+          </div>
+          <div class="modal-body dashboard-move-body">
+            <label id="dashboard-move-target-label">Zielgruppe<select id="dashboard-move-target"></select></label>
+            <label>Platzierung
+              <select id="dashboard-move-zone">
+                <option value="end">Als neue Zeile unten</option>
+                <option value="center">Als Tab in dieser Gruppe</option>
+                <option value="left">Links neben der Gruppe</option>
+                <option value="right">Rechts neben der Gruppe</option>
+                <option value="top">Über der Gruppe</option>
+                <option value="bottom">Unter der Gruppe</option>
+              </select>
+            </label>
+            <p>Die Vorschau beim Ziehen und diese Auswahl erzeugen dieselbe Anordnung.</p>
+            <button id="btn-confirm-move-dashboard-widget" type="button" class="btn btn-primary">Modul verschieben</button>
           </div>
         </div>
       </div>
@@ -2952,8 +3022,11 @@
   <script src="fuzzy.js"></script>
   <script src="renderer.js"></script>
   <script src="workspace.js"></script>
+  <script src="chatgames-commands.js"></script>
+  <script src="chatgames.js"></script>
   <script src="glass.js"></script>
   <script src="mod-hq-workspace.js"></script>
+  <script src="mod-direct-chat.js"></script>
   <script src="stream-actions.js"></script>
   <script src="liquid-motion.js"></script>
   <script src="liquid-selection.js"></script>

@@ -151,7 +151,81 @@ function fetchSupabaseEndpoint(pathStr) {
   });
 }
 
+function fetchHookahToolsLiveMixes(offset) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ p_limit: 50, p_offset: offset });
+    const req = https.request({
+      hostname: HOOKAHTOOLS_SUPABASE_HOST,
+      path: '/rest/v1/rpc/get_live_mixes',
+      method: 'POST',
+      headers: {
+        'apikey': HOOKAHTOOLS_SUPABASE_KEY,
+        'Authorization': `Bearer ${HOOKAHTOOLS_SUPABASE_KEY}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'User-Agent': 'ShishaWG-Mod-Setup-Tool'
+      }
+    }, res => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`HookahTools Live-Mixes: HTTP ${res.statusCode}`));
+          return;
+        }
+        try {
+          const mixes = JSON.parse(data);
+          if (!Array.isArray(mixes)) throw new Error('Ungültige Live-Mix-Antwort');
+          resolve(mixes);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    req.setTimeout(10000, () => req.destroy(new Error('HookahTools antwortet nicht')));
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
 class DatabaseService {
+  async fetchCurrentMarvHookahToolsMix() {
+    const now = Date.now();
+    const cutoff = now - 30 * 60 * 1000;
+    for (let offset = 0; offset < 1000; offset += 50) {
+      const mixes = await fetchHookahToolsLiveMixes(offset);
+      for (const mix of mixes) {
+        const createdAt = Date.parse(mix?.created_at);
+        if (!Number.isFinite(createdAt) || createdAt < cutoff || createdAt > now + 60 * 1000) continue;
+        if (String(mix?.creator?.nickname || '').trim().toLowerCase() !== 'marv') continue;
+        const sourceFlavors = Array.isArray(mix.flavors) ? mix.flavors : [];
+        const flavorIds = sourceFlavors.map(flavor => flavor?.flavor_id);
+        if (!flavorIds.length || flavorIds.some(id => typeof id !== 'string' || !id.trim())) {
+          throw new Error('Marvs Live-Mix enthält keine eindeutigen Tabaksorten');
+        }
+        const details = await fetchSupabaseEndpoint(`flavors?select=id,line&id=in.(${flavorIds.map(encodeURIComponent).join(',')})`);
+        const flavorLines = new Map(details.map(flavor => [flavor.id, flavor.line]));
+        if (flavorIds.some(id => !flavorLines.has(id))) {
+          throw new Error('Nicht alle Tabaksorten aus Marvs Live-Mix sind im HookahTools-Katalog verfügbar');
+        }
+        const flavors = sourceFlavors.map(flavor => ({
+          name: formatHookahToolsTobacco(
+            typeof flavor?.brand_name === 'string' ? flavor.brand_name : '',
+            flavorLines.get(flavor.flavor_id),
+            typeof flavor?.name === 'string' ? flavor.name : ''
+          ),
+          percentage: Number(flavor?.percentage)
+        }));
+        if (!flavors.length || flavors.some(flavor => !flavor.name || !Number.isFinite(flavor.percentage) || flavor.percentage <= 0 || flavor.percentage > 100)) {
+          throw new Error('Marvs Live-Mix enthält ungültige Tabaksorten oder Mischanteile');
+        }
+        return { mixId: mix.mix_id, createdAt: mix.created_at, flavors };
+      }
+      if (mixes.length < 50 || mixes.some(mix => Number.isFinite(Date.parse(mix?.created_at)) && Date.parse(mix.created_at) < cutoff)) return null;
+    }
+    throw new Error('Zu viele aktuelle Live-Mixes; Marvs Mix konnte nicht sicher gefunden werden');
+  }
+
   constructor() {
     const userDataDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : path.join(process.cwd(), '.temp_user_data');
     this.dataPath = userDataDir;
@@ -1067,8 +1141,20 @@ class DatabaseService {
   }
 
   // Telegram & Giveaway Portal Config (Local Offline Fallback)
-  async getTelegramConfig() {
-    let cfg = this._readFile('telegram_config.json', { botToken: '', chatId: '', claimUrl: '' });
+  // F16: one file per channel. The old shared file belongs to the original channel
+  // (marved) only, so another channel can never inherit its delivery target.
+  _telegramConfigFile(channel) {
+    const chan = this._normalizeChannel(channel).replace(/[^a-z0-9_]/g, '');
+    if (!chan) throw new Error('Ungültiger Kanal für die Telegram-Konfiguration.');
+    return `telegram_config_${chan}.json`;
+  }
+
+  async getTelegramConfig(channel = 'marved') {
+    const chan = this._normalizeChannel(channel);
+    let cfg = this._readFile(this._telegramConfigFile(chan), null);
+    if ((!cfg || typeof cfg !== 'object') && chan === 'marved') {
+      cfg = this._readFile('telegram_config.json', null);
+    }
     if (!cfg || typeof cfg !== 'object') {
       cfg = { botToken: '', chatId: '', claimUrl: '' };
     }
@@ -1078,8 +1164,8 @@ class DatabaseService {
     return cfg;
   }
 
-  async saveTelegramConfig(cfg) {
-    this._writeFile('telegram_config.json', cfg);
+  async saveTelegramConfig(cfg, channel = 'marved') {
+    this._writeFile(this._telegramConfigFile(channel), cfg);
     return cfg;
   }
 

@@ -11,6 +11,7 @@
     poll: '<path d="M4 20h16M6 16v-5M12 16V4M18 16V8"/>',
     timer: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6M12 2v3M18 5l2-2"/>',
     dashboard: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 10h18M12 10v11"/>',
+    gamepad: '<path d="M6 8h12a4 4 0 0 1 3.9 3.1l1 5a2 2 0 0 1-3.2 2l-2.8-2.1H7.1l-2.8 2.1a2 2 0 0 1-3.2-2l1-5A4 4 0 0 1 6 8Z"/><path d="M7 11v4m-2-2h4m7-1h.01M19 14h.01"/>',
     catalog: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v7c0 4 16 4 16 0V5M4 12v7c0 4 16 4 16 0v-7"/>',
     screen: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
     search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
@@ -31,8 +32,10 @@
     { id: 'view-qna', name: 'Fragen & Antworten', icon: 'question', description: 'Zuschauerfragen sammeln, moderieren und on air bringen.', keys: 'Q&A Fragerunde Bestrafungsrad OBS' },
     { id: 'view-polls', name: 'Umfragen & Vorhersagen', icon: 'poll', description: 'Die Community abstimmen lassen und Ergebnisse live verfolgen.', keys: 'Polls Predictions Templates Kanalpunkte' },
     { id: 'view-stats', name: 'Statistiken & Timer', icon: 'timer', description: 'Laufende Köpfe, Kohlewechsel und deine Session-Historie.', keys: 'Rauchdauer Rankings Analytics' },
-    { id: 'view-custom-dashboard', name: 'Mein Dashboard', icon: 'dashboard', description: 'Deine Module. Dein Layout. Alles griffbereit.', keys: 'Widgets Drag Resize Cockpit' }
+    { id: 'view-custom-dashboard', name: 'Mein Dashboard', icon: 'dashboard', description: 'Deine Module. Dein Layout. Alles griffbereit.', keys: 'Widgets Drag Resize Cockpit' },
+    { id: 'view-chatgames', name: 'ChatGames', icon: 'gamepad', description: 'Spiele auswählen und per Twitch-Chat steuern.', keys: 'Spiele Hangman Trivia Golf Schach Marbles Meemorie' }
   ];
+  const menuRoutes = routes.filter(route => route.id !== 'view-chatgames');
   const $ = id => document.getElementById(id);
   const storage = {
     get(key, fallback = '') { try { return localStorage.getItem('swg_workspace_' + key) ?? fallback; } catch { return fallback; } },
@@ -49,7 +52,7 @@
   sidebar.setAttribute('aria-label', 'Workspace-Navigation');
   sidebar.innerHTML = `<div class="ws-brand-slot"></div>
     <div class="ws-nav-label">WORKSPACE</div>
-    <nav class="ws-nav" aria-label="Hauptnavigation">${routes.map((route,i) => `<button type="button" class="ws-nav-item" data-ws-route="${route.id}" title="${route.name} (Alt+${i+1})">${icon(route.icon)}<span class="ws-nav-text">${route.name}</span>${route.id === 'view-modchat' || route.id === 'view-qna' ? `<span class="ws-unread hidden" data-unread-for="${route.id}"></span>` : ''}</button>`).join('')}</nav>
+    <nav class="ws-nav" aria-label="Hauptnavigation">${menuRoutes.map((route,i) => `<button type="button" class="ws-nav-item" data-ws-route="${route.id}" title="${route.name} (Alt+${i+1})">${icon(route.icon)}<span class="ws-nav-text">${route.name}</span>${route.id === 'view-modchat' || route.id === 'view-qna' ? `<span class="ws-unread hidden" data-unread-for="${route.id}"></span>` : ''}</button>`).join('')}</nav>
     <div class="ws-nav-label ws-tools-label">WERKZEUGE</div>
     <nav class="ws-nav ws-tools" aria-label="Werkzeuge">
       <button type="button" class="ws-nav-item" data-ws-action="catalog" title="Katalog & Datenbank">${icon('catalog')}<span class="ws-nav-text">Katalog & Datenbank</span></button>
@@ -78,7 +81,7 @@
   $('ws-date').textContent = new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
   const status = document.createElement('div');
   status.className = 'ws-status-strip';
-  status.innerHTML = `<div><span class="ws-status-label">AKTIVER KANAL</span><strong id="ws-summary-channel">#marved</strong></div><div><span class="ws-status-label">TWITCH-VERBINDUNG</span><strong id="ws-summary-connection">Nicht verbunden</strong></div><div><span class="ws-status-label">DEIN ARBEITSPLATZ</span><strong>8 Module <span class="ws-status-light">· ein Workspace</span></strong></div>`;
+  status.innerHTML = `<div><span class="ws-status-label">AKTIVER KANAL</span><strong id="ws-summary-channel">#marved</strong></div><div><span class="ws-status-label">TWITCH-VERBINDUNG</span><strong id="ws-summary-connection">Nicht verbunden</strong></div><div><span class="ws-status-label">DEIN ARBEITSPLATZ</span><strong>9 Module <span class="ws-status-light">· ein Workspace</span></strong></div>`;
   hero.after(status);
   const grid = landing.querySelector('.hub-tiles-grid');
   grid.before(Object.assign(document.createElement('div'), { className: 'ws-section-title', innerHTML: '<h3>Deine Module</h3><span>Für alles, was im Stream ansteht</span>' }));
@@ -127,7 +130,7 @@
   document.body.insertAdjacentHTML('beforeend', `<div id="ws-palette" class="modal-overlay ws-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ws-palette-title">
       <div class="modal-card ws-palette-card"><div class="ws-palette-search">${icon('search')}<label class="ws-sr-only" id="ws-palette-title" for="ws-query">Module und Werkzeuge suchen</label><input id="ws-query" type="search" placeholder="Modul oder Werkzeug suchen …" autocomplete="off" role="combobox" aria-controls="ws-results" aria-expanded="true"><button type="button" class="btn-icon" data-ws-close="ws-palette" aria-label="Suche schließen">×</button></div><div id="ws-results" role="listbox" aria-label="Suchergebnisse"></div><div class="ws-palette-footer"><span>↑ ↓ Auswählen</span><span>↵ Öffnen</span><span>Esc Schließen</span></div></div></div>
     <div id="ws-preferences" class="modal-overlay ws-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ws-preferences-title"><div class="modal-card ws-preferences-card"><div class="modal-header"><h3 id="ws-preferences-title">Einstellungen</h3><button type="button" class="btn-icon" data-ws-close="ws-preferences" aria-label="Einstellungen schließen">×</button></div><div class="modal-body">
-      <h4>Ansicht &amp; Startseite</h4><label class="ws-setting-label" for="ws-start-view">Beim Start öffnen</label><p class="ws-setting-help">Deine bevorzugte Ansicht wird nach der Twitch-Anmeldung geöffnet.</p><select id="ws-start-view"><option value="view-landing">Übersicht</option><option value="last">Zuletzt verwendetes Modul</option>${routes.slice(1).map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}</select>
+      <h4>Ansicht &amp; Startseite</h4><label class="ws-setting-label" for="ws-start-view">Beim Start öffnen</label><p class="ws-setting-help">Deine bevorzugte Ansicht wird nach der Twitch-Anmeldung geöffnet.</p><select id="ws-start-view"><option value="view-landing">Übersicht</option><option value="last">Zuletzt verwendetes Modul</option>${menuRoutes.slice(1).map(r=>`<option value="${r.id}">${r.name}</option>`).join('')}</select>
       <div class="ws-setting-row"><div><label for="ws-density">Kompakte Darstellung</label><p class="ws-setting-help">Weniger Abstand für kleinere Bildschirme.</p></div><input type="checkbox" id="ws-density"></div>
       <div class="ws-setting-row"><div><label for="ws-motion">Animationen reduzieren</label><p class="ws-setting-help">Ruhige Übergänge und weniger Bewegung.</p></div><input type="checkbox" id="ws-motion"></div>
       <div class="ws-setting-row"><div><h4>Streamer-Profile &amp; Kanäle</h4><p class="ws-setting-help">Streamer, Kanäle und Profile verwalten.</p></div><button type="button" id="ws-manage-profiles" class="btn btn-secondary">Verwalten</button></div><div class="ws-build-note"><strong>ShishaWG Mod Setup Tool · v8.0.2</strong><p>Deine Einstellungen und Daten aus der bisherigen installierten Version werden weiterverwendet.</p><p>Lokales OBS-Overlay: <code>http://localhost:18942/overlay</code></p><button type="button" class="btn btn-secondary" id="ws-copy-obs">Lokalen OBS-Link kopieren</button></div>
@@ -238,7 +241,7 @@
       else { paletteIndex = Math.max(0,Math.min(visibleCommands.length-1,paletteIndex+(event.key==='ArrowDown'?1:-1))); updateSelection(); }
       return;
     }
-    if (event.altKey && /^[1-9]$/.test(event.key) && !document.querySelector('.modal-overlay:not(.hidden)')) { event.preventDefault(); navigate(routes[Number(event.key)-1].id); }
+    if (event.altKey && /^[1-9]$/.test(event.key) && !document.querySelector('.modal-overlay:not(.hidden)')) { event.preventDefault(); navigate(menuRoutes[Number(event.key)-1].id); }
     if (event.key === 'Tab') {
       const modals = [...document.querySelectorAll('.modal-overlay:not(.hidden)')];
       const modal = modals.at(-1);

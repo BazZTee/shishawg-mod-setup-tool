@@ -12,3 +12,9 @@ setup_database.json
 .temp_user_data/
 qa-output/
 
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Supabase CLI local state
+supabase/.temp/

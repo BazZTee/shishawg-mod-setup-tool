@@ -425,17 +425,19 @@ ipcMain.handle('profiles:get-all', async () => {
     for (const prof of profiles) {
       if (!prof.telegram || !prof.telegram.botToken || !prof.telegram.chatId) {
         try {
-          const chan = prof.targetChannel || 'marved';
+          // F16: only configuration of this profile's own channel may complete it.
+          const chan = normalizeChannel(prof.targetChannel || 'marved');
           let remoteCfg = null;
           if (supabaseService) {
-            remoteCfg = await supabaseService.getTelegramConfig(chan);
+            try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
           }
           if (!remoteCfg && dbService) {
-            remoteCfg = await dbService.getTelegramConfig();
+            remoteCfg = await dbService.getTelegramConfig(chan);
           }
-          const localToken = store.get('telegram_bot_token', '');
-          const localChat = store.get('telegram_chat_id', '');
-          const localClaim = store.get('giveaway_claim_url', 'https://bazztee.github.io/shishawg-mod-setup-tool/claim.html');
+          const isLegacyChannel = chan === 'marved';
+          const localToken = isLegacyChannel ? store.get('telegram_bot_token', '') : '';
+          const localChat = isLegacyChannel ? store.get('telegram_chat_id', '') : '';
+          const localClaim = isLegacyChannel ? store.get('giveaway_claim_url', '') : '';
 
           prof.telegram = {
             botToken: prof.telegram?.botToken || remoteCfg?.botToken || localToken || '',
@@ -464,7 +466,7 @@ ipcMain.handle('profiles:save-all', async (event, { profiles, activeProfileId })
             await supabaseService.saveTelegramConfig(p.telegram, p.targetChannel || 'marved');
           }
           if (dbService) {
-            await dbService.saveTelegramConfig(p.telegram);
+            await dbService.saveTelegramConfig(p.telegram, normalizeChannel(p.targetChannel || 'marved'));
           }
         }
       }
@@ -480,7 +482,8 @@ ipcMain.handle('profiles:save-all', async (event, { profiles, activeProfileId })
         if (activeProf.botName) {
           store.set('target_bot', activeProf.botName);
         }
-        if (activeProf.telegram) {
+        // The legacy global keys belong to marved only (F16); other channels keep their own config.
+        if (activeProf.telegram && normalizeChannel(activeProf.targetChannel) === 'marved') {
           store.set('telegram_bot_token', activeProf.telegram.botToken || '');
           store.set('telegram_chat_id', activeProf.telegram.chatId || '');
           store.set('giveaway_claim_url', activeProf.telegram.claimUrl || '');
@@ -507,7 +510,7 @@ ipcMain.handle('profiles:set-active', async (event, profileId) => {
     if (activeProf.botName) {
       store.set('target_bot', activeProf.botName);
     }
-    if (activeProf.telegram) {
+    if (activeProf.telegram && normalizeChannel(activeProf.targetChannel) === 'marved') {
       store.set('telegram_bot_token', activeProf.telegram.botToken || '');
       store.set('telegram_chat_id', activeProf.telegram.chatId || '');
       store.set('giveaway_claim_url', activeProf.telegram.claimUrl || '');
@@ -708,6 +711,26 @@ ipcMain.handle('modchat:get-presence', async () => {
     return { success: true, users };
   } catch (e) {
     return { success: false, users: [], error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:get-direct-messages', async (event, recipientId) => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    const messages = await supabaseService.getModDirectMessages(recipientId, chan);
+    return { success: true, messages };
+  } catch (e) {
+    return { success: false, messages: [], error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:send-direct-message', async (event, payload) => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    const message = await supabaseService.sendModDirectMessage(payload?.recipientId, payload?.message, chan);
+    return { success: true, message };
+  } catch (e) {
+    return { success: false, error: e.message };
   }
 });
 
@@ -954,8 +977,8 @@ ipcMain.handle('giveaway:send-telegram', async (event, { text, botToken, chatId 
     if (supabaseService) {
       try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
     }
-    if (!remoteCfg && dbService && chan === 'marved') {
-      try { remoteCfg = await dbService.getTelegramConfig(); } catch(e) {}
+    if (!remoteCfg && dbService) {
+      try { remoteCfg = await dbService.getTelegramConfig(chan); } catch(e) {}
     }
 
     const profileMatchesChannel = normalizeChannel(activeProf?.targetChannel) === chan;
@@ -989,8 +1012,8 @@ ipcMain.handle('giveaway:get-telegram-config', async () => {
   if (supabaseService) {
     try { remoteCfg = await supabaseService.getTelegramConfig(chan); } catch(e) {}
   }
-  if (!remoteCfg && dbService && chan === 'marved') {
-    try { remoteCfg = await dbService.getTelegramConfig(); } catch(e) {}
+  if (!remoteCfg && dbService) {
+    try { remoteCfg = await dbService.getTelegramConfig(chan); } catch(e) {}
   }
 
   const profileMatchesChannel = normalizeChannel(activeProf?.targetChannel) === chan;
@@ -1002,11 +1025,21 @@ ipcMain.handle('giveaway:get-telegram-config', async () => {
   return { botToken, chatId, claimUrl };
 });
 
+// The redemption announcer is bound to the profile of the same channel, never to another profile.
+function getAnnouncerBotForChannel(chan) {
+  const profiles = store.get('streamer_profiles', DEFAULT_STREAMER_PROFILES);
+  const activeId = store.get('active_profile_id', profiles[0]?.id);
+  const ordered = [profiles.find(p => p.id === activeId), ...profiles].filter(Boolean);
+  const match = ordered.find(p => normalizeChannel(p.targetChannel) === chan && p.botName);
+  if (match) return String(match.botName).replace(/^@/, '').toLowerCase().trim();
+  return chan === 'marved' ? 'marvedbot' : '';
+}
+
 // Channel Points (Kohle-Stücke) IPC Handlers
 ipcMain.handle('channelpoints:start-listener', async (event, { channel, autoChat } = {}) => {
   try {
     const chan = requireAuthorizedActiveChannel(channel);
-    return twitchService.startChannelPointsListener(chan, autoChat !== false);
+    return twitchService.startChannelPointsListener(chan, autoChat !== false, getAnnouncerBotForChannel(chan));
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -1400,6 +1433,14 @@ ipcMain.handle('db:get-catalog', async () => {
     }
   }
   return dbService.getCatalog();
+});
+
+ipcMain.handle('db:get-marv-hookahtools-mix', async () => {
+  try {
+    return { success: true, mix: await dbService.fetchCurrentMarvHookahToolsMix() };
+  } catch (error) {
+    return { success: false, error: error.message || 'HookahTools-Mix konnte nicht geladen werden' };
+  }
 });
 
 ipcMain.handle('db:add-item', async (event, { category, item }) => {

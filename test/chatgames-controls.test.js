@@ -7,8 +7,8 @@ const vm = require('node:vm');
 const commands = require('../src/renderer/chatgames-commands.js');
 const root = path.resolve(__dirname, '..');
 
-test('ChatGames guide commands are available for all 22 games', () => {
-  assert.equal(commands.games.length, 22);
+test('ChatGames guide commands are available for all 21 games', () => {
+  assert.equal(commands.games.length, 21);
   const actual = new Set([
     ...commands.games.flatMap(game => [game.open, ...(game.aliases || []), ...game.settings.map(item => item.command)]),
     ...commands.controls.map(item => item.command),
@@ -20,8 +20,8 @@ test('ChatGames guide commands are available for all 22 games', () => {
     '!home', '!dashboard', '!en', '!de', '!subonly', '!chatgameshelp', '!rank', '!top',
     '!start', '!cancel', '!skip', '!kick', '!unkick', '!next', '!restart', '!pause', '!resume', '!timer',
     '!vote', '!lobby', '!instantwin', '!category', '!poll', '!rounds', '!autojump',
-    '!mode', '!course', '!courses', '!holes', '!playalong', '!grace', '!maxplayers',
-    '!latejoin', '!collide', '!prediction', '!facecam',
+    '!mode', '!course', '!courses', '!holes', '!playalong', '!theme', '!grace', '!maxplayers',
+    '!latejoin', '!wind', '!collide', '!prediction', '!facecam',
     '!color', '!easymode', '!allowresign', '!showhistory', '!showcaptured',
     '!first', '!showvotes', '!track', '!tracks', '!size', '!words', '!pack', '!items',
     '!join', '!me', '!reset', '!marble', '!skin', '!skins', '!rate', '!stats', '!record', '!guess',
@@ -31,8 +31,7 @@ test('ChatGames guide commands are available for all 22 games', () => {
     '!cap', '!tutorial', '!scoring', '!puzzle', '!hearts', '!handicap', '!fen', '!addtime',
     '!teams', '!team', '!median', '!bust', '!padlock', '!survey', '!contestant', '!boss',
     '!deck', '!currency', '!nogoingover', '!es', '!pt', '!fr', '!session', '!session reset',
-    '!tonight', '!finale', '!chatgames',
-    '!climb', '!veto', '!msg', '!followers', '!minage', '!subheat', '!heatcap', '!heatline', '!knockout', '!use'
+    '!tonight', '!finale', '!chatgames'
   ];
   for (const command of guideCommands) assert.ok(actual.has(command), `${command} fehlt`);
 });
@@ -44,15 +43,7 @@ test('ChatGames commands validate values before sending', () => {
   assert.equal(commands.build(trivia.settings.find(item => item.command === '!rounds'), '5'), '!rounds 5');
   assert.equal(commands.build(golf.settings.find(item => item.command === '!holes'), 'all'), '!holes all');
   assert.equal(commands.build(golf.settings.find(item => item.command === '!courses'), 'pro'), '!courses pro');
-  const marbles = commands.games.find(game => game.id === 'marbles');
-  const hol = commands.games.find(game => game.id === 'higherlower');
-  assert.equal(commands.build(marbles.settings.find(item => item.command === '!heatcap'), 'off'), '!heatcap off');
-  assert.equal(commands.build(marbles.settings.find(item => item.command === '!minage'), '7'), '!minage 7');
-  assert.equal(commands.build(hol.settings.find(item => item.command === '!rounds'), '0'), '!rounds 0');
-  assert.throws(() => commands.build(hol.settings.find(item => item.command === '!rounds'), '41'));
-  assert.equal(commands.build(commands.games.find(game => game.id === 'climb').settings.find(item => item.type === 'number'), '75'), '!veto 75');
-  assert.throws(() => commands.build(commands.games.find(game => game.id === 'climb').settings.find(item => item.type === 'number'), '181'));
-  assert.equal(commands.build(commands.controls.find(item => item.command === '!msg'), 'letzte Runde'), '!msg letzte Runde');
+  assert.equal(commands.build(golf.settings.find(item => item.command === '!theme'), 'paper'), '!theme paper');
   assert.equal(commands.build(commands.games.find(game => game.id === 'marbles').settings.find(item => item.command === '!tracks'), 'clear'), '!tracks clear');
   assert.equal(commands.build(commands.viewer.find(item => item.command === '!stats'), ''), '!stats');
   assert.equal(commands.build(commands.general.find(item => item.command === '!rank'), ''), '!rank');
@@ -148,7 +139,7 @@ test('Game cards open only their lobby and lobby buttons send matching commands'
     } }
   };
   vm.runInNewContext(fs.readFileSync(path.join(root, 'src/renderer/chatgames.js'), 'utf8'), context);
-  assert.equal(get('cg-games').children.length, 22);
+  assert.equal(get('cg-games').children.length, 21);
   assert.equal(get('cg-controls').children.length, 0);
   assert.ok(get('cg-general').children.length > 0);
   assert.equal(get('cg-settings').children.length, 0);

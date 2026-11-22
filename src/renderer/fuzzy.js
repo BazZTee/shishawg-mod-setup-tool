@@ -236,6 +236,39 @@ function checkDuplicateFuzzy(candidate, list) {
   return { isExact: false, isNearDuplicate: false, matchName: '', similarity: 0 };
 }
 
+// Catalog entries that only add words to an existing name ("Blade Mini Rot" next to
+// "Blade Mini") or differ by a typo are treated as the same product.
+const SIMILAR_CATALOG_SCORE = 0.85;
+
+function normalizeCatalogName(value) {
+  return getItemName(value).toLowerCase().replace(/[^\p{L}\p{N}+.]+/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function findSimilarCatalogEntry(candidate, list) {
+  const cand = normalizeCatalogName(candidate);
+  if (!cand || !Array.isArray(list)) return null;
+  const candTokens = cand.split(' ');
+  let best = null;
+  for (const item of list) {
+    const name = getItemName(item);
+    const norm = normalizeCatalogName(name);
+    if (!norm) continue;
+    if (norm === cand) return { name, reason: 'exact', score: 1 };
+    const tokens = norm.split(' ');
+    const [shorter, longer] = tokens.length <= candTokens.length ? [tokens, candTokens] : [candTokens, tokens];
+    const shorterText = shorter.join(' ');
+    if (shorter.length < longer.length && shorterText.length >= 4 && shorter.every((tok, i) => longer[i] === tok)) {
+      const score = shorterText.length / longer.join(' ').length;
+      if (!best || best.reason !== 'prefix' || score > best.score) best = { name, reason: 'prefix', score };
+      continue;
+    }
+    if (best && best.reason === 'prefix') continue;
+    const score = similarityScore(cand, norm);
+    if (score >= SIMILAR_CATALOG_SCORE && (!best || score > best.score)) best = { name, reason: 'similar', score };
+  }
+  return best;
+}
+
 // Common Shisha synonym / brand expansion helper
 const SHISHA_SYNONYMS = {
   'futr': 'Amotion Futr',
@@ -313,6 +346,8 @@ if (typeof module !== 'undefined' && module.exports) {
     findBestFuzzyMatch,
     fuzzyFilterList,
     checkDuplicateFuzzy,
+    findSimilarCatalogEntry,
+    normalizeCatalogName,
     getItemName,
     isGenericGearToken,
     SHISHA_SYNONYMS

@@ -4,6 +4,7 @@ const https = require('https');
 const { app } = require('electron');
 const { decryptAddress, isEncrypted } = require('./crypto');
 const { CATALOG_CATEGORIES, applyCatalogChange, catalogCloudKey, catalogItemName } = require('../shared/catalogChange');
+const { findSimilarCatalogEntry } = require('../renderer/fuzzy');
 
 const HOOKAHTOOLS_SUPABASE_HOST = 'qgusfuyfuwsdshsdruen.supabase.co';
 const HOOKAHTOOLS_SUPABASE_KEY = 'sb_publishable_XtRceZwP5FsZu2-GNuWkeQ_5AD_AU9y';
@@ -727,12 +728,8 @@ class DatabaseService {
 
       const currentCatalog = this.getCatalog();
       if (category === 'tobacco') {
-        // Only learn as custom if not already in HookahTools or Custom
-        const existsInAny = (currentCatalog.tobacco || []).some(t => {
-          const tName = (typeof t === 'string' ? t : t.name).toLowerCase().trim();
-          return tName === trimmed.toLowerCase();
-        });
-        if (!existsInAny) {
+        // Only learn as custom if nothing equal or similar exists in HookahTools or Custom
+        if (!findSimilarCatalogEntry(trimmed, currentCatalog.tobacco || [])) {
           if (this.addItem('tobacco', trimmed)) {
             addedCount++;
             added.push({ category: 'tobacco', item: trimmed });
@@ -742,8 +739,8 @@ class DatabaseService {
       }
 
       if (!currentCatalog[category]) currentCatalog[category] = [];
-      const exists = currentCatalog[category].some(i => (typeof i === 'string' ? i : i.name).toLowerCase().trim() === trimmed.toLowerCase());
-      if (!exists) {
+      // Variants such as "Blade Mini Rot" next to "Blade Mini" are never learned automatically.
+      if (!findSimilarCatalogEntry(trimmed, currentCatalog[category])) {
         if (this.addItem(category, trimmed)) {
           addedCount++;
           added.push({ category, item: trimmed });

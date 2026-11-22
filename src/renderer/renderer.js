@@ -3456,15 +3456,16 @@ function setupEventListeners() {
     const catKey = getCategoryKeyForTab(state.currentDbTab);
     const existingList = state.catalog[catKey] || [];
     const checkName = typeof itemVal === 'string' ? itemVal : itemVal.name;
-    const dupCheck = checkDuplicateFuzzy(checkName, existingList);
+    const similar = findSimilarCatalogEntry(checkName, existingList);
 
-    if (dupCheck.isExact) {
-      showToast(`⚠️ "${dupCheck.matchName}" existiert bereits in dieser Kategorie!`, 'warning');
+    if (similar && similar.reason === 'exact') {
+      showToast(`⚠️ "${similar.name}" existiert bereits in dieser Kategorie!`, 'warning');
       return;
     }
-    if (dupCheck.isNearDuplicate) {
-      const pct = Math.round(dupCheck.similarity * 100);
-      showToast(`⚠️ Ähnlicher Eintrag existiert bereits: "${dupCheck.matchName}" (${pct}% Ähnlichkeit)`, 'info');
+    // Variants of an existing entry ("Blade Mini Rot") are only added after confirmation.
+    if (similar && !confirm(`„${similar.name}“ ist schon in der Datenbank.\n\n„${checkName}“ trotzdem als eigenen Eintrag anlegen?`)) {
+      showToast(`Nicht angelegt – „${similar.name}“ bleibt der Eintrag.`, 'info');
+      return;
     }
 
     const res = await ipcRenderer.invoke('db:add-item', { category: catKey, item: itemVal });

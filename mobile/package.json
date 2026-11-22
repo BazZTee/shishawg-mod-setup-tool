@@ -1,0 +1,31 @@
+{
+  "name": "shishawg-mod-setup-tool-android",
+  "private": true,
+  "description": "Android-Hülle (Capacitor) für das ShishaWG Mod Setup Tool. Nutzt src/renderer und src/main aus dem Hauptprojekt.",
+  "scripts": {
+    "build": "node scripts/build-web.cjs",
+    "sync": "npm run build && npx cap sync android",
+    "apk:debug": "npm run sync && cd android && gradlew assembleDebug",
+    "apk:release": "npm run sync && cd android && gradlew assembleRelease",
+    "serve": "node scripts/serve-www.cjs",
+    "test": "node --test test/*.test.cjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/clipboard": "8.0.1",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/local-notifications": "8.3.1",
+    "cordova-plugin-inappbrowser": "7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2",
+    "buffer": "6.0.3",
+    "crypto-browserify": "3.12.1",
+    "esbuild": "0.28.2",
+    "events": "3.3.0",
+    "path-browserify": "1.0.1",
+    "scrypt-js": "3.0.1",
+    "stream-browserify": "3.0.0"
+  }
+}

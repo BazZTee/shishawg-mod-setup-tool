@@ -16,6 +16,7 @@ const supabaseService = require('./supabaseService');
 const trelloService = require('./trelloService');
 const { resolveReleaseNotes } = require('./release-notes');
 const releaseNotes = require('../shared/release-notes.json');
+const { catalogCloudKey, catalogItemName } = require('../shared/catalogChange');
 
 // State for Live OBS Overlay
 let latestLiveSetup = {
@@ -1421,17 +1422,70 @@ ipcMain.handle('stats:save-timer-state', async (event, { channel, timerState }) 
 });
 
 // IPC Handlers for Database
-ipcMain.handle('db:get-catalog', async () => {
+// Catalog sync: the cloud list is authoritative. Local changes are queued as single
+// operations and sent in order; the queue survives restarts and offline periods.
+let catalogSyncChain = Promise.resolve();
+const PERMANENT_CATALOG_ERRORS = new Set([401, 403, 409]);
+
+function runCatalogSync(task) {
+  const run = catalogSyncChain.then(task, task);
+  catalogSyncChain = run.catch(() => {});
+  return run;
+}
+
+async function flushPendingCatalogOps() {
+  if (!supabaseService) return { rejected: null };
+  let rejected = null;
+  for (;;) {
+    const [op, ...rest] = dbService.getPendingCatalogOps();
+    if (!op) break;
+    try {
+      const row = await supabaseService.changeCatalog(op);
+      dbService.savePendingCatalogOps(rest);
+      if (row && Array.isArray(row.items)) dbService.applyRemoteCatalog({ [row.category || op.category]: row.items });
+    } catch (e) {
+      const attempts = (op.attempts || 0) + 1;
+      if (PERMANENT_CATALOG_ERRORS.has(e.status) || attempts >= 5) {
+        rejected = e.message;
+        dbService.savePendingCatalogOps(rest);
+        continue;
+      }
+      dbService.savePendingCatalogOps([{ ...op, attempts }, ...rest]);
+      break;
+    }
+  }
+  return { rejected };
+}
+
+async function refreshCatalogFromCloud() {
+  const { rejected } = await flushPendingCatalogOps();
   if (supabaseService) {
     try {
       const remote = await supabaseService.getCatalog();
-      if (remote && Object.keys(remote).length > 0) {
-        dbService.mergeRemoteCatalog(remote);
-      }
-    } catch(e) {
-      console.warn('Failed to fetch remote catalog on db:get-catalog:', e.message);
+      if (remote && Object.keys(remote).length > 0) dbService.applyRemoteCatalog(remote);
+    } catch (e) {
+      console.warn('Failed to fetch remote catalog:', e.message);
     }
   }
+  return { rejected };
+}
+
+async function syncCatalogChanges(changes) {
+  return runCatalogSync(async () => {
+    changes.forEach(change => dbService.queueCatalogOp(change));
+    const { rejected } = await refreshCatalogFromCloud();
+    return { rejected, pending: dbService.getPendingCatalogOps().length > 0 };
+  });
+}
+
+function catalogChangeResult(sync) {
+  const catalog = dbService.getCatalog();
+  if (sync.rejected) return { success: false, error: sync.rejected, catalog };
+  return { success: true, pending: sync.pending, catalog };
+}
+
+ipcMain.handle('db:get-catalog', async () => {
+  await runCatalogSync(refreshCatalogFromCloud);
   return dbService.getCatalog();
 });
 
@@ -1443,95 +1497,43 @@ ipcMain.handle('db:get-marv-hookahtools-mix', async () => {
   }
 });
 
+const catalogCloudItem = (category, item) => (
+  catalogCloudKey(category) === 'tobacco' ? catalogItemName(item) : item
+);
+
 ipcMain.handle('db:add-item', async (event, { category, item }) => {
-  const res = dbService.addItem(category, item);
-  const updatedCatalog = dbService.getCatalog();
-
-  if (res && supabaseService) {
-    try {
-      const catKey = (category === 'customTobacco') ? 'tobacco' : category;
-      const itemsToSync = (catKey === 'tobacco')
-        ? (updatedCatalog.customTobacco || [])
-        : (updatedCatalog[catKey] || []);
-      await supabaseService.saveCatalogCategory(catKey, itemsToSync);
-    } catch(e) {
-      console.warn('Failed to sync added item to Supabase:', e.message);
-    }
-  }
-
-  return { success: res, catalog: updatedCatalog };
+  if (!dbService.addItem(category, item)) return { success: false, catalog: dbService.getCatalog() };
+  const sync = await syncCatalogChanges([{ category, op: 'add', item: catalogCloudItem(category, item) }]);
+  return catalogChangeResult(sync);
 });
 
 ipcMain.handle('db:remove-item', async (event, { category, item }) => {
-  const res = dbService.removeItem(category, item);
-  const updatedCatalog = dbService.getCatalog();
-
-  if (res && supabaseService) {
-    try {
-      const catKey = (category === 'customTobacco') ? 'tobacco' : category;
-      const itemsToSync = (catKey === 'tobacco')
-        ? (updatedCatalog.customTobacco || [])
-        : (updatedCatalog[catKey] || []);
-      await supabaseService.saveCatalogCategory(catKey, itemsToSync);
-    } catch(e) {
-      console.warn('Failed to sync removed item to Supabase:', e.message);
-    }
-  }
-
-  return { success: res, catalog: updatedCatalog };
+  if (!dbService.removeItem(category, item)) return { success: false, catalog: dbService.getCatalog() };
+  const sync = await syncCatalogChanges([{ category, op: 'remove', item: catalogItemName(item) }]);
+  return catalogChangeResult(sync);
 });
 
 ipcMain.handle('db:edit-item', async (event, { category, oldItem, newItem }) => {
-  const res = dbService.editItem(category, oldItem, newItem);
-  const updatedCatalog = dbService.getCatalog();
-
-  if (res && supabaseService) {
-    try {
-      const catKey = (category === 'customTobacco') ? 'tobacco' : category;
-      const itemsToSync = (catKey === 'tobacco')
-        ? (updatedCatalog.customTobacco || [])
-        : (updatedCatalog[catKey] || []);
-      await supabaseService.saveCatalogCategory(catKey, itemsToSync);
-    } catch(e) {
-      console.warn('Failed to sync edited item to Supabase:', e.message);
-    }
-  }
-
-  return { success: res, catalog: updatedCatalog };
+  if (!dbService.editItem(category, oldItem, newItem)) return { success: false, catalog: dbService.getCatalog() };
+  const sync = await syncCatalogChanges([{
+    category, op: 'rename', item: catalogItemName(oldItem), newItem: catalogCloudItem(category, newItem)
+  }]);
+  return catalogChangeResult(sync);
 });
 
 ipcMain.handle('db:auto-learn', async (event, setupData) => {
   const res = dbService.autoLearnSetup(setupData);
-  if (res && res.addedCount > 0 && supabaseService) {
-    try {
-      const catalog = dbService.getCatalog();
-      for (const cat of ['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'persons']) {
-        if (catalog[cat]) {
-          await supabaseService.saveCatalogCategory(cat, catalog[cat]);
-        }
-      }
-      if (catalog.customTobacco) {
-        await supabaseService.saveCatalogCategory('tobacco', catalog.customTobacco);
-      }
-    } catch(e) {
-      console.warn('Failed to sync auto-learned items to Supabase:', e.message);
-    }
-  }
-  return { success: true, ...res };
+  if (!res || res.addedCount === 0) return { success: true, ...res };
+  const sync = await syncCatalogChanges(res.added.map(({ category, item }) => ({ category, op: 'add', item })));
+  // Without catalog rights the learned entries are not kept, so nothing is announced.
+  if (sync.rejected) return { success: true, addedCount: 0, added: [], catalog: dbService.getCatalog() };
+  return { success: true, ...res, catalog: dbService.getCatalog() };
 });
 
 ipcMain.handle('db:sync-cloud', async () => {
   try {
-    let hookahTobacco = [];
-    if (dbService) {
-      hookahTobacco = await dbService.fetchHookahToolsTobacco(true);
-    }
-    if (supabaseService) {
-      const remoteCatalog = await supabaseService.getCatalog();
-      if (remoteCatalog && Object.keys(remoteCatalog).length > 0) {
-        dbService.mergeRemoteCatalog(remoteCatalog);
-      }
-    }
+    if (dbService) await dbService.fetchHookahToolsTobacco(true);
+    await runCatalogSync(refreshCatalogFromCloud);
     const fullCatalog = dbService.getCatalog();
     return {
       success: true,

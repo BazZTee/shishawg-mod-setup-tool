@@ -3,6 +3,7 @@ const path = require('path');
 const https = require('https');
 const { app } = require('electron');
 const { decryptAddress, isEncrypted } = require('./crypto');
+const { CATALOG_CATEGORIES, applyCatalogChange, catalogCloudKey, catalogItemName } = require('../shared/catalogChange');
 
 const HOOKAHTOOLS_SUPABASE_HOST = 'qgusfuyfuwsdshsdruen.supabase.co';
 const HOOKAHTOOLS_SUPABASE_KEY = 'sb_publishable_XtRceZwP5FsZu2-GNuWkeQ_5AD_AU9y';
@@ -431,6 +432,7 @@ class DatabaseService {
 
   getCatalog() {
     let customTobacco = [];
+    let hasTobaccoList = false;
     let base = { ...this.defaultCatalog };
     const parsed = this._readFile('setup_database.json', null);
     if (parsed && typeof parsed === 'object') {
@@ -440,18 +442,21 @@ class DatabaseService {
         vases: Array.isArray(parsed.vases) ? parsed.vases : this.defaultCatalog.vases,
         hmds: Array.isArray(parsed.hmds) ? parsed.hmds : this.defaultCatalog.hmds,
         charcoal: Array.isArray(parsed.charcoal) ? parsed.charcoal : this.defaultCatalog.charcoal,
-        persons: Array.isArray(parsed.persons) && parsed.persons.length > 0 ? parsed.persons : this.defaultCatalog.persons,
+        persons: Array.isArray(parsed.persons) ? parsed.persons : this.defaultCatalog.persons,
         tastings: Array.isArray(parsed.tastings) ? parsed.tastings : this.defaultCatalog.tastings,
         promos: Array.isArray(parsed.promos) ? parsed.promos : this.defaultCatalog.promos
       };
       if (Array.isArray(parsed.customTobacco)) {
         customTobacco = parsed.customTobacco;
+        hasTobaccoList = true;
       } else if (Array.isArray(parsed.tobacco)) {
         customTobacco = parsed.tobacco;
+        hasTobaccoList = true;
       }
     }
 
-    if (!Array.isArray(customTobacco) || customTobacco.length === 0) {
+    // Built-in defaults only fill a missing list. An intentionally emptied list stays empty.
+    if (!hasTobaccoList) {
       customTobacco = this.defaultCatalog.customTobacco || [
         'MustH - Pynkman',
         'Blackburn - Haribo',
@@ -535,55 +540,53 @@ class DatabaseService {
     return this._writeFile('setup_database.json', toSave);
   }
 
-  mergeRemoteCatalog(remoteCatalog) {
+  // The cloud list is authoritative. Local changes that have not reached the cloud yet
+  // are kept in a queue and re-applied on top, so they survive until they are synced.
+  getCatalogCategory(category) {
+    const key = catalogCloudKey(category);
+    const catalog = this.getCatalog();
+    return key === 'tobacco' ? (catalog.customTobacco || []) : (catalog[key] || []);
+  }
+
+  setCatalogCategory(category, items) {
+    const key = catalogCloudKey(category);
+    if (key === 'tobacco') return this.saveCustomTobacco(items);
+    const catalog = this.getCatalog();
+    catalog[key] = items;
+    return this.saveCatalog(catalog);
+  }
+
+  getPendingCatalogOps() {
+    const ops = this._readFile('catalog_pending_ops.json', []);
+    return Array.isArray(ops) ? ops : [];
+  }
+
+  savePendingCatalogOps(ops) {
+    return this._writeFile('catalog_pending_ops.json', Array.isArray(ops) ? ops : []);
+  }
+
+  queueCatalogOp(change) {
+    const op = { ...change, category: catalogCloudKey(change.category), queuedAt: Date.now(), attempts: 0 };
+    this.savePendingCatalogOps([...this.getPendingCatalogOps(), op]);
+    return op;
+  }
+
+  applyRemoteCatalog(remoteCatalog) {
     if (!remoteCatalog || typeof remoteCatalog !== 'object') return this.getCatalog();
-    try {
-      const current = this.getCatalog();
-
-      const mergeList = (localList, remoteList) => {
-        const map = new Map();
-        const add = item => {
-          if (!item) return;
-          const str = (typeof item === 'string' ? item : item.name || '').trim();
-          if (!str) return;
-          const key = str.toLowerCase();
-          if (!map.has(key)) {
-            map.set(key, item);
-          } else if (typeof item === 'object' && item.isElectric) {
-            map.set(key, item);
-          }
-        };
-        (Array.isArray(localList) ? localList : []).forEach(add);
-        (Array.isArray(remoteList) ? remoteList : []).forEach(add);
-        const result = [...map.values()];
-        result.sort((a, b) => {
-          const nameA = typeof a === 'string' ? a : a.name || '';
-          const nameB = typeof b === 'string' ? b : b.name || '';
-          return nameA.localeCompare(nameB, 'de');
-        });
-        return result;
-      };
-
-      const updated = {
-        pipes: mergeList(current.pipes, remoteCatalog.pipes),
-        bowls: mergeList(current.bowls, remoteCatalog.bowls),
-        vases: mergeList(current.vases, remoteCatalog.vases),
-        hmds: mergeList(current.hmds, remoteCatalog.hmds),
-        charcoal: mergeList(current.charcoal, remoteCatalog.charcoal),
-        persons: mergeList(current.persons, remoteCatalog.persons),
-        tastings: mergeList(current.tastings, remoteCatalog.tastings),
-        promos: mergeList(current.promos, remoteCatalog.promos)
-      };
-
-      const remoteTobacco = Array.isArray(remoteCatalog.tobacco) && remoteCatalog.tobacco.length > 0
-        ? remoteCatalog.tobacco
-        : (Array.isArray(remoteCatalog.customTobacco) && remoteCatalog.customTobacco.length > 0 ? remoteCatalog.customTobacco : []);
-      updated.customTobacco = mergeList(current.customTobacco, remoteTobacco);
-
-      this.saveCatalog(updated);
-    } catch (err) {
-      console.error('Error merging remote catalog:', err);
+    const pending = this.getPendingCatalogOps();
+    const catalog = this.getCatalog();
+    let changed = false;
+    for (const key of CATALOG_CATEGORIES) {
+      if (!Array.isArray(remoteCatalog[key])) continue;
+      let items = remoteCatalog[key];
+      for (const op of pending.filter(entry => entry.category === key)) {
+        try { items = applyCatalogChange(items, op.op, op.item, op.newItem); } catch (err) {}
+      }
+      if (key === 'tobacco') catalog.customTobacco = items;
+      else catalog[key] = items;
+      changed = true;
     }
+    if (changed) this.saveCatalog(catalog);
     return this.getCatalog();
   }
 
@@ -606,7 +609,7 @@ class DatabaseService {
       const exists = customTobacco.some(i => (typeof i === 'string' ? i : i.name).toLowerCase() === itemName.toLowerCase());
       if (!exists) {
         customTobacco.push(itemName);
-        customTobacco.sort((a, b) => a.localeCompare(b, 'de'));
+        customTobacco.sort((a, b) => catalogItemName(a).localeCompare(catalogItemName(b), 'de'));
         this.saveCustomTobacco(customTobacco);
         return true;
       }
@@ -672,7 +675,7 @@ class DatabaseService {
       const idx = customTobacco.findIndex(i => (typeof i === 'string' ? i : i.name).trim().toLowerCase() === oldName.toLowerCase());
       if (idx !== -1) {
         customTobacco[idx] = newName;
-        customTobacco.sort((a, b) => a.localeCompare(b, 'de'));
+        customTobacco.sort((a, b) => catalogItemName(a).localeCompare(catalogItemName(b), 'de'));
         this.saveCustomTobacco(customTobacco);
         return true;
       }
@@ -697,8 +700,9 @@ class DatabaseService {
   }
 
   autoLearnSetup(setupData) {
-    if (!setupData) return { addedCount: 0, catalog: this.getCatalog() };
+    if (!setupData) return { addedCount: 0, added: [], catalog: this.getCatalog() };
     let addedCount = 0;
+    const added = [];
 
     const TOBACCO_FILTER = [
       'darkside', 'musthave', 'musth', 'pinkman', 'pynkman', 'black burn', 'burn', 'haribo',
@@ -729,8 +733,10 @@ class DatabaseService {
           return tName === trimmed.toLowerCase();
         });
         if (!existsInAny) {
-          const added = this.addItem('tobacco', trimmed);
-          if (added) addedCount++;
+          if (this.addItem('tobacco', trimmed)) {
+            addedCount++;
+            added.push({ category: 'tobacco', item: trimmed });
+          }
         }
         return;
       }
@@ -738,8 +744,10 @@ class DatabaseService {
       if (!currentCatalog[category]) currentCatalog[category] = [];
       const exists = currentCatalog[category].some(i => (typeof i === 'string' ? i : i.name).toLowerCase().trim() === trimmed.toLowerCase());
       if (!exists) {
-        const added = this.addItem(category, trimmed);
-        if (added) addedCount++;
+        if (this.addItem(category, trimmed)) {
+          addedCount++;
+          added.push({ category, item: trimmed });
+        }
       }
     };
 
@@ -759,7 +767,7 @@ class DatabaseService {
     if (setupData.kohle) addIfNew('charcoal', setupData.kohle);
     if (setupData.extra) addIfNew('tobacco', setupData.extra);
 
-    return { addedCount, catalog: this.getCatalog() };
+    return { addedCount, added, catalog: this.getCatalog() };
   }
 
   async fetchHookahToolsMetadata() {

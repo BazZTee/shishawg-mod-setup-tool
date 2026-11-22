@@ -45,7 +45,11 @@ class SupabaseService {
       body: JSON.stringify({ action, ...payload })
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || `Geschützter Datenzugriff fehlgeschlagen (${response.status}).`);
+    if (!response.ok) {
+      const error = new Error(result.error || `Geschützter Datenzugriff fehlgeschlagen (${response.status}).`);
+      error.status = response.status;
+      throw error;
+    }
     return result.data;
   }
 
@@ -396,18 +400,10 @@ class SupabaseService {
     }
   }
 
-  async saveCatalogCategory(category, items) {
-    try {
-      await this.secureDb('shishawg_catalog', 'upsert', this.activeChannel, { values: {
-          category,
-          items: Array.isArray(items) ? items : [],
-          updated_at: new Date().toISOString()
-        }, onConflict: 'category' });
-      return true;
-    } catch(err) {
-      console.error('Supabase saveCatalogCategory error:', err.message);
-      return false;
-    }
+  // The catalog is shared by all channels and managed by the core team of #marved.
+  // Single changes are applied server-side to the current cloud list.
+  changeCatalog({ category, op, item, newItem }) {
+    return this.secureRequest('catalog.change', { channel: 'marved', category, op, item, newItem });
   }
 
   // --- Mod Watchlist CRUD ---

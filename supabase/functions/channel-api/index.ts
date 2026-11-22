@@ -304,6 +304,75 @@ async function submitClaim(body: any, twitchToken: string) {
   return { id: data.id };
 }
 
+// Catalog changes are applied one by one to the current cloud list. Clients never
+// upload whole lists, so a stale local copy cannot restore deleted or drop new entries.
+const catalogCategories = new Set(['pipes', 'bowls', 'vases', 'hmds', 'charcoal', 'persons', 'tastings', 'promos', 'tobacco']);
+
+function catalogItemName(item: unknown) {
+  return String(typeof item === 'string' ? item : (item as any)?.name || '').trim();
+}
+
+function cleanCatalogItem(item: unknown) {
+  const name = catalogItemName(item).replace(/[\u0000-\u001F\u007F]/g, '').slice(0, 200);
+  if (!name) throw new Error('Leerer Katalogeintrag.');
+  if (typeof item !== 'object' || item === null) return name;
+  const clean: Record<string, unknown> = { name };
+  if ((item as any).isElectric === true) clean.isElectric = true;
+  if ((item as any).flavor) clean.flavor = String((item as any).flavor).trim().slice(0, 200);
+  return Object.keys(clean).length === 1 ? name : clean;
+}
+
+function applyCatalogChange(items: unknown[], op: string, item: unknown, newItem?: unknown) {
+  const list = Array.isArray(items) ? [...items] : [];
+  const key = catalogItemName(item).toLowerCase();
+  const indexOf = (k: string) => list.findIndex(entry => catalogItemName(entry).toLowerCase() === k);
+  if (op === 'add') {
+    if (indexOf(key) === -1) list.push(cleanCatalogItem(item));
+  } else if (op === 'remove') {
+    return list.filter(entry => catalogItemName(entry).toLowerCase() !== key);
+  } else if (op === 'rename') {
+    const replacement = cleanCatalogItem(newItem);
+    const newKey = catalogItemName(replacement).toLowerCase();
+    const rest = list.filter(entry => {
+      const k = catalogItemName(entry).toLowerCase();
+      return k !== key && k !== newKey;
+    });
+    rest.push(replacement);
+    list.length = 0;
+    list.push(...rest);
+  } else {
+    throw new Error('Unbekannte Katalogänderung.');
+  }
+  return list.sort((a, b) => catalogItemName(a).localeCompare(catalogItemName(b), 'de'));
+}
+
+async function changeCatalog(body: any) {
+  const category = String(body.category || '');
+  if (!catalogCategories.has(category)) throw new Error('Unbekannte Katalogkategorie.');
+  const op = String(body.op || '');
+  // Optimistic concurrency: retry when another mod changed the same category meanwhile.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { data: row, error } = await admin.from('shishawg_catalog')
+      .select('category,items,updated_at').eq('category', category).maybeSingle();
+    if (error) throw error;
+    const items = applyCatalogChange(row?.items || [], op, body.item, body.newItem);
+    const updatedAt = new Date().toISOString();
+    if (!row) {
+      const { data, error: insertError } = await admin.from('shishawg_catalog')
+        .insert({ category, items, updated_at: updatedAt }).select('category,items,updated_at').maybeSingle();
+      if (!insertError && data) return data;
+      if (insertError && insertError.code !== '23505') throw insertError;
+      continue;
+    }
+    let update = admin.from('shishawg_catalog').update({ items, updated_at: updatedAt }).eq('category', category);
+    update = row.updated_at === null ? update.is('updated_at', null) : update.eq('updated_at', row.updated_at);
+    const { data, error: updateError } = await update.select('category,items,updated_at').maybeSingle();
+    if (updateError) throw updateError;
+    if (data) return data;
+  }
+  throw new Error('Katalog wird gerade von mehreren Mods geändert. Bitte erneut versuchen.');
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (request.method !== 'POST') return json(405, { error: 'Method not allowed' });
@@ -320,6 +389,16 @@ Deno.serve(async (request) => {
     const twitchUser = await validateTwitchToken(twitchToken);
     if (!(await isModerator(twitchToken, twitchUser, channel))) return json(403, { error: 'Keine Moderator-Berechtigung für diesen Kanal.' });
 
+    if (body.action === 'catalog.change') {
+      if (channel !== 'marved' || !CORE_MODS.has(cleanChannel(twitchUser.login))) {
+        return json(403, { error: 'Den Katalog darf nur das ShishaWG-Core-Team ändern.' });
+      }
+      return json(200, { data: await changeCatalog(body) });
+    }
+    if (body.action === 'db' && body.table === 'shishawg_catalog' && body.operation !== 'select') {
+      // Old app versions upload whole lists and would undo other mods' changes.
+      return json(409, { error: 'Bitte das Mod-Tool aktualisieren, um den Katalog zu ändern.' });
+    }
     if (body.action === 'db' && globalTables.has(String(body.table || '')) && body.operation !== 'select') {
       const login = cleanChannel(twitchUser.login);
       if (channel !== 'marved' || !CORE_MODS.has(login)) {

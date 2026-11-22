@@ -2511,6 +2511,9 @@ function setupEventListeners() {
       renderCatalogList();
       const addedName = typeof itemVal === 'string' ? itemVal : itemVal.name;
       showToast(`"${addedName}" zur Datenbank hinzugefügt`, 'success');
+      notifyCatalogPending(res);
+    } else if (res.error) {
+      showCatalogSyncError(res);
     } else {
       showToast(`Eintrag existiert bereits!`, 'warning');
     }
@@ -2776,6 +2779,9 @@ function renderCatalogList() {
             updateDatalists();
             renderCatalogList();
             showToast(`Eintrag aktualisiert`, 'success');
+            notifyCatalogPending(res);
+          } else if (res.error) {
+            showCatalogSyncError(res);
           }
         } else {
           renderCatalogList();
@@ -2797,9 +2803,27 @@ function renderCatalogList() {
         updateDatalists();
         renderCatalogList();
         showToast(`Eintrag gelöscht`, 'info');
+        notifyCatalogPending(res);
+      } else if (res.error) {
+        showCatalogSyncError(res);
       }
     });
   });
+}
+
+// Catalog changes reach the cloud one by one. Offline changes wait in a queue;
+// rejected changes are rolled back to the cloud list.
+function notifyCatalogPending(res) {
+  if (res && res.pending) showToast('Gespeichert. Die Cloud wird aktualisiert, sobald die Verbindung steht.', 'info');
+}
+
+function showCatalogSyncError(res) {
+  if (res.catalog) {
+    state.catalog = res.catalog;
+    updateDatalists();
+    renderCatalogList();
+  }
+  showToast(`Nicht gespeichert: ${res.error}`, 'error');
 }
 
 // Toast Helper

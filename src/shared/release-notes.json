@@ -1,8 +1,13 @@
 {
-  "version": "8.0.2",
-  "title": "Neu in Version 8.0.2",
+  "version": "8.0.3",
+  "title": "Neu in Version 8.0.3",
   "intro": "Seit 8.0.1: mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
+    {
+      "icon": "🛡️",
+      "title": "Sicherere Gewinne und Stream-Erkennung",
+      "description": "Kanalpunkte-Gewinne entstehen nur noch aus Nachrichten des eingetragenen Bots und werden nicht doppelt angelegt. Ein kurzer Verbindungsfehler beendet keine Session mehr, und Telegram-Einstellungen bleiben beim jeweiligen Kanal."
+    },
     {
       "icon": "🧩",
       "title": "Vollständige Module im persönlichen Dashboard",

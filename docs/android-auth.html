@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>ShishaWG Mod Tool – Twitch-Anmeldung</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(circle at 50% 20%, #17233f 0%, #080c14 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 20px;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    h1 { font-size: 1.25rem; color: #38bdf8; margin-bottom: 12px; }
+    p { color: #cbd5e1; line-height: 1.5; }
+    a.button {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 22px;
+      border-radius: 12px;
+      background: #9146ff;
+      color: #fff;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>ShishaWG Mod Setup Tool</h1>
+    <p id="msg">Anmeldung wird an die App übergeben …</p>
+    <a id="open" class="button hidden" href="#">Zurück zur App</a>
+  </div>
+  <script>
+    // Forwards the Twitch login result to the Android app. The token is only in
+    // the URL fragment, which browsers never send to a server.
+    (function () {
+      var fragment = window.location.hash.slice(1);
+      var msg = document.getElementById('msg');
+      var button = document.getElementById('open');
+      if (!fragment || !/^[A-Za-z0-9_\-.~%+=&:]+$/.test(fragment)) {
+        msg.textContent = 'Keine gültige Anmeldung gefunden. Bitte in der App erneut „Mit Twitch verbinden“ wählen.';
+        return;
+      }
+      var target = 'de.shishawg.modsetuptool://auth#' + fragment;
+      // Keep the token out of the browser history.
+      history.replaceState(null, '', window.location.pathname);
+      button.href = target;
+      window.location.replace(target);
+      setTimeout(function () {
+        msg.textContent = 'Falls sich die App nicht von selbst öffnet, tippe hier:';
+        button.classList.remove('hidden');
+      }, 1200);
+    })();
+  </script>
+</body>
+</html>

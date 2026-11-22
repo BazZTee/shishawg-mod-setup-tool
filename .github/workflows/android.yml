@@ -34,6 +34,11 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           test -d "$ANDROID_HOME"
 
+      # src/main needs the desktop dependencies (e.g. @supabase/supabase-js).
+      # --ignore-scripts skips the Electron binary download.
+      - name: Install desktop dependencies
+        run: npm ci --ignore-scripts
+
       - name: Install
         working-directory: mobile
         run: npm ci

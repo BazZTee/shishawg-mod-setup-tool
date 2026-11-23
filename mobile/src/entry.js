@@ -27,6 +27,11 @@ window.swgBridge = Object.freeze({
   })
 });
 document.documentElement.classList.add('swg-android');
+// The phone layout shows the Twitch login button as icon only.
+document.addEventListener('DOMContentLoaded', () => {
+  const twitchButton = document.getElementById('btn-twitch-login');
+  if (twitchButton) twitchButton.setAttribute('aria-label', 'Mit Twitch verbinden');
+});
 
 async function start() {
   await vfs.load(seedFiles);

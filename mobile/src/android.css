@@ -147,6 +147,102 @@ html.swg-android body {
     max-height: calc(100dvh - 24px) !important;
   }
 
+  /* Less nested padding: every card level used to cost 20-24px per side. */
+  html.swg-android .hub-view-pane {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  html.swg-android .persons-grid {
+    padding: 10px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  html.swg-android .person-card {
+    padding: 12px !important;
+  }
+
+  /* Two-column form rows become one column. */
+  html.swg-android .input-row {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Header rows with title and buttons wrap instead of overflowing. */
+  html.swg-android .tool-sub-header,
+  html.swg-android .sub-header-actions,
+  html.swg-android .gw-header-actions,
+  html.swg-android .chat-header,
+  html.swg-android .chat-header-actions,
+  html.swg-android .glass-masthead {
+    flex-wrap: wrap !important;
+    min-width: 0;
+    max-width: 100%;
+    row-gap: 8px;
+  }
+  html.swg-android .tool-sub-header > *,
+  html.swg-android .chat-header > * {
+    min-width: 0;
+  }
+
+  /* Wide tables scroll sideways inside their card. */
+  html.swg-android .hub-view-pane table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ChatGames */
+  html.swg-android .cg-shell,
+  html.swg-android .cg-hero,
+  html.swg-android .cg-status,
+  html.swg-android .cg-picker {
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+  html.swg-android .cg-games {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* Compact app header: search, profile and Twitch button in one row. */
+  html.swg-android .app-header,
+  html.swg-android .app-header .header-actions {
+    flex-wrap: nowrap !important;
+  }
+  html.swg-android .app-header .header-profile-widget {
+    flex: 1 1 auto;
+  }
+  html.swg-android .app-header .twitch-auth-container {
+    flex: 0 0 auto;
+  }
+  html.swg-android .app-header .header-profile-widget {
+    min-width: 0;
+  }
+  html.swg-android .app-header .header-profile-icon {
+    display: none;
+  }
+  html.swg-android .app-header .header-profile-select-wrapper,
+  html.swg-android .app-header .header-select-profile {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    text-overflow: ellipsis;
+  }
+  /* Twitch login button: icon only (text node hidden via font-size). */
+  html.swg-android #btn-twitch-login {
+    font-size: 0 !important;
+    gap: 0 !important;
+    width: 44px;
+    min-width: 44px;
+    padding: 0 !important;
+    justify-content: center;
+  }
+  html.swg-android #btn-twitch-login .icon {
+    width: 20px;
+    height: 20px;
+    margin: 0 !important;
+  }
+
   /* Larger touch targets. */
   html.swg-android .btn,
   html.swg-android button {

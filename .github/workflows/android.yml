@@ -88,8 +88,18 @@ jobs:
           name: android-apk
           path: ${{ runner.temp }}/*.apk
 
+      # On a release, or on a push to main whose version already has a release
+      # (e.g. a release published before the Android build existed).
       - name: Attach APK to release
-        if: github.event_name == 'release' && steps.keystore.outputs.path != ''
+        if: steps.keystore.outputs.path != '' && (github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "$RUNNER_TEMP"/ShishaWG-Mod-Setup-Tool-*.apk --clobber
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then TAG="v$(node -p "require('./package.json').version")"; fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$RUNNER_TEMP"/ShishaWG-Mod-Setup-Tool-*.apk --clobber
+            echo "APK an Release $TAG angehängt."
+          else
+            echo "Kein Release $TAG vorhanden, nichts angehängt."
+          fi

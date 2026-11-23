@@ -22,7 +22,7 @@ for (const file of required) {
 }
 const pkg = JSON.parse(asar.extractFile(archive,'package.json'));
 assert.equal(pkg.name,'shishawg-mod-setup-tool');
-assert.equal(pkg.version,'8.0.8');
+assert.equal(pkg.version,'8.0.9');
 const files = asar.listPackage(archive);
 assert.equal(files.some(file=>file.split(path.sep).includes('test')),false);
 console.log(JSON.stringify({verifiedFiles:required.length,packagedEntries:files.length,identity:pkg.name,testFixturesIncluded:false}));

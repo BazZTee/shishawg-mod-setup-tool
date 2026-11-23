@@ -1,8 +1,23 @@
 {
-  "version": "8.0.8",
-  "title": "Neu in Version 8.0.8",
-  "intro": "Seit 8.0.1: mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
+  "version": "8.0.9",
+  "title": "Neu in Version 8.0.9",
+  "intro": "Seit 8.0.1: Push-Benachrichtigungen in der Android-App, Lesebestätigungen im Mod-Chat, mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
+    {
+      "icon": "📲",
+      "title": "Push-Benachrichtigungen in der Android-App",
+      "description": "Neue Nachrichten im Mod-Chat und private Nachrichten kommen als Push aufs Handy, auch wenn die App geschlossen ist. Antippen öffnet direkt Mod HQ bzw. den privaten Chat."
+    },
+    {
+      "icon": "👁️",
+      "title": "Gelesen von … im Mod-Chat",
+      "description": "Unter den Nachrichten siehst du die Profilbilder der Mods, die bis dorthin gelesen haben. So weißt du, wer Bescheid weiß. Beim Öffnen springt der Chat direkt zur neuesten Nachricht."
+    },
+    {
+      "icon": "💾",
+      "title": "Setup merken",
+      "description": "Lege das aktuelle Setup in einen von drei Zwischenspeicher-Slots und lade es später über das Import-Menü wieder."
+    },
     {
       "icon": "🛡️",
       "title": "Sicherere Gewinne und Stream-Erkennung",
@@ -46,7 +61,7 @@
     {
       "icon": "🔐",
       "title": "Private Nachrichten im Mod-HQ",
-      "description": "Im neuen Tab können sich zwei Mods direkt schreiben. Der Team-Chat bleibt davon getrennt."
+      "description": "Im neuen Tab können sich zwei Mods direkt schreiben, im gleichen Look wie der Team-Chat. Neue private Nachrichten melden sich mit Ton, Hinweis und Schnellantwort wie der Mod-Chat."
     },
     {
       "icon": "👥",

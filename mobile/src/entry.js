@@ -60,6 +60,9 @@ async function start() {
   host.markBridgeReady();
   const { App } = require('@capacitor/app');
   if (host.isNative()) {
+    const push = require('./push');
+    push.initPush();
+    push.markAppReady();
     App.addListener('pause', () => vfs.flush());
     App.addListener('backButton', ({ canGoBack }) => {
       if (closeTopLayer()) return;

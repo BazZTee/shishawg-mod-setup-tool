@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "684325329815",
+    "project_id": "swg-modtool",
+    "storage_bucket": "swg-modtool.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:684325329815:android:8939c0a5c092c9e1cb02d2",
+        "android_client_info": {
+          "package_name": "de.shishawg.modsetuptool"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDU5oq-xrzOxerRsmL5m-x0xI8q9eCnOJs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

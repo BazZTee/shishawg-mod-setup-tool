@@ -15,6 +15,8 @@ const CORE_MODS = new Set((Deno.env.get('CORE_MODS') || 'marved,bazzteedj,bazzte
   .split(',').map(value => value.trim().toLowerCase()).filter(Boolean));
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+// Firebase service account JSON (Projekteinstellungen > Dienstkonten). Without it, push is simply skipped.
+const FCM_SERVICE_ACCOUNT = Deno.env.get('FCM_SERVICE_ACCOUNT') || '';
 const channelTables = new Map([
   ['qna_questions', 'channel'],
   ['stream_setups', 'channel'],
@@ -209,9 +211,25 @@ async function heartbeatPresence(channel: string, twitchUser: any, body: any) {
   return data;
 }
 
+// Read receipts: store the newest mod-chat message timestamp this mod has seen. Never moves backwards.
+async function markChatRead(channel: string, twitchUser: any, body: any) {
+  const twitchUserId = String(twitchUser.user_id || '').trim();
+  if (!twitchUserId) throw new Error('Twitch-Nutzer konnte nicht eindeutig erkannt werden.');
+  const readAtMs = Number(body.readAt);
+  if (!Number.isFinite(readAtMs) || readAtMs <= 0) throw new Error('Ungültiger Lesezeitpunkt.');
+  const readAt = new Date(Math.min(readAtMs, Date.now() + 5 * 60 * 1000)).toISOString();
+  const { error } = await admin.from('mod_presence')
+    .update({ chat_read_at: readAt })
+    .eq('channel', channel)
+    .eq('twitch_user_id', twitchUserId)
+    .or(`chat_read_at.is.null,chat_read_at.lt."${readAt}"`);
+  if (error) throw error;
+  return true;
+}
+
 async function listPresence(channel: string) {
   const { data, error } = await admin.from('mod_presence')
-    .select('twitch_user_id,login,display_name,avatar_url,first_seen_at,last_seen_at')
+    .select('twitch_user_id,login,display_name,avatar_url,first_seen_at,last_seen_at,chat_read_at')
     .eq('channel', channel)
     .order('last_seen_at', { ascending: false })
     .limit(500);
@@ -250,6 +268,18 @@ async function listDirectMessages(channel: string, user: any, recipientId: unkno
   return (data || []).reverse();
 }
 
+// Newest private messages addressed to the signed-in mod (all senders), used for notifications.
+async function listDirectInbox(channel: string, user: any) {
+  const recipientId = twitchId(user.user_id);
+  const { data, error } = await admin.from('mod_direct_messages')
+    .select('id,sender_user_id,recipient_user_id,sender_login,recipient_login,message,created_at')
+    .eq('channel', channel)
+    .eq('recipient_user_id', recipientId)
+    .order('created_at', { ascending: false }).limit(50);
+  if (error) throw error;
+  return (data || []).reverse();
+}
+
 async function sendDirectMessage(channel: string, user: any, body: any) {
   const senderId = twitchId(user.user_id);
   const recipient = await directMessageRecipient(channel, senderId, body.recipientId);
@@ -265,6 +295,136 @@ async function sendDirectMessage(channel: string, user: any, body: any) {
   }).select('id,sender_user_id,recipient_user_id,sender_login,recipient_login,message,created_at').single();
   if (error) throw error;
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Push notifications (Android app via Firebase Cloud Messaging HTTP v1)
+// ---------------------------------------------------------------------------
+let fcmAccess = { token: '', expiresAt: 0 };
+
+function base64Url(input: Uint8Array | string) {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input;
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fcmServiceAccount() {
+  if (!FCM_SERVICE_ACCOUNT) return null;
+  try {
+    const account = JSON.parse(FCM_SERVICE_ACCOUNT);
+    return account?.client_email && account?.private_key && account?.project_id ? account : null;
+  } catch (_) {
+    console.error('FCM_SERVICE_ACCOUNT ist kein gültiges JSON.');
+    return null;
+  }
+}
+
+async function fcmAccessToken(account: any) {
+  if (fcmAccess.token && Date.now() < fcmAccess.expiresAt - 60_000) return fcmAccess.token;
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claims = base64Url(JSON.stringify({
+    iss: account.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  }));
+  const pem = String(account.private_key).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  const der = Uint8Array.from(atob(pem), char => char.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const signature = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(`${header}.${claims}`)));
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: `${header}.${claims}.${base64Url(signature)}`,
+    }),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.access_token) throw new Error('FCM-Anmeldung fehlgeschlagen: ' + (result.error_description || result.error || response.status));
+  fcmAccess = { token: result.access_token, expiresAt: Date.now() + Number(result.expires_in || 3600) * 1000 };
+  return fcmAccess.token;
+}
+
+function pushToken(value: unknown) {
+  const token = String(value || '').trim();
+  if (!/^[A-Za-z0-9_:\-]{20,4096}$/.test(token)) throw new Error('Ungültiger Push-Token.');
+  return token;
+}
+
+async function registerPushDevice(channel: string, twitchUser: any, body: any) {
+  const twitchUserId = twitchId(twitchUser.user_id);
+  const token = pushToken(body.token);
+  // A phone only shows one channel at a time: drop registrations for other channels (or another account).
+  const { error: cleanupError } = await admin.from('push_devices').delete().eq('token', token).neq('channel', channel);
+  if (cleanupError) throw cleanupError;
+  const { error } = await admin.from('push_devices').upsert({
+    token,
+    channel,
+    twitch_user_id: twitchUserId,
+    login: cleanChannel(twitchUser.login),
+    platform: 'android',
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'token,channel' });
+  if (error) throw error;
+  return true;
+}
+
+async function unregisterPushDevice(channel: string, twitchUser: any, body: any) {
+  const { error } = await admin.from('push_devices').delete()
+    .eq('token', pushToken(body.token)).eq('channel', channel)
+    .eq('twitch_user_id', twitchId(twitchUser.user_id));
+  if (error) throw error;
+  return true;
+}
+
+// recipients: 'channel' = every registered mod of the channel except the sender; otherwise one Twitch user id.
+async function sendPush(channel: string, senderId: string, recipients: string, title: string, text: string, data: Record<string, string>) {
+  const account = fcmServiceAccount();
+  if (!account) return;
+  let query = admin.from('push_devices').select('token').eq('channel', channel).neq('twitch_user_id', senderId);
+  if (recipients !== 'channel') query = query.eq('twitch_user_id', recipients);
+  const { data: devices, error } = await query.limit(500);
+  if (error || !devices?.length) return;
+  const accessToken = await fcmAccessToken(account);
+  const body = text.length > 160 ? text.slice(0, 157) + '...' : text;
+  await Promise.all(devices.map(async ({ token }) => {
+    const response = await fetch(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          token,
+          notification: { title, body },
+          data: { ...data, channel },
+          android: { priority: 'HIGH', notification: { channel_id: 'modchat', tag: data.kind === 'direct' ? `direct-${data.senderId}` : 'modchat' } },
+        },
+      }),
+    });
+    if (response.status === 404 || response.status === 400) {
+      // UNREGISTERED / INVALID_ARGUMENT: the app was uninstalled or the token rotated.
+      await admin.from('push_devices').delete().eq('token', token);
+    }
+  }));
+}
+
+function sendPushInBackground(task: Promise<void>) {
+  const guarded = task.catch(error => console.error('Push fehlgeschlagen:', error));
+  // Answer the client immediately; the runtime keeps the function alive until the push is out.
+  (globalThis as any).EdgeRuntime?.waitUntil?.(guarded);
+}
+
+function notifyModChat(channel: string, twitchUser: any, body: any) {
+  if (body.table !== 'mod_chat' || (body.operation !== 'upsert' && body.operation !== 'insert')) return;
+  const row = Array.isArray(body.values) ? body.values[0] : body.values;
+  const createdAt = new Date(row?.created_at || Date.now()).getTime();
+  if (!row?.message || Math.abs(Date.now() - createdAt) > 2 * 60 * 1000) return;
+  const sender = String(row.sender || twitchUser.login || 'Mod').slice(0, 80);
+  sendPushInBackground(sendPush(channel, String(twitchUser.user_id || ''), 'channel',
+    `💬 ${sender} im Mod-Chat`, String(row.message), { kind: 'modchat' }));
 }
 
 async function submitClaim(body: any, twitchToken: string) {
@@ -420,9 +580,22 @@ Deno.serve(async (request) => {
     }
     if (body.action === 'presence.heartbeat') return json(200, { data: await heartbeatPresence(channel, twitchUser, body) });
     if (body.action === 'presence.list') return json(200, { data: await listPresence(channel) });
+    if (body.action === 'presence.read') return json(200, { data: await markChatRead(channel, twitchUser, body) });
     if (body.action === 'direct.list') return json(200, { data: await listDirectMessages(channel, twitchUser, body.recipientId) });
-    if (body.action === 'direct.send') return json(200, { data: await sendDirectMessage(channel, twitchUser, body) });
-    if (body.action === 'db') return json(200, { data: await runDatabaseAction(body, channel) });
+    if (body.action === 'direct.inbox') return json(200, { data: await listDirectInbox(channel, twitchUser) });
+    if (body.action === 'direct.send') {
+      const sent = await sendDirectMessage(channel, twitchUser, body);
+      sendPushInBackground(sendPush(channel, sent.sender_user_id, sent.recipient_user_id,
+        `🔒 Privat von ${sent.sender_login}`, sent.message, { kind: 'direct', senderId: sent.sender_user_id }));
+      return json(200, { data: sent });
+    }
+    if (body.action === 'push.register') return json(200, { data: await registerPushDevice(channel, twitchUser, body) });
+    if (body.action === 'push.unregister') return json(200, { data: await unregisterPushDevice(channel, twitchUser, body) });
+    if (body.action === 'db') {
+      const data = await runDatabaseAction(body, channel);
+      notifyModChat(channel, twitchUser, body);
+      return json(200, { data });
+    }
     return json(400, { error: 'Unbekannte Aktion.' });
   } catch (error) {
     console.error(error);

@@ -1499,6 +1499,18 @@ input[type="text"]:focus, input[type="password"]:focus {
   min-width: 0;
 }
 
+.setup-slots-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: transparent;
+  color: var(--text-primary);
+}
+
 .hamburger-divider {
   height: 1px;
   background: var(--border-color);
@@ -3255,6 +3267,39 @@ input[type="checkbox"]:checked ~ .toggle-slider::before {
 .mod-chat-msg-row.outgoing {
   align-self: flex-end;
   flex-direction: row-reverse;
+}
+
+/* Read receipts: small avatars under the newest message each mod has read */
+.mod-chat-read-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: -2px;
+  padding: 0 44px;
+}
+
+.mod-chat-read-row.incoming {
+  align-self: flex-start;
+}
+
+.mod-chat-read-row.outgoing {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.mod-chat-read-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: #29343b;
+}
+
+.mod-chat-read-more {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  padding: 0 2px;
 }
 
 .chat-msg-avatar {

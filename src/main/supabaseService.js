@@ -540,6 +540,12 @@ class SupabaseService {
     });
   }
 
+  async markModChatRead(readAt, channel = 'marved') {
+    const timestamp = Number(readAt);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) throw new Error('Ungültiger Lesezeitpunkt.');
+    return this.secureRequest('presence.read', { channel: this.normalizeChannel(channel), readAt: timestamp });
+  }
+
   async getModPresence(channel = 'marved') {
     const cleanChan = this.normalizeChannel(channel);
     const data = await this.secureRequest('presence.list', { channel: cleanChan });
@@ -550,6 +556,19 @@ class SupabaseService {
     const data = await this.secureRequest('direct.list', {
       channel: this.normalizeChannel(channel), recipientId: String(recipientId || '')
     });
+    return Array.isArray(data) ? data : [];
+  }
+
+  async registerPushDevice(token, channel = 'marved') {
+    return this.secureRequest('push.register', { channel: this.normalizeChannel(channel), token: String(token || '') });
+  }
+
+  async unregisterPushDevice(token, channel = 'marved') {
+    return this.secureRequest('push.unregister', { channel: this.normalizeChannel(channel), token: String(token || '') });
+  }
+
+  async getModDirectInbox(channel = 'marved') {
+    const data = await this.secureRequest('direct.inbox', { channel: this.normalizeChannel(channel) });
     return Array.isArray(data) ? data : [];
   }
 

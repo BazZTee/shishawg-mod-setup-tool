@@ -1026,6 +1026,17 @@ function parseChatSetupMessage(rawText) {
     return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto') || /\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(s);
   };
 
+  const looksLikeTobacco = (seg) => seg.includes('-') || /\d+\s*(g|%)/i.test(seg) ||
+    !!findBestFuzzyMatch(seg, (state.catalog && state.catalog.tobacco) || [], 0.85);
+
+  const isTrailingExtraSegment = (seg, person) => {
+    const s = seg.toLowerCase();
+    const currentExtra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim().toLowerCase();
+    if (currentExtra && s === currentExtra) return true;
+    if (findBestFuzzyMatch(seg, (state.catalog && state.catalog.tastings) || [], 0.8)) return true;
+    return !!(person && person.tobaccos.length > 0 && !looksLikeTobacco(seg));
+  };
+
   const isElectricDeviceSegment = (seg) => /xkah|imoto|e-kopf|\belektr|\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(seg);
 
   const createDefaultPerson = (name = 'Marvin') => ({
@@ -1106,6 +1117,13 @@ function parseChatSetupMessage(rawText) {
     }
 
     const currentPerson = parsedPersons.length > 0 ? parsedPersons[parsedPersons.length - 1] : null;
+
+    // The generator writes all tobaccos of a person into one segment and the
+    // Zusatz-Info last, so free text after the tobaccos is the Zusatz-Info.
+    if (isTrailingExtraSegment(seg, currentPerson)) {
+      globalExtra = seg;
+      continue;
+    }
 
     if (isBowlSegment(seg)) {
       if (currentPerson && !currentPerson.bowl) {

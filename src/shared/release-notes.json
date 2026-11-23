@@ -1,6 +1,6 @@
 {
-  "version": "8.0.7",
-  "title": "Neu in Version 8.0.7",
+  "version": "8.0.8",
+  "title": "Neu in Version 8.0.8",
   "intro": "Seit 8.0.1: mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
     {
@@ -16,7 +16,7 @@
     {
       "icon": "🔍",
       "title": "Doppelte Einträge vermeiden",
-      "description": "Gibt es schon einen ähnlichen Eintrag, etwa „Blade Mini“ beim Anlegen von „Blade Mini Rot“, fragt das Tool vorher nach. Automatisch gelernt wird so etwas nicht mehr. Neue Einträge lassen sich jetzt auch mit Enter anlegen."
+      "description": "Gibt es schon einen ähnlichen Eintrag, etwa „Blade Mini“ beim Anlegen von „Blade Mini Rot“, fragt das Tool vorher nach. Automatisch gelernt wird so etwas nicht mehr. Neue Einträge lassen sich jetzt auch mit Enter anlegen. Die Zusatz-Info wird nicht mehr als Tabak oder Kopf in der Datenbank gespeichert."
     },
     {
       "icon": "🧩",

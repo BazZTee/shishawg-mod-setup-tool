@@ -31,3 +31,14 @@ Der Workflow `.github/workflows/android.yml` läuft bei jedem veröffentlichten 
 | `ANDROID_KEY_PASSWORD` | Passwort des Schlüssels |
 
 Ohne diese Secrets baut der Workflow nur eine Debug-APK als Artefakt. **Den Keystore sicher aufbewahren:** Ohne denselben Schlüssel lassen sich spätere Versionen nicht als Update über die installierte App installieren.
+
+Keystore erzeugen (PKCS12, Alias `shishawg`; Keystore- und Schlüsselpasswort sind gleich):
+
+```powershell
+keytool -genkeypair -v -keystore "$env:USERPROFILE\shishawg-release.keystore" -alias shishawg -keyalg RSA -keysize 4096 -validity 10000
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:USERPROFILE\shishawg-release.keystore")) | Set-Clipboard
+```
+
+Wichtig: GitHub nimmt den Workflow aus dem Stand, den das Release-Tag markiert. `mobile/` und der Workflow müssen also im Branch liegen, aus dem Releases getaggt werden.
+
+Lokal (Emulator-Tests) werden nur Debug-APKs gebaut: JDK 21 als `JAVA_HOME`, Android SDK als `ANDROID_HOME`.

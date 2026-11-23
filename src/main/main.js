@@ -523,6 +523,36 @@ ipcMain.handle('profiles:set-active', async (event, profileId) => {
 });
 
 // YouTube Live Search IPC Handler supporting multiple channel handles / queries
+// YouTube search results carry auto-translated titles (e.g. English for an English query).
+// oEmbed returns the creator's original title, which is what gets posted to the chat.
+const youtubeOriginalTitleCache = new Map();
+
+function fetchYouTubeOriginalTitle(videoId) {
+  if (!videoId) return Promise.resolve('');
+  if (youtubeOriginalTitleCache.has(videoId)) return Promise.resolve(youtubeOriginalTitleCache.get(videoId));
+  const url = `https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`;
+  return new Promise((resolve) => {
+    const req = https.get(url, { headers: { 'Accept-Language': 'de-DE,de;q=0.9' } }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const title = res.statusCode === 200 ? String(JSON.parse(data).title || '').trim() : '';
+          if (title) youtubeOriginalTitleCache.set(videoId, title);
+          resolve(title);
+        } catch (_) {
+          resolve('');
+        }
+      });
+    });
+    req.on('error', () => resolve(''));
+    req.setTimeout(4000, () => {
+      req.destroy();
+      resolve('');
+    });
+  });
+}
+
 ipcMain.handle('youtube:search', async (event, payload) => {
   let query = '';
   let channelHandles = ['shishawg'];
@@ -540,7 +570,7 @@ ipcMain.handle('youtube:search', async (event, payload) => {
 
   // Helper function to search for a specific term/channel on YouTube
   const searchSingle = (term, channelBadge) => {
-    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(term)}`;
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(term)}&hl=de&gl=DE`;
     return new Promise((resolve) => {
       const req = https.get(url, {
         headers: {
@@ -644,7 +674,12 @@ ipcMain.handle('youtube:search', async (event, payload) => {
         }
       }
     }
-    return merged.slice(0, 15);
+    const results = merged.slice(0, 15);
+    await Promise.all(results.map(async (item) => {
+      const originalTitle = await fetchYouTubeOriginalTitle(item.videoId);
+      if (originalTitle) item.title = originalTitle;
+    }));
+    return results;
   } catch(e) {
     return [];
   }

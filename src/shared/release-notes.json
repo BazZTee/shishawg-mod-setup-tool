@@ -1,8 +1,18 @@
 {
-  "version": "8.0.9",
-  "title": "Neu in Version 8.0.9",
+  "version": "8.0.10",
+  "title": "Neu in Version 8.0.10",
   "intro": "Seit 8.0.1: Push-Benachrichtigungen in der Android-App, Lesebestätigungen im Mod-Chat, mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
+    {
+      "icon": "🎥",
+      "title": "YouTube-Tipps mit deutschem Titel",
+      "description": "Auch bei einer englischen Suche wie „Troubleshooting“ postet der Video-Finder den Originaltitel des Videos im Chat statt der automatischen englischen Übersetzung von YouTube."
+    },
+    {
+      "icon": "⬇️",
+      "title": "App-Update direkt in der Android-App",
+      "description": "Updates werden in der App mit Fortschrittsanzeige geladen und danach direkt installiert. Beim ersten Mal fragt Android einmal nach der Erlaubnis, Apps zu installieren."
+    },
     {
       "icon": "📲",
       "title": "Push-Benachrichtigungen in der Android-App",

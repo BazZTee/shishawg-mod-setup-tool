@@ -54,6 +54,8 @@
     "predictions:get-active",
     "profiles:get-all",
     "profiles:save-all",
+    "streamdeck:install-plugin",
+    "streamdeck:sync-commands",
     "profiles:set-active",
     "qna:clear-answered-questions",
     "qna:delete-all",

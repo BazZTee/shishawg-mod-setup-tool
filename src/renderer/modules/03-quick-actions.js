@@ -89,6 +89,7 @@ function loadQuickCommands() {
     quickCommands = [...DEFAULT_QUICK_COMMANDS];
   }
   renderQuickCommands();
+  syncStreamDeckCommands();
 }
 
 function saveQuickCommands() {
@@ -96,6 +97,14 @@ function saveQuickCommands() {
     localStorage.setItem('swg_quick_commands', JSON.stringify(quickCommands));
   } catch(e) {}
   window.dispatchEvent(new CustomEvent('swg:quick-commands-changed'));
+  syncStreamDeckCommands();
+}
+
+// Stream Deck plugin reads this list from the local bridge.
+function syncStreamDeckCommands() {
+  try {
+    ipcRenderer.invoke('streamdeck:sync-commands', quickCommands).catch(() => {});
+  } catch (e) {}
 }
 
 function renderQuickCommands() {
@@ -456,6 +465,19 @@ function setupQuickActionsListeners() {
         showToast('Raid abgebrochen (/unraid)', 'info');
       } else {
         showToast(res.error || 'Fehler beim Abbrechen', 'error');
+      }
+    });
+  }
+
+  const btnQaStreamDeck = document.getElementById('btn-qa-streamdeck');
+  if (btnQaStreamDeck) {
+    btnQaStreamDeck.addEventListener('click', async () => {
+      syncStreamDeckCommands();
+      const res = await ipcRenderer.invoke('streamdeck:install-plugin');
+      if (res && res.success) {
+        showToast('Stream Deck öffnet die Installation. Danach „Chat-Command“ auf eine Taste ziehen und Command wählen.', 'success');
+      } else {
+        showToast((res && res.error) || 'Stream-Deck-Plugin konnte nicht erstellt werden', 'error');
       }
     });
   }

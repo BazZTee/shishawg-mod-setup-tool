@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard, shell, dialog, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard, shell, dialog, Notification, nativeImage } = require('electron');
 const { startupOptions, revealWhenReady } = require('./startup-window');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
@@ -14,6 +14,7 @@ const TwitchService = require('./twitchService');
 const DatabaseService = require('./dbService');
 const supabaseService = require('./supabaseService');
 const trelloService = require('./trelloService');
+const { StreamDeckBridge } = require('./streamDeckBridge');
 const { resolveReleaseNotes } = require('./release-notes');
 const releaseNotes = require('../shared/release-notes.json');
 const { catalogCloudKey, catalogItemName } = require('../shared/catalogChange');
@@ -27,6 +28,7 @@ let latestLiveSetup = {
   updatedAt: new Date().toISOString()
 };
 let obsServer = null;
+let streamDeckBridge = null;
 
 let mainWindow = null;
 let store = null;
@@ -1701,12 +1703,63 @@ ipcMain.handle('app:send-trello-card', async (event, payload) => {
   }
 });
 
+// Stream Deck: plugin talks to /api/streamdeck/* on the OBS server port.
+function getStreamDeckBridge() {
+  if (streamDeckBridge) return streamDeckBridge;
+  streamDeckBridge = new StreamDeckBridge({
+    port: runtime.obsPort,
+    loadToken: () => store && store.get('streamDeckToken', null),
+    saveToken: (token) => { if (store) store.set('streamDeckToken', token); },
+    sendChat: (message) => twitchService.sendChatMessage(message),
+    onRun: (cmd, err) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send('app:notify', err
+        ? { type: 'error', message: `Stream Deck: '${cmd.command}' fehlgeschlagen – ${err.message}` }
+        : { type: 'success', message: `Stream Deck: '${cmd.command}' gesendet` });
+    }
+  });
+  return streamDeckBridge;
+}
+
+function streamDeckIcon(size) {
+  const base = nativeImage.createFromPath(path.join(__dirname, '../../build/icon.png'));
+  return base.isEmpty() ? null : base.resize({ width: size, height: size, quality: 'best' }).toPNG();
+}
+
+ipcMain.handle('streamdeck:sync-commands', async (event, commands) => {
+  return { success: true, count: getStreamDeckBridge().setCommands(commands) };
+});
+
+ipcMain.handle('streamdeck:install-plugin', async () => {
+  try {
+    const images = {};
+    for (const [name, size] of [['plugin', 256], ['category', 28], ['action', 20], ['key', 72]]) {
+      const small = streamDeckIcon(size);
+      const large = streamDeckIcon(size * 2);
+      if (small) images[`imgs/${name}.png`] = small;
+      if (large) images[`imgs/${name}@2x.png`] = large;
+    }
+    const target = path.join(app.getPath('temp'), 'ShishaWG-ModTool.streamDeckPlugin');
+    getStreamDeckBridge().writePackage(target, images);
+    const error = await shell.openPath(target);
+    if (error) {
+      shell.showItemInFolder(target);
+      return { success: false, error: 'Stream-Deck-Software nicht gefunden. Datei wurde im Explorer geöffnet – bitte doppelklicken.' };
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // OBS Overlay Server & Export
 function startObsServer() {
   if (obsServer) return;
   const PORT = runtime.obsPort;
 
+  const bridge = getStreamDeckBridge();
   obsServer = http.createServer((req, res) => {
+    if (bridge.handle(req, res)) return;
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
 

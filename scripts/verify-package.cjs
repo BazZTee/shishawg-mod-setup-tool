@@ -15,6 +15,7 @@ required.push('src/shared/release-notes.json');
 required.push('src/renderer/startup-presentation.js');
 required.push('src/renderer/toggle-motion.js');
 required.push('src/renderer/mod-direct-chat.js','src/renderer/mod-direct-chat.css');
+required.push('src/main/streamDeckBridge.js','src/streamdeck/de.shishawg.modtool.sdPlugin/manifest.json','src/streamdeck/de.shishawg.modtool.sdPlugin/plugin/plugin.js','src/streamdeck/de.shishawg.modtool.sdPlugin/pi/pi.js');
 required.push('src/renderer/chatgames.js','src/renderer/chatgames-commands.js','src/renderer/chatgames.css');
 for (const file of required) {
   const localPath = path.join(...file.split('/'));
@@ -22,7 +23,7 @@ for (const file of required) {
 }
 const pkg = JSON.parse(asar.extractFile(archive,'package.json'));
 assert.equal(pkg.name,'shishawg-mod-setup-tool');
-assert.equal(pkg.version,'8.0.10');
+assert.equal(pkg.version,'8.0.11');
 const files = asar.listPackage(archive);
 assert.equal(files.some(file=>file.split(path.sep).includes('test')),false);
 console.log(JSON.stringify({verifiedFiles:required.length,packagedEntries:files.length,identity:pkg.name,testFixturesIncluded:false}));

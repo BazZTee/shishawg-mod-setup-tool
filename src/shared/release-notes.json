@@ -1,8 +1,13 @@
 {
-  "version": "8.0.10",
-  "title": "Neu in Version 8.0.10",
+  "version": "8.0.11",
+  "title": "Neu in Version 8.0.11",
   "intro": "Seit 8.0.1: Push-Benachrichtigungen in der Android-App, Lesebestätigungen im Mod-Chat, mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
+    {
+      "icon": "🎛️",
+      "title": "Quick-Commands aufs Stream Deck",
+      "description": "Im Quick-Command Board installiert der Button „🎛️ Stream Deck“ ein eigenes Plugin. Action „Chat-Command“ auf eine Taste ziehen, Command wählen – die Taste bekommt automatisch das Emoji als Bild und den Command als Text."
+    },
     {
       "icon": "🎥",
       "title": "YouTube-Tipps mit deutschem Titel",

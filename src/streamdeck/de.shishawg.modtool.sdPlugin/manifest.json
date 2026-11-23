@@ -1,0 +1,31 @@
+{
+  "Name": "ShishaWG Mod Tool",
+  "Version": "1.0.0.0",
+  "Author": "ShishaWG Mod Team",
+  "Description": "Chat-Commands aus dem ShishaWG Mod Setup Tool direkt per Taste in den Twitch-Chat senden.",
+  "UUID": "de.shishawg.modtool",
+  "Icon": "imgs/plugin",
+  "Category": "ShishaWG",
+  "CategoryIcon": "imgs/category",
+  "CodePath": "plugin/index.html",
+  "SDKVersion": 2,
+  "OS": [
+    { "Platform": "windows", "MinimumVersion": "10" },
+    { "Platform": "mac", "MinimumVersion": "10.15" }
+  ],
+  "Software": { "MinimumVersion": "5.0" },
+  "Actions": [
+    {
+      "UUID": "de.shishawg.modtool.chatcommand",
+      "Name": "Chat-Command",
+      "Icon": "imgs/action",
+      "Tooltip": "Sendet einen Quick-Command aus dem Mod-Tool in den Twitch-Chat",
+      "PropertyInspectorPath": "pi/index.html",
+      "SupportedInMultiActions": true,
+      "Controllers": ["Keypad"],
+      "States": [
+        { "Image": "imgs/key", "ShowTitle": true, "TitleAlignment": "bottom" }
+      ]
+    }
+  ]
+}

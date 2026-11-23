@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Chat-Command</title>
+  <style>
+    body { margin: 0; padding: 8px 12px; background: #2d2d2d; color: #d8d8d8;
+      font: 9pt "Segoe UI", -apple-system, sans-serif; }
+    .row { display: flex; align-items: center; margin: 6px 0; }
+    .row label { flex: 0 0 90px; color: #969696; }
+    select, button { flex: 1; min-width: 0; background: #3d3d3d; color: #d8d8d8;
+      border: 1px solid #4d4d4d; border-radius: 3px; padding: 4px 6px; font: inherit; }
+    button { cursor: pointer; flex: 0 0 auto; margin-left: 6px; }
+    .hint { color: #969696; margin: 8px 0 0 90px; line-height: 1.4; }
+    .error { color: #ff7a7a; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <label for="command">Command</label>
+    <select id="command"><option value="">Lade Commands…</option></select>
+    <button id="refresh" title="Liste neu laden">⟳</button>
+  </div>
+  <div class="row">
+    <label for="mode">Anzeige</label>
+    <select id="mode">
+      <option value="auto">Emoji + Text</option>
+      <option value="emoji">Nur Emoji</option>
+      <option value="text">Nur Text</option>
+    </select>
+  </div>
+  <div id="status" class="hint">Commands kommen aus dem Quick-Command Board im Mod-Tool.</div>
+  <script src="pi.js"></script>
+</body>
+</html>

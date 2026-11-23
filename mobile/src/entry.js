@@ -31,7 +31,23 @@ document.documentElement.classList.add('swg-android');
 document.addEventListener('DOMContentLoaded', () => {
   const twitchButton = document.getElementById('btn-twitch-login');
   if (twitchButton) twitchButton.setAttribute('aria-label', 'Mit Twitch verbinden');
+  require('./phone-nav').buildPhoneNav();
 });
+
+// Android back button: close the top-most sheet/dialog first.
+function closeTopLayer() {
+  const dialog = [...document.querySelectorAll('dialog[open]')].pop();
+  if (dialog) { dialog.close(); return true; }
+  const overlay = [...document.querySelectorAll('.modal-overlay:not(.hidden)')].pop();
+  if (overlay) {
+    const close = overlay.querySelector('[id^="btn-close"], .modal-header .btn-icon, [data-close]');
+    if (close) close.click(); else overlay.classList.add('hidden');
+    return true;
+  }
+  const open = document.querySelector('.modal.active, .modal.show');
+  if (open) { open.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; }
+  return false;
+}
 
 async function start() {
   await vfs.load(seedFiles);
@@ -46,8 +62,10 @@ async function start() {
   if (host.isNative()) {
     App.addListener('pause', () => vfs.flush());
     App.addListener('backButton', ({ canGoBack }) => {
-      const open = document.querySelector('dialog[open], .modal.active, .modal.show');
-      if (open) open.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      if (closeTopLayer()) return;
+      const home = document.querySelector('.workspace-sidebar [data-ws-route="view-landing"]');
+      const onHome = !document.getElementById('view-landing') || !document.getElementById('view-landing').classList.contains('hidden');
+      if (!onHome && home) home.click();
       else if (canGoBack) history.back();
       else App.minimizeApp();
     });

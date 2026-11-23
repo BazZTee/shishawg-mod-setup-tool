@@ -728,10 +728,16 @@ class DatabaseService {
       return TOBACCO_FILTER.some(term => str === term || str.startsWith(term + ' ') || str.includes('darkside') || str.includes('musthave') || str.includes('trofimoff'));
     };
 
+    // Zusatz-Info is free text (tasting, short description) and never a catalog entry.
+    const extraText = typeof setupData.extra === 'string'
+      ? setupData.extra.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim().toLowerCase()
+      : '';
+
     const addIfNew = (category, val) => {
       if (!val || typeof val !== 'string') return;
       const trimmed = val.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
       if (trimmed.length < 2) return;
+      if (extraText && trimmed.toLowerCase() === extraText) return;
       if ((category === 'pipes' || category === 'bowls') && isTobaccoWord(trimmed)) return;
 
       const currentCatalog = this.getCatalog();
@@ -770,7 +776,6 @@ class DatabaseService {
     }
 
     if (setupData.kohle) addIfNew('charcoal', setupData.kohle);
-    if (setupData.extra) addIfNew('tobacco', setupData.extra);
 
     return { addedCount, added, catalog: this.getCatalog() };
   }

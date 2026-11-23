@@ -641,6 +641,7 @@ async function initApp() {
 
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
+  startDirectInboxWatcher();
   startModPresenceTracking();
 
   // Auto-start Channel Points (Kohle Stücke) listener
@@ -1995,6 +1996,17 @@ function parseChatSetupMessage(rawText) {
     return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto') || /\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(s);
   };
 
+  const looksLikeTobacco = (seg) => seg.includes('-') || /\d+\s*(g|%)/i.test(seg) ||
+    !!findBestFuzzyMatch(seg, (state.catalog && state.catalog.tobacco) || [], 0.85);
+
+  const isTrailingExtraSegment = (seg, person) => {
+    const s = seg.toLowerCase();
+    const currentExtra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim().toLowerCase();
+    if (currentExtra && s === currentExtra) return true;
+    if (findBestFuzzyMatch(seg, (state.catalog && state.catalog.tastings) || [], 0.8)) return true;
+    return !!(person && person.tobaccos.length > 0 && !looksLikeTobacco(seg));
+  };
+
   const isElectricDeviceSegment = (seg) => /xkah|imoto|e-kopf|\belektr|\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(seg);
 
   const createDefaultPerson = (name = 'Marvin') => ({
@@ -2075,6 +2087,13 @@ function parseChatSetupMessage(rawText) {
     }
 
     const currentPerson = parsedPersons.length > 0 ? parsedPersons[parsedPersons.length - 1] : null;
+
+    // The generator writes all tobaccos of a person into one segment and the
+    // Zusatz-Info last, so free text after the tobaccos is the Zusatz-Info.
+    if (isTrailingExtraSegment(seg, currentPerson)) {
+      globalExtra = seg;
+      continue;
+    }
 
     if (isBowlSegment(seg)) {
       if (currentPerson && !currentPerson.bowl) {
@@ -2721,6 +2740,167 @@ function applyMarvHookahToolsMix(mix) {
   return true;
 }
 
+// Setup-Zwischenspeicher: 3 feste Slots, lokal gespeichert, überleben Neustarts.
+const SETUP_SLOT_STORAGE_KEY = 'swg_setup_slots_v1';
+const SETUP_SLOT_COUNT = 3;
+
+function isSetupPersonFilled(person) {
+  if (!person) return false;
+  return ['name', 'pipe', 'vessel', 'bowl', 'hmd'].some(key => String(person[key] || '').trim()) ||
+    (person.tobaccos || []).some(tobacco => String(tobacco || '').trim());
+}
+
+function snapshotCurrentSetup() {
+  const persons = JSON.parse(JSON.stringify(state.persons.slice(0, state.personCount)));
+  return {
+    savedAt: new Date().toISOString(),
+    personCount: state.personCount,
+    persons,
+    kohle: inputGlobalKohle ? inputGlobalKohle.value : '',
+    extra: inputGlobalExtra ? inputGlobalExtra.value : '',
+    promo: inputGlobalPromo ? inputGlobalPromo.value : '',
+    promoTarget: selectPromoTarget ? selectPromoTarget.value : 'kohle',
+    includePromoDesc: chkIncludePromoDesc ? chkIncludePromoDesc.checked : true,
+    includeFlavors: chkIncludeFlavors ? chkIncludeFlavors.checked : true
+  };
+}
+
+function isSetupSnapshotEmpty(snapshot) {
+  if (!snapshot) return true;
+  return !(snapshot.persons || []).some(isSetupPersonFilled) &&
+    !String(snapshot.kohle || '').trim() && !String(snapshot.extra || '').trim() && !String(snapshot.promo || '').trim();
+}
+
+function readSetupSlots() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SETUP_SLOT_STORAGE_KEY) || '[]');
+    return Array.from({ length: SETUP_SLOT_COUNT }, (_, i) => {
+      const slot = Array.isArray(parsed) ? parsed[i] : null;
+      return slot && Array.isArray(slot.persons) ? slot : null;
+    });
+  } catch (e) {
+    return Array(SETUP_SLOT_COUNT).fill(null);
+  }
+}
+
+function writeSetupSlots(slots) {
+  try {
+    localStorage.setItem(SETUP_SLOT_STORAGE_KEY, JSON.stringify(slots));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function describeSetupSnapshot(snapshot) {
+  if (!snapshot) return 'leer';
+  const persons = (snapshot.persons || []).filter(isSetupPersonFilled);
+  const names = persons.map((p, i) => String(p.name || '').trim() || `Person ${i + 1}`);
+  let label = names.join(', ');
+  if (!label) label = String(snapshot.kohle || snapshot.extra || '').trim() || 'Setup';
+  if (label.length > 40) label = label.slice(0, 39) + '…';
+  const date = new Date(snapshot.savedAt);
+  if (!Number.isNaN(date.getTime())) {
+    const pad = n => String(n).padStart(2, '0');
+    label += ` · ${pad(date.getDate())}.${pad(date.getMonth() + 1)}. ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  return label;
+}
+
+function applySetupSnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.persons)) return false;
+  const persons = JSON.parse(JSON.stringify(snapshot.persons)).slice(0, 10);
+  state.personCount = Math.min(10, Math.max(1, persons.length || Number(snapshot.personCount) || 1));
+  state.persons = persons;
+  updatePersonCountLabel();
+  if (inputGlobalKohle) inputGlobalKohle.value = snapshot.kohle || '';
+  if (inputGlobalExtra) inputGlobalExtra.value = snapshot.extra || '';
+  if (inputGlobalPromo) inputGlobalPromo.value = snapshot.promo || '';
+  if (selectPromoTarget) selectPromoTarget.value = snapshot.promoTarget || 'kohle';
+  if (chkIncludePromoDesc) chkIncludePromoDesc.checked = snapshot.includePromoDesc !== false;
+  if (chkIncludeFlavors) chkIncludeFlavors.checked = snapshot.includeFlavors !== false;
+  renderPersonsGrid();
+  generateCommandString();
+  return true;
+}
+
+function renderSetupSlotMenus() {
+  const slots = readSetupSlots();
+  const saveMenu = document.getElementById('setup-slots-save-menu');
+  const loadList = document.getElementById('setup-slots-load-list');
+  const makeItem = (text, title, slotIndex, action, disabled) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dropdown-item setup-slot-item';
+    btn.dataset.slot = String(slotIndex);
+    btn.dataset.action = action;
+    btn.textContent = text;
+    btn.title = title;
+    btn.disabled = !!disabled;
+    return btn;
+  };
+  if (saveMenu) {
+    saveMenu.replaceChildren(...slots.map((slot, i) => makeItem(
+      slot ? `💾 Slot ${i + 1} überschreiben — ${describeSetupSnapshot(slot)}` : `💾 In Slot ${i + 1} merken — leer`,
+      'Aktuelles Formular (Personen, Kohle, Extra, Promo) in diesen Slot speichern',
+      i, 'save', false
+    )));
+  }
+  if (loadList) {
+    loadList.replaceChildren(...slots.map((slot, i) => makeItem(
+      `♻️ Slot ${i + 1} laden — ${describeSetupSnapshot(slot)}`,
+      slot ? 'Gemerktes Setup ins Formular übernehmen' : 'Dieser Slot ist noch leer',
+      i, 'load', !slot
+    )));
+  }
+}
+
+async function saveSetupToSlot(slotIndex) {
+  const snapshot = snapshotCurrentSetup();
+  if (isSetupSnapshotEmpty(snapshot)) {
+    showToast('Das Formular ist leer – nichts zum Merken.', 'error');
+    return false;
+  }
+  const slots = readSetupSlots();
+  if (slots[slotIndex]) {
+    const ok = await showAppConfirm({
+      title: `Slot ${slotIndex + 1} überschreiben?`,
+      message: 'In diesem Slot ist schon ein Setup gemerkt.',
+      detail: describeSetupSnapshot(slots[slotIndex]),
+      confirmLabel: 'Überschreiben'
+    });
+    if (!ok) return false;
+  }
+  slots[slotIndex] = snapshot;
+  if (!writeSetupSlots(slots)) {
+    showToast('Setup konnte nicht gespeichert werden.', 'error');
+    return false;
+  }
+  renderSetupSlotMenus();
+  showToast(`Setup in Slot ${slotIndex + 1} gemerkt.`, 'success');
+  return true;
+}
+
+async function loadSetupFromSlot(slotIndex) {
+  const slot = readSetupSlots()[slotIndex];
+  if (!slot) {
+    showToast(`Slot ${slotIndex + 1} ist leer.`, 'info');
+    return false;
+  }
+  if (!isSetupSnapshotEmpty(snapshotCurrentSetup())) {
+    const ok = await showAppConfirm({
+      title: `Slot ${slotIndex + 1} laden?`,
+      message: 'Das aktuelle Formular wird durch das gemerkte Setup ersetzt.',
+      detail: describeSetupSnapshot(slot),
+      confirmLabel: 'Laden'
+    });
+    if (!ok) return false;
+  }
+  applySetupSnapshot(slot);
+  showToast(`Setup aus Slot ${slotIndex + 1} geladen.`, 'success');
+  return true;
+}
+
 function setupEventListeners() {
   // Person Count — only + button, count shown as label
   btnIncPersons.addEventListener('click', () => {
@@ -2745,6 +2925,40 @@ function setupEventListeners() {
 
     importDropdownMenu.addEventListener('click', (e) => {
       e.stopPropagation();
+      const item = e.target.closest('.setup-slot-item[data-action="load"]');
+      if (item && !item.disabled) {
+        importDropdownMenu.classList.add('hidden');
+        loadSetupFromSlot(Number(item.dataset.slot));
+      }
+    });
+  }
+
+  // Setup-Zwischenspeicher (3 Slots)
+  const btnSetupSlotsMenu = document.getElementById('btn-setup-slots-menu');
+  const setupSlotsSaveMenu = document.getElementById('setup-slots-save-menu');
+  renderSetupSlotMenus();
+  if (btnSetupSlotsMenu && setupSlotsSaveMenu) {
+    btnSetupSlotsMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderSetupSlotMenus();
+      setupSlotsSaveMenu.classList.toggle('hidden');
+      if (importDropdownMenu) importDropdownMenu.classList.add('hidden');
+    });
+    document.addEventListener('click', () => {
+      setupSlotsSaveMenu.classList.add('hidden');
+    });
+    setupSlotsSaveMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = e.target.closest('.setup-slot-item[data-action="save"]');
+      if (!item) return;
+      setupSlotsSaveMenu.classList.add('hidden');
+      saveSetupToSlot(Number(item.dataset.slot));
+    });
+  }
+  if (btnImportMenu && setupSlotsSaveMenu) {
+    btnImportMenu.addEventListener('click', () => {
+      renderSetupSlotMenus();
+      setupSlotsSaveMenu.classList.add('hidden');
     });
   }
 
@@ -3102,6 +3316,7 @@ function setupEventListeners() {
       e.stopPropagation();
       hamburgerDropdownMenu.classList.toggle('hidden');
       if (importDropdownMenu) importDropdownMenu.classList.add('hidden');
+      document.getElementById('setup-slots-save-menu')?.classList.add('hidden');
     });
   }
 
@@ -4991,6 +5206,9 @@ const modPresenceOnlineCount = document.getElementById('mod-presence-online-coun
 const MOD_PRESENCE_ONLINE_MS = 90 * 1000;
 let modPresenceHeartbeatInterval = null;
 let modPresenceRefreshInterval = null;
+let modPresenceUsers = [];
+let lastReportedModChatReadAt = 0;
+const MOD_CHAT_READ_AVATAR_LIMIT = 8;
 
 function isModPresenceOnline(user, now = Date.now()) {
   const lastSeen = new Date(user?.last_seen_at || 0).getTime();
@@ -5054,7 +5272,11 @@ async function refreshModPresence() {
   }
   try {
     const result = await ipcRenderer.invoke('modchat:get-presence');
-    if (result?.success) renderModPresence(result.users);
+    if (result?.success) {
+      modPresenceUsers = Array.isArray(result.users) ? result.users : [];
+      renderModPresence(result.users);
+      if (currentActiveView === 'view-modchat' && lastLoadedModChatMessages.length) renderModChatMessages(lastLoadedModChatMessages);
+    }
     else if (modPresenceList && !modPresencePopover?.classList.contains('hidden')) {
       modPresenceList.innerHTML = '<div class="mod-presence-empty">Anwesenheit ist momentan nicht erreichbar.</div>';
     }
@@ -5264,9 +5486,28 @@ function closeModChatQuickReply() {
   pendingModChatQuickReplyMessage = null;
 }
 
+const modChatQuickReplyTitle = document.getElementById('mod-chat-quick-reply-title');
+const modChatQuickReplySubtitle = modChatQuickReplyModal?.querySelector('.qa-subtitle');
+const modChatQuickReplyTexts = {
+  team: {
+    title: modChatQuickReplyTitle?.textContent || '💬 Auf Mod-Nachricht antworten',
+    subtitle: modChatQuickReplySubtitle?.textContent || 'Direkt antworten, ohne den Mod-HQ-Chat zu öffnen',
+    button: btnSendModChatQuickReply?.textContent || '💬 Antworten'
+  },
+  direct: {
+    title: '🔒 Private Nachricht beantworten',
+    subtitle: 'Privat antworten, ohne den Mod-HQ-Chat zu öffnen',
+    button: '🔒 Privat antworten'
+  }
+};
+
 function openModChatQuickReply(message) {
   if (!modChatQuickReplyModal || !message) return;
   pendingModChatQuickReplyMessage = message;
+  const texts = message.direct ? modChatQuickReplyTexts.direct : modChatQuickReplyTexts.team;
+  if (modChatQuickReplyTitle) modChatQuickReplyTitle.textContent = texts.title;
+  if (modChatQuickReplySubtitle) modChatQuickReplySubtitle.textContent = texts.subtitle;
+  if (btnSendModChatQuickReply) btnSendModChatQuickReply.textContent = texts.button;
   if (modChatQuickReplySender) modChatQuickReplySender.textContent = `@${message.senderName || 'Mod'}`;
   if (modChatQuickReplyOriginalText) modChatQuickReplyOriginalText.textContent = message.text || '';
   if (inputModChatQuickReply) inputModChatQuickReply.value = '';
@@ -5283,17 +5524,113 @@ async function submitModChatQuickReply() {
     return;
   }
   if (btnSendModChatQuickReply) btnSendModChatQuickReply.disabled = true;
-  const text = `${buildModChatReplyHeader(pendingModChatQuickReplyMessage)}\n${answer}`;
-  const sent = await postModChatText(text);
+  const original = pendingModChatQuickReplyMessage;
+  let sent = false;
+  if (original.direct) {
+    try {
+      const result = await ipcRenderer.invoke('modchat:send-direct-message', { recipientId: original.senderId, message: answer });
+      if (!result?.success) throw new Error(result?.error || 'Unbekannter Fehler');
+      sent = true;
+      window.swgDirectChat?.refresh();
+    } catch (error) {
+      showToast('Fehler beim Senden der privaten Nachricht: ' + error.message, 'error');
+    }
+  } else {
+    const text = `${buildModChatReplyHeader(original)}\n${answer}`;
+    sent = await postModChatText(text);
+  }
   if (btnSendModChatQuickReply) btnSendModChatQuickReply.disabled = false;
   if (sent) {
     closeModChatQuickReply();
-    showToast('Antwort im Mod-Chat gesendet.', 'success');
+    showToast(original.direct ? 'Private Antwort gesendet.' : 'Antwort im Mod-Chat gesendet.', 'success');
   }
+}
+
+// Private messages get the same notifications as the team chat:
+// sound + clickable toast (foreground) or native Windows notification (background), plus unread badges.
+let directInboxSeenIds = null;
+let directInboxInterval = null;
+
+function toDirectNotificationMessage(item) {
+  return {
+    direct: true,
+    id: String(item.id || ''),
+    senderId: String(item.sender_user_id || ''),
+    senderName: item.sender_login || 'Mod',
+    text: item.message || '',
+    timestamp: new Date(item.created_at).getTime() || Date.now()
+  };
+}
+
+async function checkDirectInbox() {
+  if (!state.twitchUser || !isCurrentUserModerator()) return;
+  try {
+    const res = await ipcRenderer.invoke('modchat:get-direct-inbox');
+    if (!res?.success || !Array.isArray(res.messages)) return;
+    const ownId = String(state.twitchUser.id || '');
+    const incoming = res.messages.filter(item => String(item.sender_user_id) !== ownId);
+    if (directInboxSeenIds === null) {
+      // First fetch is the baseline: never notify for messages that existed before the app started.
+      directInboxSeenIds = new Set(incoming.map(item => item.id));
+      return;
+    }
+    const fresh = incoming.filter(item => !directInboxSeenIds.has(item.id));
+    if (fresh.length === 0) return;
+    fresh.forEach(item => directInboxSeenIds.add(item.id));
+
+    const isWindowFocused = document.hasFocus();
+    const direct = window.swgDirectChat;
+    const unseen = fresh.filter(item => !(currentActiveView === 'view-modchat' && isWindowFocused && direct?.isViewingPeer(item.sender_user_id)));
+    if (direct) direct.refresh();
+    if (unseen.length === 0) return;
+
+    playNotificationSound();
+    const latest = toDirectNotificationMessage(unseen[unseen.length - 1]);
+    if (isWindowFocused) {
+      const preview = latest.text.length > 60 ? latest.text.substring(0, 60) + '...' : latest.text;
+      showToast(`🔒 Privat von ${latest.senderName}: ${preview}  ·  Antworten`, 'info', {
+        duration: 8000,
+        ariaLabel: `Neue private Nachricht von ${latest.senderName}. Zum Antworten anklicken.`,
+        onClick: () => openModChatQuickReply(latest)
+      });
+    } else {
+      ipcRenderer.invoke('app:notify-background', { kind: 'direct', message: latest }).catch(() => {});
+    }
+
+    direct?.addUnread(unseen.length);
+    if (currentActiveView !== 'view-modchat') {
+      unreadModChatCount += unseen.length;
+      const badge = document.getElementById('hub-modchat-unread');
+      if (badge) {
+        badge.textContent = unreadModChatCount;
+        badge.classList.remove('hidden');
+      }
+    }
+  } catch (_) {}
+}
+
+function startDirectInboxWatcher() {
+  if (directInboxInterval) clearInterval(directInboxInterval);
+  checkDirectInbox();
+  directInboxInterval = setInterval(checkDirectInbox, 4000);
+}
+
+// The chat list renders while its view is hidden, so scrolling has to happen once it is visible.
+let modChatForceScrollBottom = false;
+
+function scrollModChatToBottom() {
+  if (!modChatMessages) return;
+  modChatMessages.scrollTop = modChatMessages.scrollHeight;
+}
+
+function openModChatAtLatestMessage() {
+  modChatForceScrollBottom = true;
+  requestAnimationFrame(() => requestAnimationFrame(scrollModChatToBottom));
 }
 
 function startModHQSync() {
   updateModHQUserInfo();
+  if (currentActiveView === 'view-modchat') openModChatAtLatestMessage();
   refreshModPresence();
   loadModChatMessages();
   loadStreamMarkers();
@@ -5482,6 +5819,72 @@ function updateModHQUserInfo() {
   }
 }
 
+// Read receipts: every mod reports the newest message timestamp they have seen (mod_presence.chat_read_at).
+// Each other mod's avatar is shown under the newest message they have read, like a group messenger.
+
+function isCurrentModPresenceUser(user) {
+  const me = state.twitchUser;
+  if (!me || !user) return false;
+  if (me.id && user.twitch_user_id && String(me.id) === String(user.twitch_user_id)) return true;
+  return Boolean(me.login && user.login && me.login.toLowerCase() === user.login.toLowerCase());
+}
+
+function isModPresenceUserSender(user, senderName) {
+  const sender = String(senderName || '').replace(/^@/, '').trim().toLowerCase();
+  if (!sender) return false;
+  return [user.login, user.display_name].some(name => String(name || '').trim().toLowerCase() === sender);
+}
+
+function getModChatReadMarkers(messages) {
+  const markers = new Map();
+  if (!Array.isArray(messages) || messages.length === 0) return markers;
+  modPresenceUsers.forEach(user => {
+    if (isCurrentModPresenceUser(user)) return;
+    const readAt = new Date(user.chat_read_at || 0).getTime();
+    if (!Number.isFinite(readAt) || readAt <= 0) return;
+    let index = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if ((Number(messages[i].timestamp) || 0) <= readAt) { index = i; break; }
+    }
+    // The author of a message obviously knows it; only show readers who are not the sender.
+    if (index < 0 || isModPresenceUserSender(user, messages[index].senderName)) return;
+    if (!markers.has(index)) markers.set(index, []);
+    markers.get(index).push(user);
+  });
+  return markers;
+}
+
+function renderModChatReadRow(readers, isOwn) {
+  if (!readers || readers.length === 0) return '';
+  const names = readers.map(user => user.display_name || user.login || 'Mod');
+  const visible = readers.slice(0, MOD_CHAT_READ_AVATAR_LIMIT);
+  const extra = readers.length - visible.length;
+  const avatars = visible.map(user => {
+    const name = user.display_name || user.login || 'Mod';
+    const fallback = getInitialsAvatarSvg(name, '#64748b');
+    return `<img src="${escapeHtml(user.avatar_url || fallback)}" alt="" class="mod-chat-read-avatar" title="Gelesen von ${escapeHtml(name)}" onerror="this.onerror=null; this.src='${escapeHtml(fallback)}';">`;
+  }).join('');
+  return `
+    <div class="mod-chat-read-row ${isOwn ? 'outgoing' : 'incoming'}" title="Gelesen von ${escapeHtml(names.join(', '))}" aria-label="Gelesen von ${escapeHtml(names.join(', '))}">
+      ${avatars}${extra > 0 ? `<span class="mod-chat-read-more">+${extra}</span>` : ''}
+    </div>
+  `;
+}
+
+function markModChatReadIfVisible(messages = lastLoadedModChatMessages) {
+  if (currentActiveView !== 'view-modchat' || document.hidden || !document.hasFocus()) return;
+  if (!modChatMessages || modChatMessages.clientHeight === 0) return;
+  const nearBottom = modChatMessages.scrollHeight - modChatMessages.clientHeight <= modChatMessages.scrollTop + 60;
+  if (!nearBottom || !Array.isArray(messages) || messages.length === 0) return;
+  const latest = Math.max(...messages.map(m => Number(m.timestamp) || 0));
+  if (!latest || latest <= lastReportedModChatReadAt) return;
+  lastReportedModChatReadAt = latest;
+  ipcRenderer.invoke('modchat:mark-read', latest).catch(() => {});
+}
+
+modChatMessages?.addEventListener('scroll', () => markModChatReadIfVisible());
+window.addEventListener('focus', () => markModChatReadIfVisible());
+
 async function loadModChatMessages(silent = false) {
   try {
     const res = await ipcRenderer.invoke('modchat:get-messages');
@@ -5514,10 +5917,19 @@ function renderModChatMessages(messages) {
     return;
   }
 
-  // Create signature to compare
-  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}-${m.text}`).join('|');
+  lastLoadedModChatMessages = messages;
+  const readMarkers = getModChatReadMarkers(messages);
+
+  // Create signature to compare (read receipts included, so a new reader re-renders the list)
+  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}-${m.text}`).join('|')
+    + '#' + [...readMarkers].map(([index, users]) => `${index}:${users.map(u => u.twitch_user_id || u.login).join(',')}`).join(';');
   if (sig === lastMessagesSignature) {
     // Absolutely no changes, do NOT re-render DOM to prevent any flickering!
+    if (modChatForceScrollBottom && modChatMessages.clientHeight > 0) {
+      scrollModChatToBottom();
+      modChatForceScrollBottom = false;
+    }
+    markModChatReadIfVisible(messages);
     return;
   }
   lastMessagesSignature = sig;
@@ -5656,6 +6068,7 @@ function renderModChatMessages(messages) {
         </div>
       `;
     }
+    html += renderModChatReadRow(readMarkers.get(messageIndex), isOwn);
   });
 
   modChatMessages.innerHTML = html;
@@ -5666,9 +6079,11 @@ function renderModChatMessages(messages) {
     });
   });
 
-  if (wasScrolledToBottom) {
-    modChatMessages.scrollTop = modChatMessages.scrollHeight;
+  if (wasScrolledToBottom || modChatForceScrollBottom) {
+    scrollModChatToBottom();
   }
+  if (modChatForceScrollBottom && modChatMessages.clientHeight > 0) modChatForceScrollBottom = false;
+  markModChatReadIfVisible(messages);
 }
 
 async function postModChatText(text) {

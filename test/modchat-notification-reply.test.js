@@ -10,7 +10,7 @@ const renderer = fs.readFileSync(path.join(root, 'src/renderer/renderer.js'), 'u
 const contract = JSON.parse(fs.readFileSync(path.join(root, 'src/shared/ipc-contract.json'), 'utf8'));
 
 test('native Mod-Chat notification shows sender and message and opens quick reply on click', () => {
-  assert.match(main, /new Notification\(\{[\s\S]*?title: `Neue Mod-Chat-Nachricht von \$\{message\.senderName\}`[\s\S]*?body: message\.text/);
+  assert.match(main, /new Notification\(\{[\s\S]*?title: message\.direct \? `Neue private Nachricht von \$\{message\.senderName\}` : `Neue Mod-Chat-Nachricht von \$\{message\.senderName\}`[\s\S]*?body: message\.text/);
   assert.match(main, /notification\.on\('click',[\s\S]*?mainWindow\.webContents\.send\('modchat:notification-clicked', message\)/);
   assert.ok(contract.events.includes('modchat:notification-clicked'));
   assert.match(renderer, /ipcRenderer\.on\('modchat:notification-clicked'/);
@@ -21,8 +21,8 @@ test('native Mod-Chat notification shows sender and message and opens quick repl
 test('quick reply uses the same quoted reply header and shared send path as Mod-HQ', () => {
   assert.match(renderer, /function buildModChatReplyHeader\(message\)/);
   assert.match(renderer, /return `\[Antwort auf @\$\{sender\}\] \$\{quotedText\}`/);
-  assert.match(renderer, /const text = `\$\{buildModChatReplyHeader\(pendingModChatQuickReplyMessage\)\}\\n\$\{answer\}`/);
-  assert.match(renderer, /const sent = await postModChatText\(text\)/);
+  assert.match(renderer, /const text = `\$\{buildModChatReplyHeader\(original\)\}\\n\$\{answer\}`/);
+  assert.match(renderer, /sent = await postModChatText\(text\)/);
   assert.match(renderer, /ipcRenderer\.invoke\('modchat:send-message', msgObj\)/);
 });
 

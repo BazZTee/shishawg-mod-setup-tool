@@ -705,6 +705,17 @@ ipcMain.handle('modchat:presence-heartbeat', async () => {
   }
 });
 
+ipcMain.handle('modchat:mark-read', async (event, readAt) => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    if (!twitchService?.user?.id) throw new Error('Twitch-Nutzer ist nicht vollständig angemeldet.');
+    await supabaseService.markModChatRead(readAt, chan);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
 ipcMain.handle('modchat:get-presence', async () => {
   try {
     const chan = requireAuthorizedActiveChannel();
@@ -719,6 +730,37 @@ ipcMain.handle('modchat:get-direct-messages', async (event, recipientId) => {
   try {
     const chan = requireAuthorizedActiveChannel();
     const messages = await supabaseService.getModDirectMessages(recipientId, chan);
+    return { success: true, messages };
+  } catch (e) {
+    return { success: false, messages: [], error: e.message };
+  }
+});
+
+// Android app only: store the Firebase push token for the active channel (desktop never calls this).
+ipcMain.handle('push:register-device', async (event, token) => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    await supabaseService.registerPushDevice(token, chan);
+    return { success: true, channel: chan };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('push:unregister-device', async (event, token) => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    await supabaseService.unregisterPushDevice(token, chan);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('modchat:get-direct-inbox', async () => {
+  try {
+    const chan = requireAuthorizedActiveChannel();
+    const messages = await supabaseService.getModDirectInbox(chan);
     return { success: true, messages };
   } catch (e) {
     return { success: false, messages: [], error: e.message };
@@ -826,8 +868,11 @@ ipcMain.handle('app:notify-background', async (event, payload = {}) => {
   if (!mainWindow || mainWindow.isDestroyed()) return { success: false };
   if (!mainWindow.isFocused()) mainWindow.flashFrame(true);
 
-  const message = payload && payload.kind === 'modchat' && payload.message
+  const isDirect = payload && payload.kind === 'direct';
+  const directSenderId = isDirect ? String(payload.message?.senderId || '') : '';
+  const message = payload && (payload.kind === 'modchat' || (isDirect && /^\d{1,30}$/.test(directSenderId))) && payload.message
     ? {
+        ...(isDirect ? { direct: true, senderId: directSenderId } : {}),
         id: String(payload.message.id || '').slice(0, 160),
         senderName: String(payload.message.senderName || 'Mod').replace(/[\r\n]/g, ' ').slice(0, 80),
         text: String(payload.message.text || '').slice(0, 1000),
@@ -837,7 +882,7 @@ ipcMain.handle('app:notify-background', async (event, payload = {}) => {
 
   if (message && Notification.isSupported()) {
     const notification = new Notification({
-      title: `Neue Mod-Chat-Nachricht von ${message.senderName}`,
+      title: message.direct ? `Neue private Nachricht von ${message.senderName}` : `Neue Mod-Chat-Nachricht von ${message.senderName}`,
       body: message.text,
       silent: true
     });

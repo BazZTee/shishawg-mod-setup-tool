@@ -27,6 +27,9 @@ const modPresenceOnlineCount = document.getElementById('mod-presence-online-coun
 const MOD_PRESENCE_ONLINE_MS = 90 * 1000;
 let modPresenceHeartbeatInterval = null;
 let modPresenceRefreshInterval = null;
+let modPresenceUsers = [];
+let lastReportedModChatReadAt = 0;
+const MOD_CHAT_READ_AVATAR_LIMIT = 8;
 
 function isModPresenceOnline(user, now = Date.now()) {
   const lastSeen = new Date(user?.last_seen_at || 0).getTime();
@@ -90,7 +93,11 @@ async function refreshModPresence() {
   }
   try {
     const result = await ipcRenderer.invoke('modchat:get-presence');
-    if (result?.success) renderModPresence(result.users);
+    if (result?.success) {
+      modPresenceUsers = Array.isArray(result.users) ? result.users : [];
+      renderModPresence(result.users);
+      if (currentActiveView === 'view-modchat' && lastLoadedModChatMessages.length) renderModChatMessages(lastLoadedModChatMessages);
+    }
     else if (modPresenceList && !modPresencePopover?.classList.contains('hidden')) {
       modPresenceList.innerHTML = '<div class="mod-presence-empty">Anwesenheit ist momentan nicht erreichbar.</div>';
     }
@@ -300,9 +307,28 @@ function closeModChatQuickReply() {
   pendingModChatQuickReplyMessage = null;
 }
 
+const modChatQuickReplyTitle = document.getElementById('mod-chat-quick-reply-title');
+const modChatQuickReplySubtitle = modChatQuickReplyModal?.querySelector('.qa-subtitle');
+const modChatQuickReplyTexts = {
+  team: {
+    title: modChatQuickReplyTitle?.textContent || '💬 Auf Mod-Nachricht antworten',
+    subtitle: modChatQuickReplySubtitle?.textContent || 'Direkt antworten, ohne den Mod-HQ-Chat zu öffnen',
+    button: btnSendModChatQuickReply?.textContent || '💬 Antworten'
+  },
+  direct: {
+    title: '🔒 Private Nachricht beantworten',
+    subtitle: 'Privat antworten, ohne den Mod-HQ-Chat zu öffnen',
+    button: '🔒 Privat antworten'
+  }
+};
+
 function openModChatQuickReply(message) {
   if (!modChatQuickReplyModal || !message) return;
   pendingModChatQuickReplyMessage = message;
+  const texts = message.direct ? modChatQuickReplyTexts.direct : modChatQuickReplyTexts.team;
+  if (modChatQuickReplyTitle) modChatQuickReplyTitle.textContent = texts.title;
+  if (modChatQuickReplySubtitle) modChatQuickReplySubtitle.textContent = texts.subtitle;
+  if (btnSendModChatQuickReply) btnSendModChatQuickReply.textContent = texts.button;
   if (modChatQuickReplySender) modChatQuickReplySender.textContent = `@${message.senderName || 'Mod'}`;
   if (modChatQuickReplyOriginalText) modChatQuickReplyOriginalText.textContent = message.text || '';
   if (inputModChatQuickReply) inputModChatQuickReply.value = '';
@@ -319,17 +345,113 @@ async function submitModChatQuickReply() {
     return;
   }
   if (btnSendModChatQuickReply) btnSendModChatQuickReply.disabled = true;
-  const text = `${buildModChatReplyHeader(pendingModChatQuickReplyMessage)}\n${answer}`;
-  const sent = await postModChatText(text);
+  const original = pendingModChatQuickReplyMessage;
+  let sent = false;
+  if (original.direct) {
+    try {
+      const result = await ipcRenderer.invoke('modchat:send-direct-message', { recipientId: original.senderId, message: answer });
+      if (!result?.success) throw new Error(result?.error || 'Unbekannter Fehler');
+      sent = true;
+      window.swgDirectChat?.refresh();
+    } catch (error) {
+      showToast('Fehler beim Senden der privaten Nachricht: ' + error.message, 'error');
+    }
+  } else {
+    const text = `${buildModChatReplyHeader(original)}\n${answer}`;
+    sent = await postModChatText(text);
+  }
   if (btnSendModChatQuickReply) btnSendModChatQuickReply.disabled = false;
   if (sent) {
     closeModChatQuickReply();
-    showToast('Antwort im Mod-Chat gesendet.', 'success');
+    showToast(original.direct ? 'Private Antwort gesendet.' : 'Antwort im Mod-Chat gesendet.', 'success');
   }
+}
+
+// Private messages get the same notifications as the team chat:
+// sound + clickable toast (foreground) or native Windows notification (background), plus unread badges.
+let directInboxSeenIds = null;
+let directInboxInterval = null;
+
+function toDirectNotificationMessage(item) {
+  return {
+    direct: true,
+    id: String(item.id || ''),
+    senderId: String(item.sender_user_id || ''),
+    senderName: item.sender_login || 'Mod',
+    text: item.message || '',
+    timestamp: new Date(item.created_at).getTime() || Date.now()
+  };
+}
+
+async function checkDirectInbox() {
+  if (!state.twitchUser || !isCurrentUserModerator()) return;
+  try {
+    const res = await ipcRenderer.invoke('modchat:get-direct-inbox');
+    if (!res?.success || !Array.isArray(res.messages)) return;
+    const ownId = String(state.twitchUser.id || '');
+    const incoming = res.messages.filter(item => String(item.sender_user_id) !== ownId);
+    if (directInboxSeenIds === null) {
+      // First fetch is the baseline: never notify for messages that existed before the app started.
+      directInboxSeenIds = new Set(incoming.map(item => item.id));
+      return;
+    }
+    const fresh = incoming.filter(item => !directInboxSeenIds.has(item.id));
+    if (fresh.length === 0) return;
+    fresh.forEach(item => directInboxSeenIds.add(item.id));
+
+    const isWindowFocused = document.hasFocus();
+    const direct = window.swgDirectChat;
+    const unseen = fresh.filter(item => !(currentActiveView === 'view-modchat' && isWindowFocused && direct?.isViewingPeer(item.sender_user_id)));
+    if (direct) direct.refresh();
+    if (unseen.length === 0) return;
+
+    playNotificationSound();
+    const latest = toDirectNotificationMessage(unseen[unseen.length - 1]);
+    if (isWindowFocused) {
+      const preview = latest.text.length > 60 ? latest.text.substring(0, 60) + '...' : latest.text;
+      showToast(`🔒 Privat von ${latest.senderName}: ${preview}  ·  Antworten`, 'info', {
+        duration: 8000,
+        ariaLabel: `Neue private Nachricht von ${latest.senderName}. Zum Antworten anklicken.`,
+        onClick: () => openModChatQuickReply(latest)
+      });
+    } else {
+      ipcRenderer.invoke('app:notify-background', { kind: 'direct', message: latest }).catch(() => {});
+    }
+
+    direct?.addUnread(unseen.length);
+    if (currentActiveView !== 'view-modchat') {
+      unreadModChatCount += unseen.length;
+      const badge = document.getElementById('hub-modchat-unread');
+      if (badge) {
+        badge.textContent = unreadModChatCount;
+        badge.classList.remove('hidden');
+      }
+    }
+  } catch (_) {}
+}
+
+function startDirectInboxWatcher() {
+  if (directInboxInterval) clearInterval(directInboxInterval);
+  checkDirectInbox();
+  directInboxInterval = setInterval(checkDirectInbox, 4000);
+}
+
+// The chat list renders while its view is hidden, so scrolling has to happen once it is visible.
+let modChatForceScrollBottom = false;
+
+function scrollModChatToBottom() {
+  if (!modChatMessages) return;
+  modChatMessages.scrollTop = modChatMessages.scrollHeight;
+}
+
+function openModChatAtLatestMessage() {
+  modChatForceScrollBottom = true;
+  requestAnimationFrame(() => requestAnimationFrame(scrollModChatToBottom));
 }
 
 function startModHQSync() {
   updateModHQUserInfo();
+  if (currentActiveView === 'view-modchat') openModChatAtLatestMessage();
   refreshModPresence();
   loadModChatMessages();
   loadStreamMarkers();
@@ -518,6 +640,72 @@ function updateModHQUserInfo() {
   }
 }
 
+// Read receipts: every mod reports the newest message timestamp they have seen (mod_presence.chat_read_at).
+// Each other mod's avatar is shown under the newest message they have read, like a group messenger.
+
+function isCurrentModPresenceUser(user) {
+  const me = state.twitchUser;
+  if (!me || !user) return false;
+  if (me.id && user.twitch_user_id && String(me.id) === String(user.twitch_user_id)) return true;
+  return Boolean(me.login && user.login && me.login.toLowerCase() === user.login.toLowerCase());
+}
+
+function isModPresenceUserSender(user, senderName) {
+  const sender = String(senderName || '').replace(/^@/, '').trim().toLowerCase();
+  if (!sender) return false;
+  return [user.login, user.display_name].some(name => String(name || '').trim().toLowerCase() === sender);
+}
+
+function getModChatReadMarkers(messages) {
+  const markers = new Map();
+  if (!Array.isArray(messages) || messages.length === 0) return markers;
+  modPresenceUsers.forEach(user => {
+    if (isCurrentModPresenceUser(user)) return;
+    const readAt = new Date(user.chat_read_at || 0).getTime();
+    if (!Number.isFinite(readAt) || readAt <= 0) return;
+    let index = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if ((Number(messages[i].timestamp) || 0) <= readAt) { index = i; break; }
+    }
+    // The author of a message obviously knows it; only show readers who are not the sender.
+    if (index < 0 || isModPresenceUserSender(user, messages[index].senderName)) return;
+    if (!markers.has(index)) markers.set(index, []);
+    markers.get(index).push(user);
+  });
+  return markers;
+}
+
+function renderModChatReadRow(readers, isOwn) {
+  if (!readers || readers.length === 0) return '';
+  const names = readers.map(user => user.display_name || user.login || 'Mod');
+  const visible = readers.slice(0, MOD_CHAT_READ_AVATAR_LIMIT);
+  const extra = readers.length - visible.length;
+  const avatars = visible.map(user => {
+    const name = user.display_name || user.login || 'Mod';
+    const fallback = getInitialsAvatarSvg(name, '#64748b');
+    return `<img src="${escapeHtml(user.avatar_url || fallback)}" alt="" class="mod-chat-read-avatar" title="Gelesen von ${escapeHtml(name)}" onerror="this.onerror=null; this.src='${escapeHtml(fallback)}';">`;
+  }).join('');
+  return `
+    <div class="mod-chat-read-row ${isOwn ? 'outgoing' : 'incoming'}" title="Gelesen von ${escapeHtml(names.join(', '))}" aria-label="Gelesen von ${escapeHtml(names.join(', '))}">
+      ${avatars}${extra > 0 ? `<span class="mod-chat-read-more">+${extra}</span>` : ''}
+    </div>
+  `;
+}
+
+function markModChatReadIfVisible(messages = lastLoadedModChatMessages) {
+  if (currentActiveView !== 'view-modchat' || document.hidden || !document.hasFocus()) return;
+  if (!modChatMessages || modChatMessages.clientHeight === 0) return;
+  const nearBottom = modChatMessages.scrollHeight - modChatMessages.clientHeight <= modChatMessages.scrollTop + 60;
+  if (!nearBottom || !Array.isArray(messages) || messages.length === 0) return;
+  const latest = Math.max(...messages.map(m => Number(m.timestamp) || 0));
+  if (!latest || latest <= lastReportedModChatReadAt) return;
+  lastReportedModChatReadAt = latest;
+  ipcRenderer.invoke('modchat:mark-read', latest).catch(() => {});
+}
+
+modChatMessages?.addEventListener('scroll', () => markModChatReadIfVisible());
+window.addEventListener('focus', () => markModChatReadIfVisible());
+
 async function loadModChatMessages(silent = false) {
   try {
     const res = await ipcRenderer.invoke('modchat:get-messages');
@@ -550,10 +738,19 @@ function renderModChatMessages(messages) {
     return;
   }
 
-  // Create signature to compare
-  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}-${m.text}`).join('|');
+  lastLoadedModChatMessages = messages;
+  const readMarkers = getModChatReadMarkers(messages);
+
+  // Create signature to compare (read receipts included, so a new reader re-renders the list)
+  const sig = messages.map(m => `${m.id}-${m.timestamp}-${m.senderName}-${m.text}`).join('|')
+    + '#' + [...readMarkers].map(([index, users]) => `${index}:${users.map(u => u.twitch_user_id || u.login).join(',')}`).join(';');
   if (sig === lastMessagesSignature) {
     // Absolutely no changes, do NOT re-render DOM to prevent any flickering!
+    if (modChatForceScrollBottom && modChatMessages.clientHeight > 0) {
+      scrollModChatToBottom();
+      modChatForceScrollBottom = false;
+    }
+    markModChatReadIfVisible(messages);
     return;
   }
   lastMessagesSignature = sig;
@@ -692,6 +889,7 @@ function renderModChatMessages(messages) {
         </div>
       `;
     }
+    html += renderModChatReadRow(readMarkers.get(messageIndex), isOwn);
   });
 
   modChatMessages.innerHTML = html;
@@ -702,9 +900,11 @@ function renderModChatMessages(messages) {
     });
   });
 
-  if (wasScrolledToBottom) {
-    modChatMessages.scrollTop = modChatMessages.scrollHeight;
+  if (wasScrolledToBottom || modChatForceScrollBottom) {
+    scrollModChatToBottom();
   }
+  if (modChatForceScrollBottom && modChatMessages.clientHeight > 0) modChatForceScrollBottom = false;
+  markModChatReadIfVisible(messages);
 }
 
 async function postModChatText(text) {

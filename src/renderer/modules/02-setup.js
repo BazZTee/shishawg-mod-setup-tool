@@ -1026,6 +1026,17 @@ function parseChatSetupMessage(rawText) {
     return s.includes('bowl') || s.includes('phunnel') || s.includes('shot') || s.includes('mehrloch') || s.includes('cosmo') || s.includes('xkah') || s.includes('e-kopf') || s.includes('imoto') || /\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(s);
   };
 
+  const looksLikeTobacco = (seg) => seg.includes('-') || /\d+\s*(g|%)/i.test(seg) ||
+    !!findBestFuzzyMatch(seg, (state.catalog && state.catalog.tobacco) || [], 0.85);
+
+  const isTrailingExtraSegment = (seg, person) => {
+    const s = seg.toLowerCase();
+    const currentExtra = (inputGlobalExtra ? inputGlobalExtra.value : '').trim().toLowerCase();
+    if (currentExtra && s === currentExtra) return true;
+    if (findBestFuzzyMatch(seg, (state.catalog && state.catalog.tastings) || [], 0.8)) return true;
+    return !!(person && person.tobaccos.length > 0 && !looksLikeTobacco(seg));
+  };
+
   const isElectricDeviceSegment = (seg) => /xkah|imoto|e-kopf|\belektr|\be[- ]?ger[aä]t\b|\be[- ]?zigarette\b|\bvape\b/i.test(seg);
 
   const createDefaultPerson = (name = 'Marvin') => ({
@@ -1106,6 +1117,13 @@ function parseChatSetupMessage(rawText) {
     }
 
     const currentPerson = parsedPersons.length > 0 ? parsedPersons[parsedPersons.length - 1] : null;
+
+    // The generator writes all tobaccos of a person into one segment and the
+    // Zusatz-Info last, so free text after the tobaccos is the Zusatz-Info.
+    if (isTrailingExtraSegment(seg, currentPerson)) {
+      globalExtra = seg;
+      continue;
+    }
 
     if (isBowlSegment(seg)) {
       if (currentPerson && !currentPerson.bowl) {
@@ -1752,6 +1770,167 @@ function applyMarvHookahToolsMix(mix) {
   return true;
 }
 
+// Setup-Zwischenspeicher: 3 feste Slots, lokal gespeichert, überleben Neustarts.
+const SETUP_SLOT_STORAGE_KEY = 'swg_setup_slots_v1';
+const SETUP_SLOT_COUNT = 3;
+
+function isSetupPersonFilled(person) {
+  if (!person) return false;
+  return ['name', 'pipe', 'vessel', 'bowl', 'hmd'].some(key => String(person[key] || '').trim()) ||
+    (person.tobaccos || []).some(tobacco => String(tobacco || '').trim());
+}
+
+function snapshotCurrentSetup() {
+  const persons = JSON.parse(JSON.stringify(state.persons.slice(0, state.personCount)));
+  return {
+    savedAt: new Date().toISOString(),
+    personCount: state.personCount,
+    persons,
+    kohle: inputGlobalKohle ? inputGlobalKohle.value : '',
+    extra: inputGlobalExtra ? inputGlobalExtra.value : '',
+    promo: inputGlobalPromo ? inputGlobalPromo.value : '',
+    promoTarget: selectPromoTarget ? selectPromoTarget.value : 'kohle',
+    includePromoDesc: chkIncludePromoDesc ? chkIncludePromoDesc.checked : true,
+    includeFlavors: chkIncludeFlavors ? chkIncludeFlavors.checked : true
+  };
+}
+
+function isSetupSnapshotEmpty(snapshot) {
+  if (!snapshot) return true;
+  return !(snapshot.persons || []).some(isSetupPersonFilled) &&
+    !String(snapshot.kohle || '').trim() && !String(snapshot.extra || '').trim() && !String(snapshot.promo || '').trim();
+}
+
+function readSetupSlots() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SETUP_SLOT_STORAGE_KEY) || '[]');
+    return Array.from({ length: SETUP_SLOT_COUNT }, (_, i) => {
+      const slot = Array.isArray(parsed) ? parsed[i] : null;
+      return slot && Array.isArray(slot.persons) ? slot : null;
+    });
+  } catch (e) {
+    return Array(SETUP_SLOT_COUNT).fill(null);
+  }
+}
+
+function writeSetupSlots(slots) {
+  try {
+    localStorage.setItem(SETUP_SLOT_STORAGE_KEY, JSON.stringify(slots));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function describeSetupSnapshot(snapshot) {
+  if (!snapshot) return 'leer';
+  const persons = (snapshot.persons || []).filter(isSetupPersonFilled);
+  const names = persons.map((p, i) => String(p.name || '').trim() || `Person ${i + 1}`);
+  let label = names.join(', ');
+  if (!label) label = String(snapshot.kohle || snapshot.extra || '').trim() || 'Setup';
+  if (label.length > 40) label = label.slice(0, 39) + '…';
+  const date = new Date(snapshot.savedAt);
+  if (!Number.isNaN(date.getTime())) {
+    const pad = n => String(n).padStart(2, '0');
+    label += ` · ${pad(date.getDate())}.${pad(date.getMonth() + 1)}. ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+  return label;
+}
+
+function applySetupSnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.persons)) return false;
+  const persons = JSON.parse(JSON.stringify(snapshot.persons)).slice(0, 10);
+  state.personCount = Math.min(10, Math.max(1, persons.length || Number(snapshot.personCount) || 1));
+  state.persons = persons;
+  updatePersonCountLabel();
+  if (inputGlobalKohle) inputGlobalKohle.value = snapshot.kohle || '';
+  if (inputGlobalExtra) inputGlobalExtra.value = snapshot.extra || '';
+  if (inputGlobalPromo) inputGlobalPromo.value = snapshot.promo || '';
+  if (selectPromoTarget) selectPromoTarget.value = snapshot.promoTarget || 'kohle';
+  if (chkIncludePromoDesc) chkIncludePromoDesc.checked = snapshot.includePromoDesc !== false;
+  if (chkIncludeFlavors) chkIncludeFlavors.checked = snapshot.includeFlavors !== false;
+  renderPersonsGrid();
+  generateCommandString();
+  return true;
+}
+
+function renderSetupSlotMenus() {
+  const slots = readSetupSlots();
+  const saveMenu = document.getElementById('setup-slots-save-menu');
+  const loadList = document.getElementById('setup-slots-load-list');
+  const makeItem = (text, title, slotIndex, action, disabled) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dropdown-item setup-slot-item';
+    btn.dataset.slot = String(slotIndex);
+    btn.dataset.action = action;
+    btn.textContent = text;
+    btn.title = title;
+    btn.disabled = !!disabled;
+    return btn;
+  };
+  if (saveMenu) {
+    saveMenu.replaceChildren(...slots.map((slot, i) => makeItem(
+      slot ? `💾 Slot ${i + 1} überschreiben — ${describeSetupSnapshot(slot)}` : `💾 In Slot ${i + 1} merken — leer`,
+      'Aktuelles Formular (Personen, Kohle, Extra, Promo) in diesen Slot speichern',
+      i, 'save', false
+    )));
+  }
+  if (loadList) {
+    loadList.replaceChildren(...slots.map((slot, i) => makeItem(
+      `♻️ Slot ${i + 1} laden — ${describeSetupSnapshot(slot)}`,
+      slot ? 'Gemerktes Setup ins Formular übernehmen' : 'Dieser Slot ist noch leer',
+      i, 'load', !slot
+    )));
+  }
+}
+
+async function saveSetupToSlot(slotIndex) {
+  const snapshot = snapshotCurrentSetup();
+  if (isSetupSnapshotEmpty(snapshot)) {
+    showToast('Das Formular ist leer – nichts zum Merken.', 'error');
+    return false;
+  }
+  const slots = readSetupSlots();
+  if (slots[slotIndex]) {
+    const ok = await showAppConfirm({
+      title: `Slot ${slotIndex + 1} überschreiben?`,
+      message: 'In diesem Slot ist schon ein Setup gemerkt.',
+      detail: describeSetupSnapshot(slots[slotIndex]),
+      confirmLabel: 'Überschreiben'
+    });
+    if (!ok) return false;
+  }
+  slots[slotIndex] = snapshot;
+  if (!writeSetupSlots(slots)) {
+    showToast('Setup konnte nicht gespeichert werden.', 'error');
+    return false;
+  }
+  renderSetupSlotMenus();
+  showToast(`Setup in Slot ${slotIndex + 1} gemerkt.`, 'success');
+  return true;
+}
+
+async function loadSetupFromSlot(slotIndex) {
+  const slot = readSetupSlots()[slotIndex];
+  if (!slot) {
+    showToast(`Slot ${slotIndex + 1} ist leer.`, 'info');
+    return false;
+  }
+  if (!isSetupSnapshotEmpty(snapshotCurrentSetup())) {
+    const ok = await showAppConfirm({
+      title: `Slot ${slotIndex + 1} laden?`,
+      message: 'Das aktuelle Formular wird durch das gemerkte Setup ersetzt.',
+      detail: describeSetupSnapshot(slot),
+      confirmLabel: 'Laden'
+    });
+    if (!ok) return false;
+  }
+  applySetupSnapshot(slot);
+  showToast(`Setup aus Slot ${slotIndex + 1} geladen.`, 'success');
+  return true;
+}
+
 function setupEventListeners() {
   // Person Count — only + button, count shown as label
   btnIncPersons.addEventListener('click', () => {
@@ -1776,6 +1955,40 @@ function setupEventListeners() {
 
     importDropdownMenu.addEventListener('click', (e) => {
       e.stopPropagation();
+      const item = e.target.closest('.setup-slot-item[data-action="load"]');
+      if (item && !item.disabled) {
+        importDropdownMenu.classList.add('hidden');
+        loadSetupFromSlot(Number(item.dataset.slot));
+      }
+    });
+  }
+
+  // Setup-Zwischenspeicher (3 Slots)
+  const btnSetupSlotsMenu = document.getElementById('btn-setup-slots-menu');
+  const setupSlotsSaveMenu = document.getElementById('setup-slots-save-menu');
+  renderSetupSlotMenus();
+  if (btnSetupSlotsMenu && setupSlotsSaveMenu) {
+    btnSetupSlotsMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderSetupSlotMenus();
+      setupSlotsSaveMenu.classList.toggle('hidden');
+      if (importDropdownMenu) importDropdownMenu.classList.add('hidden');
+    });
+    document.addEventListener('click', () => {
+      setupSlotsSaveMenu.classList.add('hidden');
+    });
+    setupSlotsSaveMenu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = e.target.closest('.setup-slot-item[data-action="save"]');
+      if (!item) return;
+      setupSlotsSaveMenu.classList.add('hidden');
+      saveSetupToSlot(Number(item.dataset.slot));
+    });
+  }
+  if (btnImportMenu && setupSlotsSaveMenu) {
+    btnImportMenu.addEventListener('click', () => {
+      renderSetupSlotMenus();
+      setupSlotsSaveMenu.classList.add('hidden');
     });
   }
 
@@ -2133,6 +2346,7 @@ function setupEventListeners() {
       e.stopPropagation();
       hamburgerDropdownMenu.classList.toggle('hidden');
       if (importDropdownMenu) importDropdownMenu.classList.add('hidden');
+      document.getElementById('setup-slots-save-menu')?.classList.add('hidden');
     });
   }
 

@@ -32,6 +32,7 @@ test('private chat has dedicated IPC and escapes message text', () => {
   assert.ok(contract.invoke.includes('modchat:send-direct-message'));
   assert.match(main, /modchat:get-direct-messages'[\s\S]*?requireAuthorizedActiveChannel\(\)/);
   assert.match(main, /modchat:send-direct-message'[\s\S]*?requireAuthorizedActiveChannel\(\)/);
-  assert.match(ui, /make\('span', '', item\.message \|\| ''\)/);
+  assert.match(ui, /appendMessageText\(text, item\.message \|\| ''\)/);
+  assert.match(ui, /document\.createTextNode\(token\)/);
   assert.doesNotMatch(ui, /innerHTML/);
 });

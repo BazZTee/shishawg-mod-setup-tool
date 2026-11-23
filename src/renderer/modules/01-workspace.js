@@ -640,6 +640,7 @@ async function initApp() {
 
   // Start global background watcher for Mod-HQ Team-Chat notifications
   startGlobalModChatWatcher();
+  startDirectInboxWatcher();
   startModPresenceTracking();
 
   // Auto-start Channel Points (Kohle Stücke) listener

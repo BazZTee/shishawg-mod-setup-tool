@@ -24,7 +24,7 @@
       <div class="brand">
         <img src="../../build/icon.png" alt="Logo" class="app-logo" id="header-logo" onerror="this.style.display='none'">
         <div class="brand-text">
-          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Neuigkeiten dieser Version anzeigen"><span id="app-version-tag">v8.0.7</span> ✨</button></h1>
+          <h1>ShishaWG <span class="badge-mod">MOD TOOL</span> <button id="btn-check-updates" class="version-tag btn-version-tag" title="Neuigkeiten dieser Version anzeigen"><span id="app-version-tag">v8.0.8</span> ✨</button></h1>
           <p class="subtitle">Stream Setup Generator & Twitch Integration</p>
         </div>
       </div>
@@ -288,7 +288,17 @@
                 <button id="btn-import-hookahtools" class="dropdown-item" title="Mix aus dem HookahTools-Stream-Overlay des Streamers mit Tabaksorten und Mischverhältnis übernehmen">
                   🌐 Von HookahTools (Stream-Overlay)
                 </button>
+                <div class="hamburger-divider"></div>
+                <div id="setup-slots-load-list" class="setup-slots-list"></div>
               </div>
+            </div>
+
+            <!-- Setup-Zwischenspeicher (3 Slots) -->
+            <div class="dropdown-wrapper">
+              <button id="btn-setup-slots-menu" class="btn btn-secondary" title="Aktuelles Setup in einen von 3 Zwischenspeicher-Slots legen, um es später wieder zu laden">
+                💾 Setup merken ▼
+              </button>
+              <div id="setup-slots-save-menu" class="dropdown-menu hidden"></div>
             </div>
 
             <button id="btn-toggle-notes" class="btn btn-secondary active" title="Notizfeld zum schnellen Mitschreiben während des Streams ein-/ausblenden">
@@ -2973,7 +2983,7 @@
           <div class="cr-context-preview" style="font-size:0.75rem; color:var(--text-muted); background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px; border:1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
             <span>📍 <strong>Bereich:</strong> <span id="cr-preview-view" style="color:var(--text-primary);">-</span></span>
             <span>👤 <strong>Mod:</strong> <span id="cr-preview-user" style="color:var(--text-primary);">-</span></span>
-            <span>🏷️ <strong>Version:</strong> <span id="cr-preview-ver" style="color:var(--text-primary);">v8.0.7</span></span>
+            <span>🏷️ <strong>Version:</strong> <span id="cr-preview-ver" style="color:var(--text-primary);">v8.0.8</span></span>
           </div>
 
           <div class="form-group" style="display:flex; flex-direction:column; gap:6px;">

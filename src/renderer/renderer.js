@@ -410,6 +410,7 @@ function setupProfileEventListeners() {
         currentProf.name = nameVal;
         currentProf.targetChannel = chanVal || 'marved';
         currentProf.botName = botVal || 'bot';
+        currentProf.hookahToolsOverlay = document.getElementById('input-profile-hookahtools')?.value.trim() || '';
         currentProf.defaultPersons = personsVal ? personsVal.split(',').map(s => s.trim()).filter(Boolean) : ['Marvin'];
         currentProf.youtubeChannels = ytVal ? ytVal.split(',').map(s => s.trim()).filter(Boolean) : ['@shishawg'];
         currentProf.telegram = {
@@ -504,6 +505,8 @@ async function loadProfileIntoEditor(profileId) {
   if (inputName) inputName.value = p.name || '';
   if (inputChannel) inputChannel.value = p.targetChannel || '';
   if (inputBot) inputBot.value = p.botName || '';
+  const inputHookahTools = document.getElementById('input-profile-hookahtools');
+  if (inputHookahTools) inputHookahTools.value = p.hookahToolsOverlay || '';
   if (inputPersons) inputPersons.value = Array.isArray(p.defaultPersons) ? p.defaultPersons.join(', ') : (p.defaultPersons || '');
   if (inputYt) inputYt.value = Array.isArray(p.youtubeChannels) ? p.youtubeChannels.join(', ') : (p.youtubeChannels || '');
   if (inputTgToken) inputTgToken.value = p.telegram?.botToken || '';
@@ -2767,11 +2770,12 @@ function setupEventListeners() {
         const result = await ipcRenderer.invoke('db:get-marv-hookahtools-mix');
         if (!result?.success) throw new Error(result?.error || 'HookahTools-Mix konnte nicht geladen werden');
         if (!result.mix) {
-          showToast('Kein Live-Mix von Marv aus den letzten 30 Minuten gefunden.', 'info');
+          showToast('Im HookahTools-Stream-Overlay ist gerade kein Mix ausgewählt.', 'info');
           return;
         }
         if (!applyMarvHookahToolsMix(result.mix)) throw new Error('Mix konnte nicht in das Setup übernommen werden');
-        showToast('Marvs HookahTools-Mix mit Tabaksorten und Prozentanteilen übernommen.', 'success');
+        const mixLabel = result.mix.name ? `„${result.mix.name}“` : 'HookahTools-Mix';
+        showToast(`${mixLabel} mit Tabaksorten und Prozentanteilen übernommen.`, 'success');
       } catch (error) {
         showToast(error.message || 'HookahTools-Import fehlgeschlagen', 'error');
       } finally {

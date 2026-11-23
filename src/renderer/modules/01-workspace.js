@@ -409,6 +409,7 @@ function setupProfileEventListeners() {
         currentProf.name = nameVal;
         currentProf.targetChannel = chanVal || 'marved';
         currentProf.botName = botVal || 'bot';
+        currentProf.hookahToolsOverlay = document.getElementById('input-profile-hookahtools')?.value.trim() || '';
         currentProf.defaultPersons = personsVal ? personsVal.split(',').map(s => s.trim()).filter(Boolean) : ['Marvin'];
         currentProf.youtubeChannels = ytVal ? ytVal.split(',').map(s => s.trim()).filter(Boolean) : ['@shishawg'];
         currentProf.telegram = {
@@ -503,6 +504,8 @@ async function loadProfileIntoEditor(profileId) {
   if (inputName) inputName.value = p.name || '';
   if (inputChannel) inputChannel.value = p.targetChannel || '';
   if (inputBot) inputBot.value = p.botName || '';
+  const inputHookahTools = document.getElementById('input-profile-hookahtools');
+  if (inputHookahTools) inputHookahTools.value = p.hookahToolsOverlay || '';
   if (inputPersons) inputPersons.value = Array.isArray(p.defaultPersons) ? p.defaultPersons.join(', ') : (p.defaultPersons || '');
   if (inputYt) inputYt.value = Array.isArray(p.youtubeChannels) ? p.youtubeChannels.join(', ') : (p.youtubeChannels || '');
   if (inputTgToken) inputTgToken.value = p.telegram?.botToken || '';

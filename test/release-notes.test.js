@@ -12,17 +12,17 @@ const main = fs.readFileSync(path.join(root, 'src/main/main.js'), 'utf8');
 const contract = JSON.parse(fs.readFileSync(path.join(root, 'src/shared/ipc-contract.json'), 'utf8'));
 
 test('release notes appear once for the matching unseen version', () => {
-  const firstLaunch = resolveReleaseNotes('8.0.5', notes, '');
+  const firstLaunch = resolveReleaseNotes('8.0.7', notes, '');
   assert.equal(firstLaunch.shouldShow, true);
-  assert.equal(firstLaunch.release.version, '8.0.5');
+  assert.equal(firstLaunch.release.version, '8.0.7');
   assert.ok(firstLaunch.release.items.length > 0);
 
-  const from801 = resolveReleaseNotes('8.0.5', notes, '8.0.1');
+  const from801 = resolveReleaseNotes('8.0.7', notes, '8.0.1');
   assert.equal(from801.shouldShow, true);
   assert.ok(from801.release.items.some(item => item.title.includes('ChatGames')));
   assert.ok(from801.release.items.some(item => item.title.includes('Setup aus dem Chat')));
 
-  const alreadySeen = resolveReleaseNotes('8.0.5', notes, '8.0.5');
+  const alreadySeen = resolveReleaseNotes('8.0.7', notes, '8.0.7');
   assert.equal(alreadySeen.shouldShow, false);
 
   const anotherVersion = resolveReleaseNotes('8.0.0', notes, '');

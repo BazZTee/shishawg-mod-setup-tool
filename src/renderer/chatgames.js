@@ -153,7 +153,7 @@
       backseat: 'w a s d', sizeup: '2,5', tierlist: 'S', wordrush: 'Wort',
       feud: 'Antwort', brawl: 'B3', hotseat: '1 2 3 4', bossraid: 'zap',
       pixel: 'giraffe', mapguess: 'Japan', higherlower: 'h / l',
-      price: '2,49', yearguess: '1969'
+      price: '2,49', yearguess: '1969', climb: '45'
     };
     ChatGamesCommands.games.forEach(game => {
       const card = document.createElement('button');
@@ -203,7 +203,7 @@
       hint.textContent = 'Für dieses Spiel listet der Modguide keine eigenen Einstellungen. Mit !start beginnt die Runde.';
       settings.append(hint);
     }
-    const pausable = ['golf', 'chatships', 'memory', 'chatdle', 'sizeup', 'tierlist', 'brawl', 'hotseat', 'bossraid'];
+    const pausable = ['golf', 'chatships', 'memory', 'chatdle', 'sizeup', 'tierlist', 'brawl', 'hotseat', 'bossraid', 'climb'];
     const relevantControls = ChatGamesCommands.controls.filter(item =>
       (item.command !== '!next' || game.id === 'trivia') &&
       (!['!pause', '!resume'].includes(item.command) || pausable.includes(game.id)) &&

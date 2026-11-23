@@ -48,6 +48,7 @@ const alias = {
   url: path.join(shims, 'url.js'),
   ws: path.join(shims, 'ws.js'),
   crypto: path.join(shims, 'crypto.js'),
+  zlib: path.join(shims, 'zlib.js'),
   path: require.resolve('path-browserify'),
   events: require.resolve('events/'),
   buffer: require.resolve('buffer/'),

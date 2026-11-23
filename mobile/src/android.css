@@ -390,3 +390,6 @@ html.swg-android .swg-phone-nav {
     font-size: 16px !important;
   }
 }
+
+/* Stream Deck plugin is desktop-only. */
+#btn-qa-streamdeck { display: none !important; }

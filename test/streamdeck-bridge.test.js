@@ -137,3 +137,17 @@ test('renderer syncs quick commands and offers the install button', () => {
   assert.ok(contract.invoke.includes('streamdeck:sync-commands'));
   assert.ok(contract.invoke.includes('streamdeck:install-plugin'));
 });
+
+test('every node builtin required by src/main has an Android alias', () => {
+  const build = fs.readFileSync(path.join(__dirname, '../mobile/scripts/build-web.cjs'), 'utf8');
+  const builtins = new Set(require('node:module').builtinModules);
+  const dir = path.join(__dirname, '../src/main');
+  const used = new Set();
+  for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(dir, file), 'utf8');
+    for (const m of src.matchAll(/require\('([^'./][^']*)'\)/g)) if (builtins.has(m[1])) used.add(m[1]);
+  }
+  for (const name of used) {
+    assert.match(build, new RegExp(`^\\s*'?${name}'?:`, 'm'), `mobile alias missing for "${name}"`);
+  }
+});

@@ -26,7 +26,11 @@ function sanitizeCommands(list) {
 function tokensEqual(a, b) {
   const x = Buffer.from(String(a || ''));
   const y = Buffer.from(String(b || ''));
-  return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y);
+  if (x.length !== y.length || x.length === 0) return false;
+  if (typeof crypto.timingSafeEqual === 'function') return crypto.timingSafeEqual(x, y);
+  let diff = 0;
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
+  return diff === 0;
 }
 
 class StreamDeckBridge {

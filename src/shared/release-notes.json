@@ -1,6 +1,6 @@
 {
-  "version": "8.0.6",
-  "title": "Neu in Version 8.0.6",
+  "version": "8.0.7",
+  "title": "Neu in Version 8.0.7",
   "intro": "Seit 8.0.1: mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
     {
@@ -40,8 +40,8 @@
     },
     {
       "icon": "🎮",
-      "title": "ChatGames über die Suche steuern",
-      "description": "Öffne ChatGames mit Strg+K, wähle eines von acht Spielen und bediene die Befehle per Knopfdruck. Mit ausgeschaltetem Chat-Versand kannst du alles ohne Chat-Nachrichten testen."
+      "title": "ChatGames mit 22 Spielen",
+      "description": "Öffne ChatGames mit Strg+K, wähle eines von 22 Spielen und bediene die Befehle per Knopfdruck. Neu sind ChatClimb, Nachrichten im Spiel mit !msg und weitere Marbles-Einstellungen. Mit ausgeschaltetem Chat-Versand kannst du alles ohne Chat-Nachrichten testen."
     },
     {
       "icon": "🔐",

@@ -1,8 +1,18 @@
 {
-  "version": "8.0.11",
-  "title": "Neu in Version 8.0.11",
+  "version": "8.0.12",
+  "title": "Neu in Version 8.0.12",
   "intro": "Seit 8.0.1: Push-Benachrichtigungen in der Android-App, Lesebestätigungen im Mod-Chat, mehr Kontrolle im Dashboard, verbesserter Setup-Import, private Mod-Nachrichten und ChatGames-Steuerung.",
   "items": [
+    {
+      "icon": "🔎",
+      "title": "Saubere Vorschlagsliste in der Android-App",
+      "description": "Beim Tippen in Tabak-, Kopf- oder HMD-Feldern erscheint am Handy jetzt eine gut lesbare Vorschlagsliste unter dem Feld, statt dass die Vorschläge über das Formular laufen."
+    },
+    {
+      "icon": "🏷️",
+      "title": "Richtige Version in den Einstellungen",
+      "description": "Die Einstellungen zeigen immer die aktuell installierte Version an."
+    },
     {
       "icon": "🎛️",
       "title": "Quick-Commands aufs Stream Deck",

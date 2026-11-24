@@ -393,3 +393,43 @@ html.swg-android .swg-phone-nav {
 
 /* Stream Deck plugin is desktop-only. */
 #btn-qa-streamdeck { display: none !important; }
+
+/* Own suggestion list for <input list> (datalist-picker.js); the native
+   WebView datalist popup has no background on phones. */
+html.swg-android input::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
+html.swg-android .swg-dl-popup {
+  position: fixed;
+  z-index: 100000;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  background: #182a43;
+  border: 1px solid #bad8ff3d;
+  border-radius: 12px;
+  box-shadow: 0 16px 45px #0009;
+  padding: 4px 0;
+}
+
+html.swg-android .swg-dl-popup.hidden {
+  display: none;
+}
+
+html.swg-android .swg-dl-option {
+  padding: 11px 14px;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: var(--text-primary, #eaf2ff);
+  border-bottom: 1px solid #ffffff12;
+  overflow-wrap: anywhere;
+}
+
+html.swg-android .swg-dl-option:last-child {
+  border-bottom: 0;
+}
+
+html.swg-android .swg-dl-option:active {
+  background: #2e6bd04d;
+}

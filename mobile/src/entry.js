@@ -27,6 +27,7 @@ window.swgBridge = Object.freeze({
   })
 });
 document.documentElement.classList.add('swg-android');
+require('./datalist-picker').installDatalistPicker();
 // The phone layout shows the Twitch login button as icon only.
 document.addEventListener('DOMContentLoaded', () => {
   const twitchButton = document.getElementById('btn-twitch-login');

@@ -121,9 +121,9 @@ test('buildChangeRequestIssueUrl handles logged-out mod gracefully', () => {
   assert.ok(bodyParam.includes('Keine aktive Kopf-Session'));
 });
 
-test('release version bumped to 8.0.11 in package.json and index.html', () => {
-  assert.equal(pkgJson.version, '8.0.11');
-  assert.match(indexHtml, /id="app-version-tag">v8.0.11</);
+test('release version bumped to 8.0.12 in package.json and index.html', () => {
+  assert.equal(pkgJson.version, '8.0.12');
+  assert.match(indexHtml, /id="app-version-tag">v8.0.12</);
 });
 
 test('trelloService maps categories to valid label IDs', () => {
